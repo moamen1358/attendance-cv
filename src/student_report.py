@@ -147,7 +147,12 @@ def get_attendance_history(student_name, days=7):
     
     # Merge with attendance data
     result = pd.merge(date_df, df, on='date', how='left')
+    
+    # Fix the FutureWarning by explicitly inferring object types after filling NAs
     result = result.fillna(0)
+    result = result.infer_objects(copy=False)  # Explicitly infer proper types instead of silent downcasting
+    
+    # Ensure integer types
     result[['hours_present', 'detection_count']] = result[['hours_present', 'detection_count']].astype(int)
     
     return result
@@ -932,12 +937,8 @@ def show_student_report():
                         st.error(f"Invalid time format: {row['start_time']}")
                         continue
                 
-                if start_time_obj > current_time_obj:
-                    next_class = row
-                    break
-            
-            # First check if student has attended all past classes
-            past_classes = 0  
+            # Initialize past_classes counter before using it
+            past_classes = 0
             attended_past_classes = 0
 
             for _, row in schedule_df.iterrows():

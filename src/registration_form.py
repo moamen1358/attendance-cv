@@ -7,6 +7,8 @@ import json
 from datetime import datetime
 import os
 import uuid
+import secrets
+import string
 
 
 # Constants
@@ -121,9 +123,59 @@ def add_embedding_to_collection(name, embedding, collection):
         print(f"Error adding embedding to collection: {e}")
         return False
 
+def register_user_credentials(name, role, password=None):
+    """Register user credentials in the users table"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Check if username exists
+        cursor.execute("SELECT username FROM users WHERE username = ?", (name,))
+        if cursor.fetchone():
+            # User already exists, update role
+            cursor.execute("UPDATE users SET role = ? WHERE username = ?", (role, name))
+        else:
+            # Generate a random password if none provided
+            if password is None:
+                # Generate a random 8-character password
+                password = ''.join(secrets.choice(string.ascii_letters + string.digits) 
+                                  for _ in range(8))
+            
+            # Insert new user
+            cursor.execute("""
+                INSERT INTO users (username, password, role)
+                VALUES (?, ?, ?)
+            """, (name, password, role))
+        
+        conn.commit()
+        return True, password
+    except Exception as e:
+        st.error(f"Error registering user credentials: {str(e)}")
+        return False, None
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
 def show_registration_form():
     st.header("Registration Form")
     name = st.text_input("Name", key="reg_name")
+    
+    # Add role selection dropdown
+    role = st.selectbox(
+        "Role",
+        options=["student", "admin"],
+        index=0,
+        help="Select user role - students can only view their own attendance, admins can access all features"
+    )
+    
+    # Option to set custom password (can be hidden behind expander)
+    with st.expander("Set Password"):
+        use_custom_password = st.checkbox("Set custom password", value=False)
+        if use_custom_password:
+            password = st.text_input("Password", type="password")
+        else:
+            password = None
+            st.info("A random password will be generated if none is provided")
     
     # Initialize session state for uploaded files
     if 'uploaded_files' not in st.session_state:
@@ -146,7 +198,8 @@ def show_registration_form():
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             if image is not None:
                 resized_image = cv2.resize(image, (150, 150))
-                cols[idx % 4].image(resized_image, channels="BGR", use_container_width=True)
+                cols[idx % 4].image(resized_image, channels="BGR", use_container_width=True, 
+                                   caption=f"Image {idx+1}")
             # Reset file pointer to beginning
             uploaded_file.seek(0)
     
@@ -161,7 +214,14 @@ def show_registration_form():
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             if image is not None:
                 if register_face_from_image(image, name):
-                    st.success(f"Successfully registered {name} from camera!")
+                    # Also register user credentials
+                    success, generated_password = register_user_credentials(name, role, password)
+                    if success:
+                        st.success(f"Successfully registered {name} as {role}!")
+                        if generated_password != password:  # Only show if auto-generated
+                            st.info(f"Generated password: {generated_password}")
+                    else:
+                        st.error("Failed to register user credentials")
                 else:
                     st.error("No face detected in the image")
     
@@ -179,6 +239,14 @@ def show_registration_form():
         
         if success_count > 0:
             st.success(f"Registered {success_count} images for {name}!")
+            # Also register user credentials
+            success, generated_password = register_user_credentials(name, role, password)
+            if success:
+                st.success(f"Successfully registered {name} as {role}!")
+                if generated_password != password:  # Only show if auto-generated
+                    st.info(f"Generated password: {generated_password}")
+            else:
+                st.error("Failed to register user credentials")
         else:
             st.error("No faces detected in any uploaded images")
     
