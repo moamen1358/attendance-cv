@@ -10,3 +10,4 @@ testtesttttttt/
 vid/
 __pycache__/
 .vscode/
+src/__pycache__/
