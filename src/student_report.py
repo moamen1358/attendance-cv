@@ -8,6 +8,7 @@ import time
 import random
 import math
 from streamlit.components.v1 import html
+from time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
 
 # Page configuration
 st.set_page_config(
@@ -18,7 +19,6 @@ st.set_page_config(
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
-AUTO_REFRESH_INTERVAL = 30  # seconds
 
 # Custom CSS
 st.markdown("""
@@ -160,6 +160,7 @@ def get_attendance_history(student_name, days=7):
 def check_attendance(student_name, date, start_time, end_time):
     """
     Check if student attended a class during the specified time period
+    using the class_attendance table for faster lookups
     
     Args:
         student_name (str): Name of the student
@@ -172,32 +173,80 @@ def check_attendance(student_name, date, start_time, end_time):
     """
     conn = get_db_connection()
     
-    # Convert AM/PM time to 24-hour format for database comparison
-    try:
-        start_dt_obj = datetime.strptime(start_time, '%I:%M %p')
-        start_time_24h = start_dt_obj.strftime('%H:%M')
-        
-        end_dt_obj = datetime.strptime(end_time, '%I:%M %p')
-        end_time_24h = end_dt_obj.strftime('%H:%M')
-    except ValueError:
-        # If already in 24-hour format, use as is
-        start_time_24h = start_time
-        end_time_24h = end_time
+    # Normalize time formats to ensure consistency
+    start_time = normalize_time_format(start_time)
+    end_time = normalize_time_format(end_time)
+    
+    # First check if we have a record in the class_attendance table
+    query = """
+    SELECT attended
+    FROM class_attendance
+    WHERE student_name = ?
+      AND class_date = ?
+      AND start_time = ?
+      AND end_time = ?
+    """
+    
+    cursor = conn.cursor()
+    cursor.execute(query, (student_name, date, start_time, end_time))
+    result = cursor.fetchone()
+    
+    if result is not None:
+        # If we found a record, return its attendance status
+        conn.close()
+        return result[0] == 1
+    
+    # If we didn't find a record, fall back to the old method
+    # and insert a new record into class_attendance
+    
+    # Convert AM/PM time for database comparison if needed
+    time_24h_start = start_time  # Now stored as AM/PM in DB
+    time_24h_end = end_time      # Now stored as AM/PM in DB
     
     # Format for SQLite date filtering - add seconds for exact comparison
-    date_start = f"{date} {start_time_24h}:00"
-    date_end = f"{date} {end_time_24h}:59"
+    date_start = f"{date} {time_24h_start}"
+    date_end = f"{date} {time_24h_end}"
     
     query = """
     SELECT COUNT(*) as count 
     FROM attendance_log 
-    WHERE name = ? AND timestamp BETWEEN ? AND ?
+    WHERE name = ? 
+      AND date(timestamp) = ? 
+      AND (
+          -- Check using time_between function
+          (strftime('%H:%M', timestamp) >= strftime('%H:%M', ?) AND strftime('%H:%M', timestamp) <= strftime('%H:%M', ?))
+          OR
+          -- Check if timestamp is between class times 
+          (time(timestamp) BETWEEN time(?) AND time(?))
+      )
     """
     
-    result = pd.read_sql(query, conn, params=(student_name, date_start, date_end))
+    cursor.execute(query, (student_name, date, date_start, date_end, date_start, date_end))
+    result = cursor.fetchone()
+    attended = result[0] > 0
+    
+    # Insert the result into class_attendance for future lookups
+    insert_query = """
+    INSERT OR IGNORE INTO class_attendance 
+        (student_name, class_date, subject, start_time, end_time, attended)
+    VALUES (?, ?, ?, ?, ?, ?)
+    """
+    
+    # Get subject from schedule
+    day_name = datetime.strptime(date, '%Y-%m-%d').strftime('%A')
+    subject_query = """
+    SELECT subject FROM control_4
+    WHERE day = ? AND start_time = ? AND end_time = ?
+    """
+    cursor.execute(subject_query, (day_name, start_time, end_time))
+    subject_result = cursor.fetchone()
+    subject = subject_result[0] if subject_result else "Unknown"
+    
+    cursor.execute(insert_query, (student_name, date, subject, start_time, end_time, 1 if attended else 0))
+    conn.commit()
     conn.close()
     
-    return result['count'].iloc[0] > 0
+    return attended
 
 def get_attendance_count_by_hour(student_name, date):
     """Get attendance count by hour for the given date"""
@@ -260,11 +309,14 @@ def create_timeline_chart(schedule_df, current_time_obj, student_name, date_str)
     for _, row in schedule_df.iterrows():
         subject = row['subject']
         subject_type = "Lecture" if row['type'] == 'lec' else "Section"
-        start_time = row['start_time']
-        end_time = row['end_time']
+        
+        # Ensure times are in AM/PM format
+        start_time = normalize_time_format(row['start_time'])
+        end_time = normalize_time_format(row['end_time'])
         
         # Convert AM/PM times to datetime for plotting
         try:
+            # Try to parse as AM/PM format first
             start_dt = datetime.strptime(f"2023-01-01 {start_time}", "%Y-%m-%d %I:%M %p")
             end_dt = datetime.strptime(f"2023-01-01 {end_time}", "%Y-%m-%d %I:%M %p")
             
@@ -272,13 +324,21 @@ def create_timeline_chart(schedule_df, current_time_obj, student_name, date_str)
             start_time_obj = datetime.strptime(start_time, '%I:%M %p').time()
             end_time_obj = datetime.strptime(end_time, '%I:%M %p').time()
         except ValueError:
-            # If already in 24-hour format
-            start_dt = datetime.strptime(f"2023-01-01 {start_time}", "%Y-%m-%d %H:%M")
-            end_dt = datetime.strptime(f"2023-01-01 {end_time}", "%Y-%m-%d %H:%M")
-            
-            # Also create time objects for comparison
-            start_time_obj = datetime.strptime(start_time, '%H:%M').time()
-            end_time_obj = datetime.strptime(end_time, '%H:%M').time()
+            # If format doesn't match, try alternate format
+            try:
+                # Get normalized AM/PM format strings
+                start_time = normalize_time_format(start_time)
+                end_time = normalize_time_format(end_time)
+                
+                start_dt = datetime.strptime(f"2023-01-01 {start_time}", "%Y-%m-%d %I:%M %p")
+                end_dt = datetime.strptime(f"2023-01-01 {end_time}", "%Y-%m-%d %I:%M %p")
+                
+                # Create time objects for comparison  
+                start_time_obj = datetime.strptime(start_time, '%I:%M %p').time()
+                end_time_obj = datetime.strptime(end_time, '%I:%M %p').time()
+            except ValueError:
+                # If still fails, skip this entry
+                continue
         
         # Check attendance
         attended = check_attendance(student_name, date_str, start_time, end_time)
@@ -458,7 +518,7 @@ def real_time_clock():
         
         // Convert to 12-hour format
         hours = hours % 12;
-        hours = hours ? hours : 12; // the hour '0' should be '12'
+        hours = hours ? 12; // the hour '0' should be '12'
         
         // Display the time
         document.getElementById('clock').textContent = 
@@ -854,12 +914,291 @@ def welcome_countdown_html(student_name, next_class=None, missed_count=0, attend
 # Update the show_student_report function to use these new components
 # In the section where you show welcome message:
 
+# Enhance attendance summary and add attendance history visualization
+
+# Add a new function to get weekly and monthly attendance data
+def get_extended_attendance_history(student_name, days=30):
+    """
+    Get extended attendance history for visualization using the class_attendance table
+    for more accurate and efficient reporting
+    """
+    conn = get_db_connection()
+    
+    # Calculate date range
+    end_date = datetime.now().date()
+    start_date = end_date - timedelta(days=days)
+    
+    # Format for SQLite
+    start_str = f"{start_date}"
+    end_str = f"{end_date}"
+    
+    # SQL query using class_attendance table for more accurate class attendance data
+    query = """
+    WITH daily_attendance AS (
+        -- Get attendance data by day
+        SELECT 
+            ca.class_date as date,
+            SUM(ca.attended) as attended_classes,
+            COUNT(*) as total_classes
+        FROM class_attendance ca
+        WHERE ca.student_name = ? 
+        AND ca.class_date BETWEEN ? AND ?
+        GROUP BY ca.class_date
+    ),
+    detection_counts AS (
+        -- Get detection counts by day (still useful for analytics)
+        SELECT 
+            date(timestamp) as date,
+            COUNT(DISTINCT strftime('%H', timestamp)) as hours_present,
+            COUNT(*) as detection_count
+        FROM attendance_log
+        WHERE name = ? AND date(timestamp) BETWEEN ? AND ?
+        GROUP BY date(timestamp)
+    )
+    -- Join the two datasets
+    SELECT 
+        da.date,
+        COALESCE(dc.hours_present, 0) as hours_present,
+        COALESCE(dc.detection_count, 0) as detection_count,
+        da.attended_classes,
+        da.total_classes
+    FROM daily_attendance da
+    LEFT JOIN detection_counts dc ON da.date = dc.date
+    ORDER BY da.date
+    """
+    
+    df = pd.read_sql_query(query, conn, params=(
+        student_name, start_str, end_str,
+        student_name, start_str, end_str
+    ))
+    
+    # Create full date range with zeros for missing dates
+    all_dates = pd.date_range(start=start_date, end=end_date, freq='D')
+    date_df = pd.DataFrame({'date': all_dates})
+    date_df['date'] = date_df['date'].dt.strftime('%Y-%m-%d')
+    date_df['day_name'] = pd.to_datetime(date_df['date']).dt.day_name()
+    
+    # For each day, find classes in the schedule
+    schedule_data = []
+    for day_name in date_df['day_name'].unique():
+        # Get classes for this day
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) as class_count
+            FROM control_4
+            WHERE day = ?
+        """, (day_name,))
+        result = cursor.fetchone()
+        class_count = result[0] if result else 0
+        
+        # Add to each day with this day_name
+        for idx, row in date_df[date_df['day_name'] == day_name].iterrows():
+            schedule_data.append({
+                'date': row['date'],
+                'scheduled_classes': class_count
+            })
+    
+    schedule_df = pd.DataFrame(schedule_data)
+    
+    # Merge all data
+    result = pd.merge(date_df, schedule_df, on='date', how='left')
+    result = pd.merge(result, df, on='date', how='left')
+    result = result.fillna(0)
+    
+    # Calculate additional metrics
+    result['attendance_rate'] = result.apply(
+        lambda row: (row['attended_classes'] / row['total_classes']) * 100 
+                    if row['total_classes'] > 0 else 0, 
+        axis=1
+    )
+    
+    # Add day of week
+    result['day_of_week'] = pd.to_datetime(result['date']).dt.dayofweek
+    
+    # Calculate week number (relative to start date)
+    result['week'] = ((pd.to_datetime(result['date']) - pd.to_datetime(start_date)).dt.days // 7) + 1
+    
+    conn.close()
+    
+    return result.astype({
+        'hours_present': 'int',
+        'detection_count': 'int', 
+        'total_classes': 'int',
+        'attended_classes': 'int',
+        'scheduled_classes': 'int',
+        'day_of_week': 'int'
+    })
+
+# Add function to create attendance history charts
+def create_attendance_history_dashboards(history_df):
+    """Create comprehensive attendance history visualizations"""
+    
+    # Weekly attendance rate chart
+    weekly_data = history_df.groupby('week').agg({
+        'attended_classes': 'sum',
+        'total_classes': 'sum'
+    }).reset_index()
+    
+    weekly_data['attendance_rate'] = weekly_data.apply(
+        lambda row: (row['attended_classes'] / row['total_classes'] * 100) if row['total_classes'] > 0 else 0,
+        axis=1
+    )
+    
+    fig1 = go.Figure()
+    
+    fig1.add_trace(go.Bar(
+        x=weekly_data['week'],
+        y=weekly_data['attendance_rate'],
+        marker=dict(
+            color=weekly_data['attendance_rate'],
+            colorscale='RdYlGn',
+            cmin=0,
+            cmax=100
+        ),
+        hovertemplate='Week %{x}<br>Attendance: %{y:.1f}%<extra></extra>'
+    ))
+    
+    fig1.update_layout(
+        title='Weekly Attendance Rate',
+        xaxis=dict(
+            title="Week",
+            tickmode='linear',
+            tick0=1,
+            dtick=1
+        ),
+        yaxis=dict(
+            title="Attendance Rate (%)",
+            range=[0, 100]
+        ),
+        height=300,
+        margin=dict(l=10, r=10, t=40, b=10)
+    )
+    
+    # Add reference line for 80% attendance
+    fig1.add_shape(
+        type="line",
+        x0=0,
+        y0=80,
+        x1=max(weekly_data['week']) + 0.5,
+        y1=80,
+        line=dict(
+            color="red",
+            width=2,
+            dash="dash",
+        )
+    )
+    fig1.add_annotation(
+        x=1,
+        y=82,
+        text="80% Target",
+        showarrow=False,
+        font=dict(color="red")
+    )
+    
+    # Daily attendance pattern
+    daily_pattern = history_df.groupby('day_of_week').agg({
+        'attended_classes': 'sum',
+        'total_classes': 'sum',
+        'day_name': 'first'
+    }).reset_index()
+    
+    daily_pattern['attendance_rate'] = daily_pattern.apply(
+        lambda row: (row['attended_classes'] / row['total_classes'] * 100) if row['total_classes'] > 0 else 0,
+        axis=1
+    )
+    
+    # Sort by day of week
+    daily_pattern = daily_pattern.sort_values('day_of_week')
+    
+    # Create day pattern chart
+    fig2 = go.Figure()
+    
+    fig2.add_trace(go.Scatter(
+        x=daily_pattern['day_name'],
+        y=daily_pattern['attendance_rate'],
+        mode='lines+markers',
+        marker=dict(
+            size=10,
+            color=daily_pattern['attendance_rate'],
+            colorscale='RdYlGn',
+            cmin=0,
+            cmax=100,
+            line=dict(width=2, color='white')
+        ),
+        line=dict(width=2, color='#1E88E5'),
+        hovertemplate='%{x}<br>Attendance: %{y:.1f}%<extra></extra>'
+    ))
+    
+    fig2.update_layout(
+        title='Attendance Pattern by Day of Week',
+        xaxis=dict(
+            title='',
+            categoryorder='array',
+            categoryarray=daily_pattern['day_name'].tolist()
+        ),
+        yaxis=dict(
+            title="Attendance Rate (%)",
+            range=[0, 100]
+        ),
+        height=300,
+        margin=dict(l=10, r=10, t=40, b=10)
+    )
+    
+    # Recent daily attendance
+    recent_df = history_df.tail(14).copy()  # Last 2 weeks
+    recent_df['formatted_date'] = pd.to_datetime(recent_df['date']).dt.strftime('%b %d')
+    
+    fig3 = go.Figure()
+    
+    fig3.add_trace(go.Scatter(
+        x=recent_df['formatted_date'],
+        y=recent_df['attended_classes'],
+        name='Attended',
+        mode='lines+markers',
+        marker=dict(size=8, color='#4CAF50', line=dict(width=1, color='white')),
+        line=dict(width=2, color='#4CAF50'),
+        fill='tozeroy',
+        fillcolor='rgba(76, 175, 80, 0.2)',
+        hovertemplate='%{x}<br>Attended: %{y}<extra></extra>'
+    ))
+    
+    fig3.add_trace(go.Scatter(
+        x=recent_df['formatted_date'],
+        y=recent_df['total_classes'],
+        name='Total Classes',
+        mode='lines+markers',
+        marker=dict(size=8, color='#FFA726', line=dict(width=1, color='white')),
+        line=dict(width=2, color='#FFA726', dash='dot'),
+        hovertemplate='%{x}<br>Total: %{y}<extra></extra>'
+    ))
+    
+    fig3.update_layout(
+        title='Daily Attendance (Last 2 Weeks)',
+        xaxis_title='',
+        yaxis_title='Classes',
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        height=300,
+        margin=dict(l=10, r=10, t=40, b=10)
+    )
+    
+    return fig1, fig2, fig3
+
 def show_student_report():
     """Display the advanced student attendance report page"""
     # Initialize session state for auto-refresh
     if 'last_refresh' not in st.session_state:
         st.session_state.last_refresh = datetime.now()
         st.session_state.is_refreshing = False
+    
+    # Initialize refresh_count if not exists
+    if 'refresh_count' not in st.session_state:
+        st.session_state.refresh_count = 0
     
     # Check login status from both session state and query params
     if 'username' not in st.session_state:
@@ -891,393 +1230,622 @@ def show_student_report():
     day_name = today.strftime('%A')
     current_time_obj = datetime.now().time()
     
-    # Create header with auto-refresh info and real-time clock
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        st.title("📚 My Attendance Dashboard")
-    with col2:
-        # Add real-time clock
+    # Add custom CSS to remove blank space and add minimal padding
+    st.markdown("""
+    <style>
+    /* Remove default streamlit padding */
+    .main .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        padding-left: 2rem;
+        padding-right: 2rem;
+        max-width: unset;
+    }
+    
+    /* Remove extra spacing between elements */
+    .stButton, .stMarkdown p, div.block-container {
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+    
+    /* Reduce space between elements */
+    h2, h3 {
+        margin-top: 0.75rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    /* Ensure cards in grid stay compact */
+    .class-grid {
+        grid-gap: 10px !important;
+    }
+    
+    /* Make refresh button smaller and aligned right */
+    .refresh-container {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: -15px;
+        margin-bottom: 10px;
+    }
+    
+    /* Make the button more compact */
+    .refresh-container button {
+        padding: 0.25rem 0.75rem !important;
+        min-height: auto !important;
+        font-size: 0.8rem !important;
+    }
+    /* Make refresh button match the logout button */
+    .refresh-button {
+        background-color: #f44336 !important;
+        color: white !important;
+        border: none !important;
+        font-weight: bold !important;
+        width: 100% !important;
+    }
+    .refresh-button:hover {
+        background-color: #d32f2f !important;
+        border: none !important;
+    }
+    /* Make buttons align better horizontally */
+    .button-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    /* Make both buttons match styling */
+    .stButton button {
+        background-color: #f44336;
+        color: white;
+        border: none;
+        font-weight: bold;
+        height: 40px;
+    }
+    .stButton button:hover {
+        background-color: #d32f2f;
+        border: none;
+    }
+    /* Right-aligned username styling */
+    .username-container {
+        text-align: right;
+        margin-bottom: 5px;
+        padding-bottom: 0;
+        margin-right: 75px;
+    }
+    .username-text {
+        font-weight: bold;
+        font-size: 1.1rem;
+        color: #1E88E5;
+        display: inline-block;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Top navigation bar with title and user info in a better layout
+    top_col1, top_col2 = st.columns([3, 2])
+    
+    with top_col1:
+        st.markdown("## 📚 My Attendance Dashboard", unsafe_allow_html=False)
+        # Display real-time clock below title
         real_time_clock()
+    
+    # User info and buttons in column 2
+    with top_col2:
+        # Username display with right alignment
+        st.markdown(f"""
+        <div class="username-container">
+            <div class="username-text">
+                👤 {username}
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # Auto-refresh mechanism (keep this for page reloads)
-        time_since_refresh = (datetime.now() - st.session_state.last_refresh).seconds
-        next_refresh = max(0, AUTO_REFRESH_INTERVAL - time_since_refresh)
+        # Two buttons side by side
+        button_col1, button_col2 = st.columns(2)
         
-        if time_since_refresh >= AUTO_REFRESH_INTERVAL:
-            st.session_state.last_refresh = datetime.now()
-            st.session_state.is_refreshing = True
-            st.rerun()
+        with button_col1:
+            # Refresh button with same style as logout
+            if st.button("🔄 Refresh", key="manual_refresh", use_container_width=True):
+                st.session_state.last_refresh = datetime.now()
+                st.session_state.is_refreshing = True
+                st.session_state.refresh_count += 1
+                st.rerun()
         
-        st.caption(f"Auto-refresh in: {next_refresh}s • Last full update: {st.session_state.last_refresh.strftime('%H:%M:%S')}")
-
+        with button_col2:
+            # Logout button
+            if st.button("🚪 Logout", use_container_width=True):
+                for key in list(st.session_state.keys()):
+                    del st.session_state[key]
+                st.query_params.clear()
+                st.rerun()
+    
     # Get schedule for today
     schedule_df = get_schedule_for_day(day_name)
     
-    # Create tabs
-    tab1, tab2 = st.tabs(["📋 Today's Schedule", "📊 Attendance Analytics"])
-    
-    with tab1:
-        if schedule_df.empty:
-            st.info(f"No classes scheduled for today ({day_name})")
-        else:
-            # Show welcome message with next class info
-            next_class = None
-            
-            # Parse times correctly handling AM/PM format
-            for _, row in schedule_df.iterrows():
-                try:
-                    # Try to parse as AM/PM format
-                    start_time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
-                except ValueError:
-                    try:
-                        # Try to parse as 24-hour format
-                        start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
-                    except ValueError:
-                        # Handle any other format issues
-                        st.error(f"Invalid time format: {row['start_time']}")
-                        continue
-                
-            # Initialize past_classes counter before using it
-            past_classes = 0
-            attended_past_classes = 0
-
-            for _, row in schedule_df.iterrows():
-                try:
-                    # Try to parse as AM/PM format
-                    start_time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
-                    end_time_obj = datetime.strptime(row['end_time'], '%I:%M %p').time()
-                except ValueError:
-                    try:
-                        # Try to parse as 24-hour format
-                        start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
-                        end_time_obj = datetime.strptime(row['end_time'], '%H:%M').time()
-                    except ValueError:
-                        # Handle any other format issues
-                        continue
-                
-                # Count past classes (classes that have already ended)
-                if current_time_obj >= end_time_obj:
-                    past_classes += 1
-                    if check_attendance(student_name, date_str, row['start_time'], row['end_time']):
-                        attended_past_classes += 1
-
-            # Now determine the welcome message based on attendance
-            next_class = None
-
-            # Find the next class if any
-            for _, row in schedule_df.iterrows():
-                try:
-                    # Try to parse as AM/PM format
-                    start_time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
-                except ValueError:
-                    try:
-                        # Try to parse as 24-hour format
-                        start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
-                    except ValueError:
-                        # Handle any other format issues
-                        continue
-                
-                if start_time_obj > current_time_obj:
-                    next_class = row
-                    break
-
-            # Display appropriate welcome message with dynamic countdown
-            if next_class is None:
-                # No more classes today
-                if past_classes > 0 and attended_past_classes == past_classes:
-                    # Student attended all classes today
-                    welcome_message = welcome_countdown_html(student_name, attended_all=True)
-                elif past_classes > 0:
-                    # Some classes were missed
-                    missed = past_classes - attended_past_classes
-                    welcome_message = welcome_countdown_html(student_name, missed_count=missed)
-                else:
-                    # No classes were scheduled for today
-                    welcome_message = welcome_countdown_html(student_name, no_classes=True)
-            else:
-                # There's an upcoming class - prepare it as a dictionary for the welcome_countdown_html function
-                next_class_dict = {
-                    'subject': next_class['subject'],
-                    'start_time': next_class['start_time']
-                }
-                
-                if past_classes > 0 and attended_past_classes < past_classes:
-                    # Student missed some earlier classes
-                    missed = past_classes - attended_past_classes
-                    welcome_message = welcome_countdown_html(student_name, next_class_dict, missed_count=missed)
-                else:
-                    # Student has attended all previous classes (or there were none)
-                    welcome_message = welcome_countdown_html(student_name, next_class_dict)
-
-            # Display the welcome message with HTML component to enable JavaScript
-            html(welcome_message, height=70)
-
-            # Create interactive timeline
-            st.subheader("📅 Today's Schedule")
-            timeline_fig = create_timeline_chart(schedule_df, current_time_obj, student_name, date_str)
-            if (timeline_fig):
-                st.plotly_chart(timeline_fig, use_container_width=True)
-            
-            # Create detailed cards for each subject
-            st.subheader("📚 Class Details")
-            
-            # Sort schedule by time, handling both 12-hour and 24-hour formats
+    # Main content - today's schedule
+    if schedule_df.empty:
+        st.info(f"No classes scheduled for today ({day_name})")
+    else:
+        # Show welcome message with next class info
+        next_class = None
+        
+        # Parse times correctly handling AM/PM format
+        for _, row in schedule_df.iterrows():
             try:
-                # First try to convert all times to datetime objects for sorting
-                time_objs = []
-                for idx, row in schedule_df.iterrows():
-                    try:
-                        # Try AM/PM format
-                        time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
-                    except ValueError:
-                        # Try 24-hour format
-                        time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
-                    
-                    time_objs.append((idx, time_obj))
-                
-                # Sort by the extracted time objects
-                sorted_indices = [idx for idx, _ in sorted(time_objs, key=lambda x: x[1])]
-                schedule_df = schedule_df.iloc[sorted_indices].reset_index(drop=True)
-            except Exception as e:
-                st.error(f"Error sorting schedule: {e}")
-            
-            # Use columns to create a responsive grid layout
-            total_subjects = len(schedule_df)
-            cols_per_row = 3 if total_subjects > 2 else 2
-            rows = math.ceil(total_subjects / cols_per_row)
-            
-            # CSS for consistent spacing between rows
-            st.markdown("""
-            <style>
-            .class-grid {
-                display: grid;
-                grid-template-columns: repeat(3, 1fr);
-                grid-gap: 15px;  /* Consistent spacing between cards */
-                margin-bottom: 15px;
-            }
-            .class-card {
-                height: 100%;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            # Start a grid container using HTML/CSS
-            st.markdown('<div class="class-grid">', unsafe_allow_html=True)
-            
-            # Create all class cards and add them to the grid
-            for subject_idx in range(total_subjects):
-                subject_row = schedule_df.iloc[subject_idx]
-                subject = subject_row['subject']
-                subject_type = subject_row['type']
-                start_time = subject_row['start_time']
-                end_time = subject_row['end_time']
-                
-                # Parse times correctly, handling both formats
+                # Try to parse as AM/PM format
+                start_time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
+            except ValueError:
                 try:
-                    # Try AM/PM format
-                    start_time_obj = datetime.strptime(start_time, '%I:%M %p').time()
-                    end_time_obj = datetime.strptime(end_time, '%I:%M %p').time()
+                    # Try to parse as 24-hour format
+                    start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
                 except ValueError:
-                    try:
-                        # Try 24-hour format
-                        start_time_obj = datetime.strptime(start_time, '%H:%M').time()
-                        end_time_obj = datetime.strptime(end_time, '%H:%M').time()
-                    except ValueError:
-                        # Handle any other format issues
-                        continue
+                    # Handle any other format issues
+                    st.error(f"Invalid time format: {row['start_time']}")
+                    continue
                 
-                is_current = current_time_obj >= start_time_obj and current_time_obj < end_time_obj
-                is_past = current_time_obj >= end_time_obj
-                is_upcoming = current_time_obj < start_time_obj
-                
-                # Status for display
-                if is_past:
-                    time_status = "Class ended"
-                    time_color = "#757575"  # Gray
-                elif is_current:
-                    time_status = "CLASS IN PROGRESS"
-                    time_color = "#FF9800"  # Orange
-                else:
-                    time_status = f"Starts in {get_time_until(start_time_obj)}"
-                    time_color = "#2196F3"  # Blue
-                
-                # Check if student attended
-                attended = check_attendance(student_name, date_str, start_time, end_time)
-                show_attendance = is_current or is_past
-                
-                # Create a unique ID for this card
-                card_id = f"card_{subject_idx}"
-                
-                # Generate the card HTML with embedded JavaScript
-                card_html = get_dynamic_time_card_html(
-                    subject, 
-                    subject_type, 
-                    start_time, 
-                    end_time, 
-                    is_current, 
-                    is_past, 
-                    attended, 
-                    show_attendance, 
-                    time_status, 
-                    time_color, 
-                    card_id
-                )
-                
-                # Add the card to the grid using html component for proper JS execution
-                card_height = 220 if is_current else 200 if is_past else 180
-                html(card_html, height=card_height)
+        # Initialize past_classes counter before using it
+        past_classes = 0
+        attended_past_classes = 0
 
-            # Close the grid container
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # Summary metrics
-            st.subheader("📊 Today's Attendance Summary")
-            attended_count = 0
-            total_classes = 0
-            
-            # Only count classes that have already started
-            for _, row in schedule_df.iterrows():
-                start_time = row['start_time']
-                
+        for _, row in schedule_df.iterrows():
+            try:
+                # Try to parse as AM/PM format
+                start_time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
+                end_time_obj = datetime.strptime(row['end_time'], '%I:%M %p').time()
+            except ValueError:
                 try:
-                    # Try AM/PM format
-                    start_time_obj = datetime.strptime(start_time, '%I:%M %p').time()
+                    # Try to parse as 24-hour format
+                    start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
+                    end_time_obj = datetime.strptime(row['end_time'], '%H:%M').time()
                 except ValueError:
-                    try:
-                        # Try 24-hour format
-                        start_time_obj = datetime.strptime(start_time, '%H:%M').time()
-                    except ValueError:
-                        # Skip if time format is invalid
-                        continue
-                
-                if current_time_obj >= start_time_obj:
-                    total_classes += 1
-                    if check_attendance(student_name, date_str, row['start_time'], row['end_time']):
-                        attended_count += 1
+                    # Handle any other format issues
+                    continue
             
-            attendance_rate = 0 if total_classes == 0 else (attended_count / total_classes) * 100
+            # Count past classes (classes that have already ended)
+            if current_time_obj >= end_time_obj:
+                past_classes += 1
+                if check_attendance(student_name, date_str, row['start_time'], row['end_time']):
+                    attended_past_classes += 1
+
+        # Now determine the welcome message based on attendance
+        next_class = None
+
+        # Find the next class if any
+        for _, row in schedule_df.iterrows():
+            try:
+                # Try to parse as AM/PM format
+                start_time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
+            except ValueError:
+                try:
+                    # Try to parse as 24-hour format
+                        start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
+                except ValueError:
+                    # Handle any other format issues
+                    continue
             
-            # Metrics with color-coded delta indicators
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Classes Today", len(schedule_df))
-            with col2:
-                st.metric("Classes So Far", total_classes)
-            with col3:
-                st.metric("Attended", attended_count, delta=f"{attendance_rate:.1f}%" if total_classes > 0 else None)
-            with col4:
-                # Get today's detections
-                today_df = get_student_attendance(student_name, date_str)
-                detection_count = len(today_df)
-                st.metric("Camera Detections", detection_count)
-    
-    with tab2:
-        # Analytics section with charts and insights
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📊 Today's Attendance By Hour")
-            # Get hourly attendance data
-            hourly_df = get_attendance_count_by_hour(student_name, date_str)
-            hourly_fig = create_hourly_attendance_chart(hourly_df)
-            st.plotly_chart(hourly_fig, use_container_width=True)
-        
-        with col2:
-            st.subheader("📈 Weekly Attendance History")
-            # Get attendance history
-            history_df = get_attendance_history(student_name, days=7)
-            history_fig = create_attendance_history_chart(history_df)
-            st.plotly_chart(history_fig, use_container_width=True)
-        
-        # Add a weekly summary section
-        st.subheader("📅 Weekly Attendance Analysis")
-        history_expanded = get_attendance_history(student_name, days=14)  # Get 2 weeks
-        
-        # Calculate some statistics
-        total_detections = history_expanded['detection_count'].sum()
-        avg_detections = history_expanded['detection_count'].mean()
-        total_days_present = history_expanded[history_expanded['detection_count'] > 0].shape[0]
-        streak = 0
-        
-        # Find current streak
-        sorted_df = history_expanded.sort_values('date', ascending=False)
-        for _, row in sorted_df.iterrows():
-            if (row['detection_count'] > 0):
-                streak += 1
-            else:
+            if start_time_obj > current_time_obj:
+                next_class = row
                 break
-        
-        # Create metrics for the weekly summary
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Total Detections", int(total_detections))
-        with col2:
-            st.metric("Avg. Daily Detections", f"{avg_detections:.1f}")
-        with col3:
-            st.metric("Days Present", f"{total_days_present}/{len(history_expanded)}")
-        with col4:
-            st.metric("Current Streak", f"{streak} days")
-        
-        # Show detailed detection records
-        st.subheader("📷 Recent Camera Detection Records")
-        attendance_df = get_student_attendance(student_name, date_str)
-        
-        if attendance_df.empty:
-            st.warning("No camera detections for today. Make sure to face the camera clearly.")
+
+        # Display appropriate welcome message with dynamic countdown
+        if next_class is None:
+            # No more classes today
+            if past_classes > 0 and attended_past_classes == past_classes:
+                # Student attended all classes today
+                welcome_message = welcome_countdown_html(student_name, attended_all=True)
+            elif past_classes > 0:
+                # Some classes were missed
+                missed = past_classes - attended_past_classes
+                welcome_message = welcome_countdown_html(student_name, missed_count=missed)
+            else:
+                # No classes were scheduled for today
+                welcome_message = welcome_countdown_html(student_name, no_classes=True)
         else:
-            # Format and display the data
-            attendance_df = attendance_df.sort_values('timestamp', ascending=False)
-            
-            # Create a display dataframe
-            display_df = pd.DataFrame()
-            display_df['Time'] = attendance_df['time']
-            
-            # Add confidence column if it exists
-            if 'confidence' in attendance_df.columns:
-                display_df['Confidence'] = attendance_df['confidence']
-            
-            # Add device_id column if it exists
-            if 'device_id' in attendance_df.columns:
-                display_df['Location'] = attendance_df['device_id']
-            
-            # Configure column display
-            column_config = {
-                "Time": st.column_config.Column(
-                    "Detection Time",
-                    width="medium"
-                )
+            # There's an upcoming class - prepare it as a dictionary for the welcome_countdown_html function
+            next_class_dict = {
+                'subject': next_class['subject'],
+                'start_time': next_class['start_time']
             }
             
-            if 'Confidence' in display_df.columns:
-                display_df['Confidence'] = display_df['Confidence'].fillna(0).astype(float)
-                column_config["Confidence"] = st.column_config.ProgressColumn(
-                    "Confidence",
-                    format="%.2f",
-                    min_value=0,
-                    max_value=1
-                )
+            if past_classes > 0 and attended_past_classes < past_classes:
+                # Student missed some earlier classes
+                missed = past_classes - attended_past_classes
+                welcome_message = welcome_countdown_html(student_name, next_class_dict, missed_count=missed)
+            else:
+                # Student has attended all previous classes (or there were none)
+                welcome_message = welcome_countdown_html(student_name, next_class_dict)
+
+        # Display the welcome message with HTML component to enable JavaScript
+        html(welcome_message, height=70)
+
+        # Create interactive timeline
+        st.subheader("📅 Today's Schedule")
+        timeline_fig = create_timeline_chart(schedule_df, current_time_obj, student_name, date_str)
+        if (timeline_fig):
+            st.plotly_chart(timeline_fig, use_container_width=True)
+        
+        # Create detailed cards for each subject
+        st.subheader("📚 Class Details")
+        
+        # Sort schedule by time, handling both 12-hour and 24-hour formats
+        try:
+            # First try to convert all times to datetime objects for sorting
+            time_objs = []
+            for idx, row in schedule_df.iterrows():
+                try:
+                    # Try AM/PM format
+                    time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
+                except ValueError:
+                    # Try 24-hour format
+                    time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
+                
+                time_objs.append((idx, time_obj))
             
-            if 'Location' in display_df.columns:
-                column_config["Location"] = st.column_config.Column(
-                    "Camera Location",
-                    width="medium"
-                )
+            # Sort by the extracted time objects
+            sorted_indices = [idx for idx, _ in sorted(time_objs, key=lambda x: x[1])]
+            schedule_df = schedule_df.iloc[sorted_indices].reset_index(drop=True)
+        except Exception as e:
+            st.error(f"Error sorting schedule: {e}")
+        
+        # Use columns to create a responsive grid layout
+        total_subjects = len(schedule_df)
+        cols_per_row = 3 if total_subjects > 2 else 2
+        rows = math.ceil(total_subjects / cols_per_row)
+        
+        # CSS for consistent spacing between rows
+        st.markdown("""
+        <style>
+        .class-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-gap: 15px;  /* Consistent spacing between cards */
+            margin-bottom: 15px;
+        }
+        .class-card {
+            height: 100%;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Start a grid container using HTML/CSS
+        st.markdown('<div class="class-grid">', unsafe_allow_html=True)
+        
+        # Create all class cards and add them to the grid
+        for subject_idx in range(total_subjects):
+            subject_row = schedule_df.iloc[subject_idx]
+            subject = subject_row['subject']
+            subject_type = subject_row['type']
+            start_time = subject_row['start_time']
+            end_time = subject_row['end_time']
             
-            # Show in a nice table
-            st.dataframe(
-                display_df,
-                column_config=column_config,
-                hide_index=True,
-                use_container_width=True
+            # Parse times correctly, handling both formats
+            try:
+                # Try AM/PM format
+                start_time_obj = datetime.strptime(start_time, '%I:%M %p').time()
+                end_time_obj = datetime.strptime(end_time, '%I:%M %p').time()
+            except ValueError:
+                try:
+                    # Try 24-hour format
+                    start_time_obj = datetime.strptime(start_time, '%H:%M').time()
+                    end_time_obj = datetime.strptime(end_time, '%H:%M').time()
+                except ValueError:
+                    # Handle any other format issues
+                    continue
+            
+            is_current = current_time_obj >= start_time_obj and current_time_obj < end_time_obj
+            is_past = current_time_obj >= end_time_obj
+            is_upcoming = current_time_obj < start_time_obj
+            
+            # Status for display
+            if is_past:
+                time_status = "Class ended"
+                time_color = "#757575"  # Gray
+            elif is_current:
+                time_status = "CLASS IN PROGRESS"
+                time_color = "#FF9800"  # Orange
+            else:
+                time_status = f"Starts in {get_time_until(start_time_obj)}"
+                time_color = "#2196F3"  # Blue
+            
+            # Check if student attended
+            attended = check_attendance(student_name, date_str, start_time, end_time)
+            show_attendance = is_current or is_past
+            
+            # Create a unique ID for this card
+            card_id = f"card_{subject_idx}"
+            
+            # Generate the card HTML with embedded JavaScript
+            card_html = get_dynamic_time_card_html(
+                subject, 
+                subject_type, 
+                start_time, 
+                end_time, 
+                is_current, 
+                is_past, 
+                attended, 
+                show_attendance, 
+                time_status, 
+                time_color, 
+                card_id
             )
             
-            # Add current time refresh indicator
-            current_time = datetime.now().strftime('%I:%M:%S %p')
-            st.caption(f"Last updated: {current_time} • {len(attendance_df)} records found today")
+            # Add the card to the grid using html component for proper JS execution
+            card_height = 220 if is_current else 200 if is_past else 180
+            html(card_html, height=card_height)
+
+        # Close the grid container
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Summary metrics - removing the camera detection metric
+        st.subheader("📊 Today's Attendance Summary")
+        attended_count = 0
+        total_classes = 0
+        
+        # Only count classes that have already started
+        for _, row in schedule_df.iterrows():
+            start_time = row['start_time']
+            
+            try:
+                # Try AM/PM format
+                start_time_obj = datetime.strptime(start_time, '%I:%M %p').time()
+            except ValueError:
+                try:
+                    # Try 24-hour format
+                    start_time_obj = datetime.strptime(start_time, '%H:%M').time()
+                except ValueError:
+                    # Skip if time format is invalid
+                    continue
+            
+            if current_time_obj >= start_time_obj:
+                total_classes += 1
+                if check_attendance(student_name, date_str, row['start_time'], row['end_time']):
+                    attended_count += 1
+        
+        attendance_rate = 0 if total_classes == 0 else (attended_count / total_classes) * 100
+        
+        # Create a more visually appealing metrics section with progress bars
+        metric_col1, metric_col2 = st.columns(2)
+        
+        with metric_col1:
+            st.markdown("### Classes Overview")
+            
+            # Display classes metrics
+            class_cols = st.columns(3)
+            with class_cols[0]:
+                st.metric("Total Classes", len(schedule_df))
+            with class_cols[1]:
+                st.metric("Started So Far", total_classes)
+            with class_cols[2]:
+                st.metric("Attended", attended_count, delta=f"{attendance_rate:.1f}%" if total_classes > 0 else None)
+            
+            # Create a progress bar showing attendance progress
+            remaining_classes = len(schedule_df) - total_classes
+            
+            st.markdown("#### Today's Progress")
+            progress_html = f"""
+            <div style="display: flex; align-items: center; gap: 10px; margin: 10px 0;">
+                <div style="flex-grow: 1; height: 20px; background-color: #eee; border-radius: 10px; overflow: hidden;">
+                    <div style="width: {attended_count/len(schedule_df)*100}%; height: 100%; background-color: #4CAF50;"></div>
+                </div>
+                <div style="width: 80px; text-align: right;">
+                    <span style="font-weight: bold;">{attended_count}/{len(schedule_df)}</span>
+                </div>
+            </div>
+            """
+            st.markdown(progress_html, unsafe_allow_html=True)
+            
+            # Add progress status
+            if total_classes == 0:
+                st.info("No classes have started yet today.")
+            elif attended_count == total_classes:
+                st.success("✅ You've attended all classes so far today!")
+            elif attended_count == 0:
+                st.error("⚠️ You haven't attended any classes today.")
+            else:
+                st.warning(f"You've attended {attended_count} out of {total_classes} classes so far today.")
+            
+            # Show upcoming classes reminder if any
+            if remaining_classes > 0:
+                st.info(f"📆 You have {remaining_classes} more {'class' if remaining_classes == 1 else 'classes'} today.")
+        
+        with metric_col2:
+            # Add attendance rate gauge chart
+            st.markdown("### Today's Attendance Rate")
+            
+            # Create gauge chart for attendance rate
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number",
+                value=attendance_rate,
+                title={'text': "Attendance Rate"},
+                domain={'x': [0, 1], 'y': [0, 1]},
+                gauge={
+                    'axis': {'range': [0, 100], 'tickwidth': 1},
+                    'bar': {'color': "#1E88E5"},
+                    'steps': [
+                        {'range': [0, 60], 'color': "#EF5350"},
+                        {'range': [60, 80], 'color': "#FFCA28"},
+                        {'range': [80, 100], 'color': "#66BB6A"}
+                    ],
+                    'threshold': {
+                        'line': {'color': "black", 'width': 4},
+                        'thickness': 0.75,
+                        'value': 80
+                    }
+                }
+            ))
+            
+            fig.update_layout(
+                height=250,
+                margin=dict(l=20, r=20, t=50, b=20),
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
     
-    # Clear the refreshing flag
-    if st.session_state.is_refreshing:
-        st.session_state.is_refreshing = False
+        # Add Attendance History Section
+        st.header("📈 Attendance History & Analytics")
+        
+        # Get extended attendance history data
+        history_df = get_extended_attendance_history(student_name, days=30)
+        
+        # Create visualizations
+        weekly_chart, day_pattern_chart, recent_chart = create_attendance_history_dashboards(history_df)
+        
+        # Display analytics in tabs
+        tab1, tab2, tab3 = st.tabs(["Recent Trends", "Weekly Stats", "Day Patterns"])
+        
+        with tab1:
+            st.plotly_chart(recent_chart, use_container_width=True)
+            
+            # Calculate overall attendance stats
+            total_attended = history_df['attended_classes'].sum()
+            total_scheduled = history_df['total_classes'].sum()
+            overall_rate = (total_attended / total_scheduled * 100) if total_scheduled > 0 else 0
+            
+            st.markdown(f"**Overall Attendance:** {overall_rate:.1f}% ({total_attended} out of {total_scheduled} classes)")
+            
+            # Recent streak calculation - consecutive days with perfect attendance
+            # Identify dates with classes
+            dates_with_classes = history_df[history_df['total_classes'] > 0].copy()
+            if not dates_with_classes.empty:
+                dates_with_classes['perfect_day'] = dates_with_classes['attended_classes'] == dates_with_classes['total_classes']
+                
+                # Calculate current streak
+                current_streak = 0
+                for perfect in reversed(dates_with_classes['perfect_day'].tolist()):
+                    if perfect:
+                        current_streak += 1
+                    else:
+                        break
+                
+                if current_streak > 0:
+                    st.success(f"🔥 Current streak: {current_streak} {'day' if current_streak == 1 else 'days'} of perfect attendance!")
+        
+        with tab2:
+            st.plotly_chart(weekly_chart, use_container_width=True)
+            
+            # Add weekly stats summary
+            weekly_stats = history_df.groupby('week').agg({
+                'attended_classes': 'sum',
+                'total_classes': 'sum',
+                'attendance_rate': 'mean'
+            }).reset_index()
+            
+            best_week = weekly_stats.loc[weekly_stats['attendance_rate'].idxmax()]
+            worst_week = weekly_stats.loc[weekly_stats['attendance_rate'].idxmin()]
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.metric("Best Week", f"Week {int(best_week['week'])}", f"{best_week['attendance_rate']:.1f}%")
+            with col2:
+                st.metric("Worst Week", f"Week {int(worst_week['week'])}", f"{worst_week['attendance_rate']:.1f}%")
+        
+        with tab3:
+            st.plotly_chart(day_pattern_chart, use_container_width=True)
+            
+            # Find best and worst days
+            day_stats = history_df.groupby(['day_of_week', 'day_name']).agg({
+                'attended_classes': 'sum',
+                'total_classes': 'sum'
+            }).reset_index()
+            
+            day_stats['attendance_rate'] = day_stats.apply(
+                lambda row: (row['attended_classes'] / row['total_classes'] * 100) if row['total_classes'] > 0 else 0, 
+                axis=1
+            )
+            
+            day_stats = day_stats[day_stats['total_classes'] > 0]
+            
+            if not day_stats.empty:
+                best_day = day_stats.loc[day_stats['attendance_rate'].idxmax()]
+                worst_day = day_stats.loc[day_stats['attendance_rate'].idxmin()]
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Best Day", best_day['day_name'], f"{best_day['attendance_rate']:.1f}%")
+                with col2:
+                    st.metric("Worst Day", worst_day['day_name'], f"{worst_day['attendance_rate']:.1f}%")
+                
+                # Attendance tip based on pattern
+                if worst_day['attendance_rate'] < 70:
+                    st.warning(f"⚠️ Your attendance on {worst_day['day_name']} needs improvement. Consider setting an earlier alarm or adjusting your schedule.")
 
 if __name__ == "__main__":
     show_student_report()
+
+# Create a script to run both table modifications
+def create_attendance_tables():
+    """
+    Run both schema modifications to enhance the database structure
+    """
+    import sqlite3
+    
+    # Create the class_attendance table
+    conn = sqlite3.connect('attendance_system.db')
+    cursor = conn.cursor()
+    
+    # Add day_of_week column to attendance_log if it doesn't exist
+    cursor.execute("PRAGMA table_info(attendance_log)")
+    columns = [info[1] for info in cursor.fetchall()]
+    
+    if 'day_of_week' not in columns:
+        cursor.execute("ALTER TABLE attendance_log ADD COLUMN day_of_week TEXT")
+        cursor.execute("UPDATE attendance_log SET day_of_week = strftime('%A', timestamp)")
+        print("Added day_of_week column to attendance_log")
+    
+    # Create class_attendance table
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS class_attendance (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        student_name TEXT NOT NULL,
+        class_date DATE NOT NULL,
+        subject TEXT NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        attended BOOLEAN NOT NULL DEFAULT 0,
+        UNIQUE(student_name, class_date, subject, start_time)
+    )
+    """)
+    
+    # Populate class_attendance from existing data
+    cursor.execute("""
+    -- First get all scheduled classes for each day
+    WITH scheduled_classes AS (
+        SELECT 
+            s.subject,
+            s.start_time,
+            s.end_time,
+            s.day,
+            date(a.timestamp) as class_date,
+            a.name as student_name
+        FROM 
+            control_4 s,
+            (SELECT DISTINCT name, date(timestamp) as timestamp FROM attendance_log) a
+        WHERE 
+            strftime('%A', a.timestamp) = s.day
+    )
+    
+    -- Now insert records for each scheduled class, marking as attended if there's a matching log
+    INSERT OR IGNORE INTO class_attendance 
+        (student_name, class_date, subject, start_time, end_time, attended)
+    SELECT 
+        c.student_name,
+        c.class_date,
+        c.subject,
+        c.start_time,
+        c.end_time,
+        EXISTS (
+            SELECT 1 FROM attendance_log a 
+            WHERE a.name = c.student_name 
+            AND date(a.timestamp) = c.class_date
+            AND time(a.timestamp) BETWEEN time(c.start_time) AND time(c.end_time)
+        ) as attended
+    FROM scheduled_classes c
+    """)
+    
+    conn.commit()
+    conn.close()
+    print("Database schema updated with attendance tracking enhancements")
+
+# Call the function once to ensure tables are created
+if __name__ == "__main__":
+    create_attendance_tables()
