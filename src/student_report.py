@@ -36,6 +36,91 @@ st.markdown("""
 .class-card:hover {
     transform: translateY(-3px);
 }
+/* Set main container padding to 90px */
+.main .block-container {
+    padding-top: 90px;
+    padding-bottom: 90px;
+    padding-left: 90px;
+    padding-right: 90px;
+    max-width: unset;
+}
+
+/* Remove extra spacing between elements */
+.stButton, .stMarkdown p, div.block-container {
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+}
+
+/* Reduce space between elements */
+h2, h3 {
+    margin-top: 0.75rem !important;
+    margin-bottom: 0.5rem !important;
+}
+
+/* Ensure cards in grid stay compact */
+.class-grid {
+    grid-gap: 10px !important;
+}
+
+/* Make refresh button smaller and aligned right */
+.refresh-container {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: -15px;
+    margin-bottom: 10px;
+}
+
+/* Make the button more compact */
+.refresh-container button {
+    padding: 0.25rem 0.75rem !important;
+    min-height: auto !important;
+    font-size: 0.8rem !important;
+}
+/* Make refresh button match the logout button */
+.refresh-button {
+    background-color: #f44336 !important;
+    color: white !important;
+    border: none !important;
+    font-weight: bold !important;
+    width: 100% !important;
+}
+.refresh-button:hover {
+    background-color: #d32f2f !important;
+    border: none !important;
+}
+/* Make buttons align better horizontally */
+.button-row {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    margin-bottom: 10px;
+}
+
+/* Make both buttons match styling */
+.stButton button {
+    background-color: #f44336;
+    color: white;
+    border: none;
+    font-weight: bold;
+    height: 40px;
+}
+.stButton button:hover {
+    background-color: #d32f2f;
+    border: none;
+}
+/* Right-aligned username styling */
+.username-container {
+    text-align: right;
+    margin-bottom: 5px;
+    padding-bottom: 0;
+    margin-right: 75px;
+}
+.username-text {
+    font-weight: bold;
+    font-size: 1.1rem;
+    color: #1E88E5;
+    display: inline-block;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -920,7 +1005,7 @@ def welcome_countdown_html(student_name, next_class=None, missed_count=0, attend
 def get_extended_attendance_history(student_name, days=30):
     """
     Get extended attendance history for visualization using the class_attendance table
-    for more accurate and efficient reporting
+    for more accurate and efficient reporting including subject-specific data
     """
     conn = get_db_connection()
     
@@ -933,17 +1018,28 @@ def get_extended_attendance_history(student_name, days=30):
     end_str = f"{end_date}"
     
     # SQL query using class_attendance table for more accurate class attendance data
+    # This version includes subject information
     query = """
     WITH daily_attendance AS (
-        -- Get attendance data by day
+        -- Get attendance data by day and subject
         SELECT 
             ca.class_date as date,
+            ca.subject,
             SUM(ca.attended) as attended_classes,
             COUNT(*) as total_classes
         FROM class_attendance ca
         WHERE ca.student_name = ? 
         AND ca.class_date BETWEEN ? AND ?
-        GROUP BY ca.class_date
+        GROUP BY ca.class_date, ca.subject
+    ),
+    daily_totals AS (
+        -- Get total attendance data per day (without subject)
+        SELECT 
+            date,
+            SUM(attended_classes) as attended_classes,
+            SUM(total_classes) as total_classes
+        FROM daily_attendance
+        GROUP BY date
     ),
     detection_counts AS (
         -- Get detection counts by day (still useful for analytics)
@@ -955,13 +1051,14 @@ def get_extended_attendance_history(student_name, days=30):
         WHERE name = ? AND date(timestamp) BETWEEN ? AND ?
         GROUP BY date(timestamp)
     )
-    -- Join the two datasets
+    -- Join the datasets
     SELECT 
         da.date,
-        COALESCE(dc.hours_present, 0) as hours_present,
-        COALESCE(dc.detection_count, 0) as detection_count,
+        da.subject,
         da.attended_classes,
-        da.total_classes
+        da.total_classes,
+        COALESCE(dc.hours_present, 0) as hours_present,
+        COALESCE(dc.detection_count, 0) as detection_count
     FROM daily_attendance da
     LEFT JOIN detection_counts dc ON da.date = dc.date
     ORDER BY da.date
@@ -972,62 +1069,57 @@ def get_extended_attendance_history(student_name, days=30):
         student_name, start_str, end_str
     ))
     
-    # Create full date range with zeros for missing dates
+    if df.empty:
+        # If no data, create an empty DataFrame with required columns
+        df = pd.DataFrame(columns=['date', 'subject', 'attended_classes', 'total_classes', 
+                                  'hours_present', 'detection_count'])
+    
+    # Create full date range
     all_dates = pd.date_range(start=start_date, end=end_date, freq='D')
     date_df = pd.DataFrame({'date': all_dates})
     date_df['date'] = date_df['date'].dt.strftime('%Y-%m-%d')
     date_df['day_name'] = pd.to_datetime(date_df['date']).dt.day_name()
+    date_df['day_of_week'] = pd.to_datetime(date_df['date']).dt.dayofweek
     
-    # For each day, find classes in the schedule
-    schedule_data = []
-    for day_name in date_df['day_name'].unique():
-        # Get classes for this day
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT COUNT(*) as class_count
-            FROM control_4
-            WHERE day = ?
-        """, (day_name,))
-        result = cursor.fetchone()
-        class_count = result[0] if result else 0
-        
-        # Add to each day with this day_name
-        for idx, row in date_df[date_df['day_name'] == day_name].iterrows():
-            schedule_data.append({
-                'date': row['date'],
-                'scheduled_classes': class_count
-            })
+    # Add week number (relative to start date)
+    date_df['week'] = ((pd.to_datetime(date_df['date']) - pd.to_datetime(start_date)).dt.days // 7) + 1
     
-    schedule_df = pd.DataFrame(schedule_data)
+    # Get all subjects from the database
+    subjects_query = """
+    SELECT DISTINCT subject FROM control_4
+    """
+    subjects_df = pd.read_sql_query(subjects_query, conn)
+    subjects = subjects_df['subject'].tolist()
     
-    # Merge all data
-    result = pd.merge(date_df, schedule_df, on='date', how='left')
-    result = pd.merge(result, df, on='date', how='left')
-    result = result.fillna(0)
+    # Handle the case where there might not be any attendance records yet
+    if df.empty:
+        conn.close()
+        date_df['hours_present'] = 0
+        date_df['detection_count'] = 0
+        date_df['attended_classes'] = 0
+        date_df['total_classes'] = 0
+        date_df['attendance_rate'] = 0
+        return date_df
     
-    # Calculate additional metrics
+    # Merge subject-specific data with dates
+    result = pd.merge(df, date_df[['date', 'day_name', 'day_of_week', 'week']], on='date', how='left')
+    
+    # Calculate attendance rate for each subject
     result['attendance_rate'] = result.apply(
-        lambda row: (row['attended_classes'] / row['total_classes']) * 100 
+        lambda row: (row['attended_classes'] / row['total_classes'] * 100) 
                     if row['total_classes'] > 0 else 0, 
         axis=1
     )
     
-    # Add day of week
-    result['day_of_week'] = pd.to_datetime(result['date']).dt.dayofweek
-    
-    # Calculate week number (relative to start date)
-    result['week'] = ((pd.to_datetime(result['date']) - pd.to_datetime(start_date)).dt.days // 7) + 1
-    
     conn.close()
     
-    return result.astype({
-        'hours_present': 'int',
-        'detection_count': 'int', 
-        'total_classes': 'int',
-        'attended_classes': 'int',
-        'scheduled_classes': 'int',
-        'day_of_week': 'int'
-    })
+    # Convert numeric columns to integers
+    int_columns = ['hours_present', 'detection_count', 'total_classes', 'attended_classes', 'day_of_week']
+    for col in int_columns:
+        if col in result.columns:
+            result[col] = result[col].fillna(0).astype(int)
+    
+    return result
 
 # Add function to create attendance history charts
 def create_attendance_history_dashboards(history_df):
@@ -1188,6 +1280,263 @@ def create_attendance_history_dashboards(history_df):
     )
     
     return fig1, fig2, fig3
+
+# Add a new function to create subject pattern charts
+def create_subject_pattern_chart(history_df):
+    """Create visualization showing attendance patterns by subject over time"""
+    
+    # If dataframe is empty or doesn't have subject column, return empty chart
+    if history_df.empty or 'subject' not in history_df.columns:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No subject data available",
+            xaxis=dict(title="Date"),
+            yaxis=dict(title="Attendance Rate (%)"),
+            height=400
+        )
+        return fig
+    
+    # Get unique subjects
+    subjects = history_df['subject'].unique()
+    
+    # Create line chart for subject trends
+    fig = go.Figure()
+    
+    # Use a distinct color for each subject
+    colors = px.colors.qualitative.Set1
+    
+    # For each subject, create a line showing attendance rate over time
+    for i, subject in enumerate(subjects):
+        # Filter data for this subject
+        subj_data = history_df[history_df['subject'] == subject].copy()
+        
+        # Sort by date
+        subj_data = subj_data.sort_values('date')
+        
+        # Add line for each subject
+        fig.add_trace(go.Scatter(
+            x=subj_data['date'],
+            y=subj_data['attendance_rate'],
+            mode='lines+markers',
+            name=subject,
+            line=dict(width=2, color=colors[i % len(colors)]),
+            marker=dict(size=8),
+            hovertemplate=
+            '%{x}<br>' +
+            '%{y:.1f}% attended<br>' +
+            f'Subject: {subject}<extra></extra>'
+        ))
+    
+    # Add reference line for target attendance (e.g., 80%)
+    if not history_df.empty:
+        fig.add_shape(
+            type="line",
+            x0=history_df['date'].min(),
+            x1=history_df['date'].max(),
+            y0=80,
+            y1=80,
+            line=dict(
+                color="red",
+                width=2,
+                dash="dash",
+            )
+        )
+    
+    # Update layout
+    fig.update_layout(
+        title="Subject Attendance Trends Over Time",
+        xaxis_title="Date",
+        yaxis=dict(
+            title="Attendance Rate (%)",
+            range=[0, 105],
+        ),
+        legend_title="Subject",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        height=400,
+        margin=dict(l=10, r=10, t=40, b=10)
+    )
+    
+    return fig
+
+def create_subject_heatmap(history_df):
+    """Create a heatmap showing attendance by subject and day of week"""
+    
+    # If dataframe is empty or doesn't have subject column, return empty chart
+    if history_df.empty or 'subject' not in history_df.columns:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No subject data available",
+            xaxis=dict(title="Day of Week"),
+            yaxis=dict(title="Subject"),
+            height=400
+        )
+        return fig
+    
+    # Prepare data by subject and day of week
+    subject_day = history_df.groupby(['subject', 'day_name']).agg({
+        'attended_classes': 'sum',
+        'total_classes': 'sum',
+        'day_of_week': 'first'  # Keep day number for sorting
+    }).reset_index()
+    
+    # Calculate attendance rate
+    subject_day['attendance_rate'] = subject_day.apply(
+        lambda row: (row['attended_classes'] / row['total_classes'] * 100) if row['total_classes'] > 0 else 0,
+        axis=1
+    )
+    
+    # Create proper index order
+    days_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    
+    # Filter for days with classes
+    available_days = [d for d in days_order if d in subject_day['day_name'].unique()]
+    
+    if not available_days or subject_day.empty:
+        # Return empty chart if no data
+        fig = go.Figure()
+        fig.update_layout(
+            title="No subject attendance data by day available",
+            xaxis=dict(title="Day of Week"),
+            yaxis=dict(title="Subject"),
+            height=400
+        )
+        return fig
+    
+    # Create pivot table
+    pivot_data = subject_day.pivot(
+        index='subject', 
+        columns='day_name', 
+        values='attendance_rate'
+    ).reindex(columns=available_days)
+    
+    # Create heatmap
+    fig = px.imshow(
+        pivot_data,
+        text_auto=".1f",
+        labels=dict(x="Day of Week", y="Subject", color="Attendance %"),
+        x=pivot_data.columns,
+        y=pivot_data.index,
+        color_continuous_scale="RdYlGn",
+        range_color=[0, 100],
+        aspect="auto"
+    )
+    
+    # Update layout
+    fig.update_layout(
+        title="Subject Attendance by Day of Week",
+        xaxis_title="",
+        yaxis_title="",
+        height=300 + (len(pivot_data) * 25),  # Dynamic height based on subject count
+        margin=dict(l=10, r=10, t=40, b=10),
+        coloraxis_colorbar=dict(
+            title="Attendance %",
+            ticksuffix="%"
+        ),
+    )
+    
+    return fig
+
+# Add a new function to create a better subject bar chart with percentages
+def create_subject_bar_chart(history_df):
+    """Create a bar chart showing attendance rates by subject with percentages"""
+    
+    # If dataframe is empty or doesn't have subject column, return empty chart
+    if history_df.empty or 'subject' not in history_df.columns:
+        fig = go.Figure()
+        fig.update_layout(
+            title="No subject data available",
+            xaxis=dict(title="Subject"),
+            yaxis=dict(title="Attendance Rate (%)"),
+            height=400
+        )
+        return fig
+    
+    # Group data by subject
+    subject_stats = history_df.groupby('subject').agg({
+        'attended_classes': 'sum',
+        'total_classes': 'sum'
+    }).reset_index()
+    
+    # Calculate attendance rate
+    subject_stats['attendance_rate'] = subject_stats.apply(
+        lambda row: (row['attended_classes'] / row['total_classes'] * 100) 
+                    if row['total_classes'] > 0 else 0,
+        axis=1
+    )
+    
+    # Sort by attendance rate (high to low)
+    subject_stats = subject_stats.sort_values('attendance_rate', ascending=False)
+    
+    # Create bar chart
+    fig = go.Figure()
+    
+    # Add bars with percentage labels
+    fig.add_trace(go.Bar(
+        x=subject_stats['subject'],
+        y=subject_stats['attendance_rate'],
+        text=[f"{rate:.1f}%" for rate in subject_stats['attendance_rate']],
+        textposition='outside',
+        marker=dict(
+            color=subject_stats['attendance_rate'],
+            colorscale='RdYlGn',
+            cmin=0,
+            cmax=100
+        ),
+        hovertemplate=
+        '%{x}<br>' +
+        'Attendance Rate: %{y:.1f}%<br>' +
+        'Classes: %{customdata[0]}/%{customdata[1]}<extra></extra>',
+        customdata=subject_stats[['attended_classes', 'total_classes']].values
+    ))
+    
+    # Add target line at 80%
+    fig.add_shape(
+        type="line",
+        x0=-0.5,
+        x1=len(subject_stats)-0.5,
+        y0=80,
+        y1=80,
+        line=dict(
+            color="red",
+            width=2,
+            dash="dash",
+        ),
+        name="Target (80%)"
+    )
+    
+    fig.add_annotation(
+        xref="paper",
+        yref="y",
+        x=1,
+        y=80,
+        text="80% Target",
+        showarrow=False,
+        font=dict(color="red"),
+        xanchor="right"
+    )
+    
+    # Update layout
+    fig.update_layout(
+        title="Attendance Rate by Subject",
+        xaxis=dict(
+            title="",
+            tickangle=-45
+        ),
+        yaxis=dict(
+            title="Attendance Rate (%)",
+            range=[0, max(100, subject_stats['attendance_rate'].max() * 1.1)]
+        ),
+        height=450,
+        margin=dict(l=10, r=10, t=40, b=100)
+    )
+    
+    return fig
 
 def show_student_report():
     """Display the advanced student attendance report page"""
@@ -1691,7 +2040,7 @@ def show_student_report():
         weekly_chart, day_pattern_chart, recent_chart = create_attendance_history_dashboards(history_df)
         
         # Display analytics in tabs
-        tab1, tab2, tab3 = st.tabs(["Recent Trends", "Weekly Stats", "Day Patterns"])
+        tab1, tab2, tab3, tab4 = st.tabs(["Recent Trends", "Weekly Stats", "Day Patterns", "Subject Patterns"])
         
         with tab1:
             st.plotly_chart(recent_chart, use_container_width=True)
@@ -1768,6 +2117,66 @@ def show_student_report():
                 # Attendance tip based on pattern
                 if worst_day['attendance_rate'] < 70:
                     st.warning(f"⚠️ Your attendance on {worst_day['day_name']} needs improvement. Consider setting an earlier alarm or adjusting your schedule.")
+        
+        with tab4:
+            try:
+                # Add a subject bar chart showing attendance rates
+                st.plotly_chart(create_subject_bar_chart(history_df), use_container_width=True)
+                
+                # Add subject heatmap
+                st.plotly_chart(create_subject_heatmap(history_df), use_container_width=True)
+                
+                # Show subject trend chart if data exists
+                st.plotly_chart(create_subject_pattern_chart(history_df), use_container_width=True)
+                
+                # Show top/bottom subjects based on attendance if subject data exists
+                if 'subject' in history_df.columns:
+                    subject_stats = history_df.groupby('subject').agg({
+                        'attended_classes': 'sum',
+                        'total_classes': 'sum'
+                    }).reset_index()
+                    
+                    subject_stats['attendance_rate'] = (subject_stats['attended_classes'] / subject_stats['total_classes'] * 100).fillna(0)
+                    subject_stats = subject_stats.sort_values('attendance_rate', ascending=False)
+                    
+                    # Show top and bottom subjects in columns
+                    if len(subject_stats) > 1:
+                        st.subheader("Subject Rankings")
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            st.markdown("#### Best Attendance")
+                            best_subject = subject_stats.iloc[0]
+                            st.metric(
+                                best_subject['subject'], 
+                                f"{best_subject['attendance_rate']:.1f}%",
+                                f"{best_subject['attended_classes']} of {best_subject['total_classes']} classes"
+                            )
+                        
+                        with col2:
+                            st.markdown("#### Needs Improvement")
+                            worst_subject = subject_stats.iloc[-1]
+                            st.metric(
+                                worst_subject['subject'], 
+                                f"{worst_subject['attendance_rate']:.1f}%",
+                                f"{worst_subject['attended_classes']} of {worst_subject['total_classes']} classes"
+                            )
+                    elif len(subject_stats) == 1:
+                        # Only one subject
+                        st.subheader("Subject Performance")
+                        subject = subject_stats.iloc[0]
+                        st.metric(
+                            subject['subject'], 
+                            f"{subject['attendance_rate']:.1f}%",
+                            f"{subject['attended_classes']} of {subject['total_classes']} classes"
+                        )
+                    else:
+                        st.info("No subject attendance data available yet.")
+                else:
+                    st.info("No subject attendance data available. Please check your database configuration.")
+            except Exception as e:
+                st.error(f"Error displaying subject patterns: {str(e)}")
+                st.info("This might happen if there are no attendance records yet or if your database schema is incomplete.")
 
 if __name__ == "__main__":
     show_student_report()
