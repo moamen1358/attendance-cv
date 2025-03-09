@@ -1187,7 +1187,7 @@ def create_attendance_history_dashboards(history_df):
         font=dict(color="red")
     )
     
-    # Daily attendance pattern
+    # Modify the daily attendance pattern to start with Saturday
     daily_pattern = history_df.groupby('day_of_week').agg({
         'attended_classes': 'sum',
         'total_classes': 'sum',
@@ -1199,10 +1199,24 @@ def create_attendance_history_dashboards(history_df):
         axis=1
     )
     
-    # Sort by day of week
-    daily_pattern = daily_pattern.sort_values('day_of_week')
+    # Custom day order starting with Saturday
+    custom_day_order = {
+        "Saturday": 0,
+        "Sunday": 1, 
+        "Monday": 2, 
+        "Tuesday": 3, 
+        "Wednesday": 4, 
+        "Thursday": 5, 
+        "Friday": 6
+    }
     
-    # Create day pattern chart
+    # Add custom sort key
+    daily_pattern['day_order'] = daily_pattern['day_name'].map(custom_day_order)
+    
+    # Sort by our custom order
+    daily_pattern = daily_pattern.sort_values('day_order')
+    
+    # Create day pattern chart with new order
     fig2 = go.Figure()
     
     fig2.add_trace(go.Scatter(
@@ -1280,167 +1294,6 @@ def create_attendance_history_dashboards(history_df):
     )
     
     return fig1, fig2, fig3
-
-# Add a new function to create subject pattern charts
-def create_subject_pattern_chart(history_df):
-    """Create visualization showing attendance patterns by subject over time"""
-    
-    # If dataframe is empty or doesn't have subject column, return empty chart
-    if history_df.empty or 'subject' not in history_df.columns:
-        fig = go.Figure()
-        fig.update_layout(
-            title="No subject data available",
-            xaxis=dict(title="Date"),
-            yaxis=dict(title="Attendance Rate (%)"),
-            height=400
-        )
-        return fig
-    
-    # Get unique subjects
-    subjects = history_df['subject'].unique()
-    
-    # Create line chart for subject trends
-    fig = go.Figure()
-    
-    # Use a distinct color for each subject
-    colors = px.colors.qualitative.Set1
-    
-    # For each subject, create a line showing attendance rate over time
-    for i, subject in enumerate(subjects):
-        # Filter data for this subject
-        subj_data = history_df[history_df['subject'] == subject].copy()
-        
-        # Sort by date
-        subj_data = subj_data.sort_values('date')
-        
-        # Add line for each subject
-        fig.add_trace(go.Scatter(
-            x=subj_data['date'],
-            y=subj_data['attendance_rate'],
-            mode='lines+markers',
-            name=subject,
-            line=dict(width=2, color=colors[i % len(colors)]),
-            marker=dict(size=8),
-            hovertemplate=
-            '%{x}<br>' +
-            '%{y:.1f}% attended<br>' +
-            f'Subject: {subject}<extra></extra>'
-        ))
-    
-    # Add reference line for target attendance (e.g., 80%)
-    if not history_df.empty:
-        fig.add_shape(
-            type="line",
-            x0=history_df['date'].min(),
-            x1=history_df['date'].max(),
-            y0=80,
-            y1=80,
-            line=dict(
-                color="red",
-                width=2,
-                dash="dash",
-            )
-        )
-    
-    # Update layout
-    fig.update_layout(
-        title="Subject Attendance Trends Over Time",
-        xaxis_title="Date",
-        yaxis=dict(
-            title="Attendance Rate (%)",
-            range=[0, 105],
-        ),
-        legend_title="Subject",
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1
-        ),
-        height=400,
-        margin=dict(l=10, r=10, t=40, b=10)
-    )
-    
-    return fig
-
-def create_subject_heatmap(history_df):
-    """Create a heatmap showing attendance by subject and day of week"""
-    
-    # If dataframe is empty or doesn't have subject column, return empty chart
-    if history_df.empty or 'subject' not in history_df.columns:
-        fig = go.Figure()
-        fig.update_layout(
-            title="No subject data available",
-            xaxis=dict(title="Day of Week"),
-            yaxis=dict(title="Subject"),
-            height=400
-        )
-        return fig
-    
-    # Prepare data by subject and day of week
-    subject_day = history_df.groupby(['subject', 'day_name']).agg({
-        'attended_classes': 'sum',
-        'total_classes': 'sum',
-        'day_of_week': 'first'  # Keep day number for sorting
-    }).reset_index()
-    
-    # Calculate attendance rate
-    subject_day['attendance_rate'] = subject_day.apply(
-        lambda row: (row['attended_classes'] / row['total_classes'] * 100) if row['total_classes'] > 0 else 0,
-        axis=1
-    )
-    
-    # Create proper index order
-    days_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    
-    # Filter for days with classes
-    available_days = [d for d in days_order if d in subject_day['day_name'].unique()]
-    
-    if not available_days or subject_day.empty:
-        # Return empty chart if no data
-        fig = go.Figure()
-        fig.update_layout(
-            title="No subject attendance data by day available",
-            xaxis=dict(title="Day of Week"),
-            yaxis=dict(title="Subject"),
-            height=400
-        )
-        return fig
-    
-    # Create pivot table
-    pivot_data = subject_day.pivot(
-        index='subject', 
-        columns='day_name', 
-        values='attendance_rate'
-    ).reindex(columns=available_days)
-    
-    # Create heatmap
-    fig = px.imshow(
-        pivot_data,
-        text_auto=".1f",
-        labels=dict(x="Day of Week", y="Subject", color="Attendance %"),
-        x=pivot_data.columns,
-        y=pivot_data.index,
-        color_continuous_scale="RdYlGn",
-        range_color=[0, 100],
-        aspect="auto"
-    )
-    
-    # Update layout
-    fig.update_layout(
-        title="Subject Attendance by Day of Week",
-        xaxis_title="",
-        yaxis_title="",
-        height=300 + (len(pivot_data) * 25),  # Dynamic height based on subject count
-        margin=dict(l=10, r=10, t=40, b=10),
-        coloraxis_colorbar=dict(
-            title="Attendance %",
-            ticksuffix="%"
-        ),
-    )
-    
-    return fig
 
 # Add a new function to create a better subject bar chart with percentages
 def create_subject_bar_chart(history_df):
@@ -2120,14 +1973,8 @@ def show_student_report():
         
         with tab4:
             try:
-                # Add a subject bar chart showing attendance rates
+                # Only keep the subject bar chart, remove heatmap and trend chart
                 st.plotly_chart(create_subject_bar_chart(history_df), use_container_width=True)
-                
-                # Add subject heatmap
-                st.plotly_chart(create_subject_heatmap(history_df), use_container_width=True)
-                
-                # Show subject trend chart if data exists
-                st.plotly_chart(create_subject_pattern_chart(history_df), use_container_width=True)
                 
                 # Show top/bottom subjects based on attendance if subject data exists
                 if 'subject' in history_df.columns:
@@ -2177,9 +2024,6 @@ def show_student_report():
             except Exception as e:
                 st.error(f"Error displaying subject patterns: {str(e)}")
                 st.info("This might happen if there are no attendance records yet or if your database schema is incomplete.")
-
-if __name__ == "__main__":
-    show_student_report()
 
 # Create a script to run both table modifications
 def create_attendance_tables():
@@ -2257,4 +2101,5 @@ def create_attendance_tables():
 
 # Call the function once to ensure tables are created
 if __name__ == "__main__":
+    show_student_report()
     create_attendance_tables()
