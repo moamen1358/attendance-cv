@@ -8,6 +8,8 @@ import sqlite3
 import io
 from real_time_prediction import create_or_add_to_collection
 from time_format_utils import normalize_time_format
+from student_visualization import create_attendance_sunburst, create_attendance_gauge
+from student_visualization import create_subject_radial_chart, create_weekly_heatmap
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -123,62 +125,123 @@ def get_subjects():
     conn.close()
     return df['subject'].tolist()
 
-# Function to add manual attendance record for a student
-def add_manual_attendance(student_name, class_date, subject, start_time, end_time, attended):
+# Modified function to add manual attendance record with improved synchronization
+def add_manual_attendance(student_name, class_date, subject, start_time, end_time, attended, class_type='lec'):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Format time values to ensure consistency
-    start_time = normalize_time_format(start_time)
-    end_time = normalize_time_format(end_time)
-    
-    # Insert or update class attendance record
-    query = """
-    INSERT OR REPLACE INTO class_attendance 
-        (student_name, class_date, subject, start_time, end_time, attended)
-    VALUES (?, ?, ?, ?, ?, ?)
-    """
-    
-    cursor.execute(query, (student_name, class_date, subject, start_time, end_time, attended))
-    
-    # If attended, also add a log entry
-    if attended:
-        # Generate a timestamp within the class time
-        try:
-            date_str = class_date
-            
-            # Create datetime objects for start and end times
-            start_dt = datetime.strptime(f"{date_str} {start_time}", "%Y-%m-%d %I:%M %p")
-            end_dt = datetime.strptime(f"{date_str} {end_time}", "%Y-%m-%d %I:%M %p")
-            
-            # Set attendance time to 15 minutes after class start
-            attendance_time = start_dt + timedelta(minutes=15)
-            
-            # If that's after the end time, use the middle of the class
-            if attendance_time > end_dt:
-                attendance_time = start_dt + (end_dt - start_dt) / 2
-            
-            # Format timestamp for database
-            timestamp = attendance_time.strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Add log entry
+    try:
+        # Format time values to ensure consistency
+        start_time = normalize_time_format(start_time)
+        end_time = normalize_time_format(end_time)
+        
+        # Get day of week for the given date
+        day_of_week = datetime.strptime(class_date, '%Y-%m-%d').strftime('%A')
+        
+        # Step 1: Check if the class exists in control_4 table
+        cursor.execute("""
+            SELECT 1 FROM control_4 
+            WHERE day = ? AND subject = ? AND start_time = ? AND end_time = ?
+        """, (day_of_week, subject, start_time, end_time))
+        
+        class_exists = cursor.fetchone()
+        
+        # If class doesn't exist in schedule, add it
+        if not class_exists:
             cursor.execute("""
-                INSERT INTO attendance_log (name, timestamp, confidence, device_id, day_of_week)
+                INSERT INTO control_4 (day, subject, start_time, end_time, type)
                 VALUES (?, ?, ?, ?, ?)
+            """, (day_of_week, subject, start_time, end_time, class_type))
+            print(f"Added class to schedule: {subject} on {day_of_week} at {start_time} ({class_type})")
+        else:
+            # Update class type if needed
+            cursor.execute("""
+                UPDATE control_4
+                SET type = ?
+                WHERE day = ? AND subject = ? AND start_time = ? AND end_time = ?
+            """, (class_type, day_of_week, subject, start_time, end_time))
+        
+        # Step 2: Insert or update class attendance record
+        cursor.execute("""
+            INSERT OR REPLACE INTO class_attendance 
+                (student_name, class_date, subject, start_time, end_time, attended)
+            VALUES (?, ?, ?, ?, ?, ?)
+        """, (student_name, class_date, subject, start_time, end_time, 1 if attended else 0))
+        
+        # Step 3: For attended classes, add a corresponding log entry
+        if attended:
+            # Generate a timestamp within the class time
+            try:
+                # Create datetime objects for start and end times
+                start_dt = datetime.strptime(f"{class_date} {start_time}", "%Y-%m-%d %I:%M %p")
+                end_dt = datetime.strptime(f"{class_date} {end_time}", "%Y-%m-%d %I:%M %p")
+                
+                # Set attendance time to 15 minutes after class start
+                attendance_time = start_dt + timedelta(minutes=15)
+                
+                # If that's after the end time, use the middle of the class
+                if attendance_time > end_dt:
+                    attendance_time = start_dt + (end_dt - start_dt) / 2
+                
+                # Format timestamp for database
+                timestamp = attendance_time.strftime("%Y-%m-%d %H:%M:%S")
+                
+                # Delete any existing log entries for this student, class and date
+                # This prevents duplicate entries that might confuse the system
+                cursor.execute("""
+                    DELETE FROM attendance_log
+                    WHERE name = ? AND DATE(timestamp) = ? AND 
+                          TIME(timestamp) BETWEEN TIME(?) AND TIME(?)
+                """, (
+                    student_name,
+                    class_date,
+                    f"{class_date} {start_time}",
+                    f"{class_date} {end_time}"
+                ))
+                
+                # Add new log entry
+                cursor.execute("""
+                    INSERT INTO attendance_log (name, timestamp, confidence, device_id, day_of_week)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    student_name, 
+                    timestamp, 
+                    1.0,  # Perfect confidence for manual entries
+                    "manual_entry",
+                    day_of_week
+                ))
+                
+                print(f"Added attendance log for {student_name} at {timestamp}")
+                
+            except Exception as e:
+                print(f"Error adding attendance log: {e}")
+                conn.rollback()
+                conn.close()
+                return False
+        else:
+            # If marking as not attended, remove any existing log entries
+            cursor.execute("""
+                DELETE FROM attendance_log
+                WHERE name = ? AND DATE(timestamp) = ? AND 
+                      TIME(timestamp) BETWEEN TIME(?) AND TIME(?)
             """, (
-                student_name, 
-                timestamp, 
-                1.0,  # Perfect confidence for manual entries
-                "manual_entry",
-                datetime.strptime(class_date, "%Y-%m-%d").strftime('%A')
+                student_name,
+                class_date,
+                f"{class_date} {start_time}",
+                f"{class_date} {end_time}"
             ))
-        except Exception as e:
-            print(f"Error adding attendance log: {e}")
-    
-    conn.commit()
-    conn.close()
-    
-    return True
+            
+            print(f"Removed attendance logs for {student_name} on {class_date} between {start_time} and {end_time}")
+        
+        conn.commit()
+        return True
+        
+    except Exception as e:
+        print(f"Error in add_manual_attendance: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
 
 # Function to get attendance summary data with enhanced performance for large student counts
 def get_attendance_summary(start_date=None, end_date=None, search_term=None, sort_by="student_name", sort_dir="asc", limit=100, offset=0):
@@ -543,51 +606,73 @@ def show_report():
         if st.button("🔄 Refresh Data", use_container_width=True):
             st.rerun()
 
-    # Tab 1: Enhanced Attendance Summary
+    # Tab 1: Enhanced Attendance Summary with beautiful visualizations
     with tabs[0]:
         st.header("Attendance Summary Statistics")
         
-        # Create attendance trends visualization
+        # Get overall attendance metrics - we'll keep this but remove the trend chart
         monthly_trends = get_monthly_attendance_trends(start_date_str, end_date_str)
-        if not monthly_trends.empty:
-            trend_chart = create_trend_chart(monthly_trends)
-            if trend_chart:
-                st.plotly_chart(trend_chart, use_container_width=True)
-        
-        # Get overall attendance metrics
         total_attended = monthly_trends['attended_classes'].sum() if not monthly_trends.empty else 0
         total_classes = monthly_trends['total_classes'].sum() if not monthly_trends.empty else 0
         overall_rate = total_attended / total_classes * 100 if total_classes > 0 else 0
         
-        # Create metrics row in a more prominent way
-        st.subheader("Overall Attendance")
-        metric_cols = st.columns(4)
-        with metric_cols[0]:
-            st.metric("Total Students", monthly_trends['active_students'].max() if not monthly_trends.empty else 0)
-        with metric_cols[1]:
-            st.metric("Classes Attended", total_attended)
-        with metric_cols[2]:
-            st.metric("Total Classes", total_classes)
-        with metric_cols[3]:
-            st.metric("Overall Rate", f"{overall_rate:.1f}%")
+        # Create a row with two columns for overall metrics and gauge chart
+        col1, col2 = st.columns([3, 2])
+        
+        # Column 1: Overall metrics in a more visual format
+        with col1:
+            st.subheader("Overall Attendance")
+            
+            # Create a nice metric row
+            metric_cols = st.columns(3)
+            with metric_cols[0]:
+                st.metric("Total Students", monthly_trends['active_students'].max() if not monthly_trends.empty else 0)
+            with metric_cols[1]:
+                st.metric("Classes Attended", f"{total_attended}/{total_classes}")
+            with metric_cols[2]:
+                st.metric("Attendance Rate", f"{overall_rate:.1f}%")
+            
+            # Add a progress bar showing overall attendance with transparent background
+            st.markdown(f"""
+            <div style="margin-top: 20px;">
+                <p style="font-weight: bold; margin-bottom: 5px;">Overall Progress</p>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <div style="flex-grow: 1; height: 20px; background-color: rgba(238, 238, 238, 0.5); border-radius: 10px; overflow: hidden;">
+                        <div style="width: {overall_rate}%; height: 100%; background: linear-gradient(to right, #4CAF50, #8BC34A);"></div>
+                    </div>
+                    <div style="width: 60px; text-align: right;">
+                        <span style="font-weight: bold;">{overall_rate:.1f}%</span>
+                    </div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Column 2: Add a beautiful gauge chart
+        with col2:
+            if total_classes > 0:
+                gauge_chart = create_attendance_gauge(overall_rate)
+                st.plotly_chart(gauge_chart, use_container_width=True)
+        
+        # Create a divider
+        st.markdown("<hr style='margin: 25px 0; opacity: 0.3;'>", unsafe_allow_html=True)
         
         # Get top performers
-        top_df, _ = get_attendance_outliers(start_date_str, end_date_str, limit=6)  # Increased limit
+        top_df, _ = get_attendance_outliers(start_date_str, end_date_str, limit=3)  # Reduced from 6 to 3
         
-        # Display top performers as cards with updated style
+        # Display top performers section with reduced height
         st.subheader("Top Students by Attendance")
         
-        # Custom CSS for cards with improved styling
+        # Custom CSS for cards with improved styling and reduced size
         st.markdown("""
         <style>
         .performer-card {
-            padding: 1.25rem;
-            border-radius: 12px;
+            padding: 0.9rem;  /* Reduced padding */
+            border-radius: 8px;  /* Smaller radius */
             border: none;
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);  /* Lighter shadow */
             transition: transform 0.3s, box-shadow 0.3s;
-            background: linear-gradient(135deg, #ffffff, #f8f9fa);
-            margin-bottom: 1rem;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(248, 249, 250, 0.8));  /* More transparent */
+            margin-bottom: 0.75rem;  /* Reduced margin */
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -595,22 +680,22 @@ def show_report():
             height: 100%;
         }
         .performer-card:hover {
-            transform: translateY(-5px);
-            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+            transform: translateY(-3px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
         }
         .performer-avatar {
-            width: 70px;
-            height: 70px;
+            width: 55px;  /* Smaller avatar */
+            height: 55px;  /* Smaller avatar */
             border-radius: 50%;
             background-color: #1976D2;
             color: white;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 28px;
+            font-size: 22px;  /* Smaller font */
             font-weight: bold;
-            margin-bottom: 1rem;
-            box-shadow: 0 4px 8px rgba(25, 118, 210, 0.3);
+            margin-bottom: 0.75rem;  /* Reduced margin */
+            box-shadow: 0 2px 5px rgba(25, 118, 210, 0.3);  /* Lighter shadow */
         }
         .perfect-attendance {
             background: linear-gradient(135deg, #4CAF50, #8BC34A);
@@ -620,30 +705,30 @@ def show_report():
         }
         .performer-name {
             font-weight: bold;
-            font-size: 1.2rem;
+            font-size: 1.1rem;  /* Smaller font */
             color: #333;
-            margin: 0.5rem 0;
+            margin: 0.3rem 0;  /* Reduced margin */
         }
         .performer-stats {
             width: 100%;
-            margin-top: 0.75rem;
+            margin-top: 0.5rem;  /* Reduced margin */
         }
         .performer-medal {
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));
+            font-size: 1.6rem;  /* Smaller medals */
+            margin-bottom: 0.3rem;  /* Reduced margin */
+            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));  /* Lighter shadow */
         }
         .progress-outer {
             width: 100%;
-            height: 10px;
-            background-color: #eee;
-            border-radius: 10px;
+            height: 8px;  /* Thinner progress bar */
+            background-color: rgba(238, 238, 238, 0.5);  /* More transparent */
+            border-radius: 8px;  /* Smaller radius */
             overflow: hidden;
-            margin-top: 0.5rem;
+            margin-top: 0.4rem;  /* Reduced margin */
         }
         .progress-inner {
             height: 100%;
-            border-radius: 10px;
+            border-radius: 8px;  /* Smaller radius */
         }
         .progress-perfect {
             background: linear-gradient(to right, #4CAF50, #8BC34A);
@@ -652,13 +737,13 @@ def show_report():
             background: linear-gradient(to right, #1976D2, #64B5F6);
         }
         .attendance-badge {
-            padding: 4px 8px;
-            border-radius: 20px;
-            font-size: 0.8rem;
+            padding: 3px 6px;  /* Smaller padding */
+            border-radius: 16px;  /* Smaller radius */
+            font-size: 0.7rem;  /* Smaller font */
             font-weight: bold;
             color: white;
             display: inline-block;
-            margin-top: 8px;
+            margin-top: 5px;  /* Reduced margin */
         }
         .perfect-badge {
             background-color: #4CAF50;
@@ -669,12 +754,12 @@ def show_report():
         .card-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            grid-gap: 20px;
+            grid-gap: 15px;  /* Reduced gap */
         }
         </style>
         """, unsafe_allow_html=True)
         
-        # Create cards for top performers in a grid
+        # Display the top performers cards - keeping the existing implementation but with updated CSS
         if not top_df.empty:
             # Count how many perfect 100% attendance students
             perfect_students = top_df[top_df['attendance_rate'] == 100.0]
@@ -683,22 +768,21 @@ def show_report():
             # Start the grid container
             st.markdown('<div class="card-grid">', unsafe_allow_html=True)
             
-            # For each of the top students (up to 6)
+            # For each of the top students (limited to 3)
             for i, (_, row) in enumerate(top_df.iterrows()):
-                if i < 6:  # Show up to 6 students
+                if i < 3:  # Show only up to 3 students
+                    # ... existing card creation code ...
                     is_perfect = row['attendance_rate'] == 100.0
                     
-                    # Determine medal emoji (only first 3 get medals)
-                    medal = ""
-                    if i < 3:
-                        medals = ["🥇", "🥈", "🥉"]
-                        medal = f'<div class="performer-medal">{medals[i]}</div>'
+                    # Determine medal emoji (all 3 get medals now)
+                    medals = ["🥇", "🥈", "🥉"]
+                    medal = f'<div class="performer-medal">{medals[i]}</div>'
                     
                     # Set CSS classes based on attendance
                     avatar_class = "performer-avatar perfect-attendance" if is_perfect else "performer-avatar high-attendance"
                     progress_class = "progress-inner progress-perfect" if is_perfect else "progress-inner progress-high"
                     badge_class = "attendance-badge perfect-badge" if is_perfect else "attendance-badge high-badge"
-                    badge_text = "PERFECT ATTENDANCE" if is_perfect else f"{row['attendance_rate']:.1f}% ATTENDANCE"
+                    badge_text = "PERFECT" if is_perfect else f"{row['attendance_rate']:.1f}%"
                     
                     # Create card with appropriate styling
                     st.markdown(f"""
@@ -723,13 +807,33 @@ def show_report():
             if has_perfect:
                 perfect_names = ", ".join(perfect_students['student_name'].tolist())
                 if len(perfect_students) > 1:
-                    st.success(f"🌟 Congratulations to {perfect_names} for having perfect attendance!")
+                    st.success(f"🌟 {len(perfect_students)} students have perfect attendance: {perfect_names}")
                 else:
-                    st.success(f"🌟 Congratulations to {perfect_names} for having perfect attendance!")
+                    st.success(f"🌟 {perfect_names} has perfect attendance!")
         else:
             st.info("No attendance data available to determine top performers")
         
+        # Create a divider with reduced margin
+        st.markdown("<hr style='margin: 20px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+        
+        # Add student selector for individual analysis
+        st.subheader("Individual Student Analysis")
+        selected_student = st.selectbox(
+            "Select a student to view detailed attendance", 
+            students,
+            key="student_selector"
+        )
+        
+        # Store the selected student in session state for the visualizations to use
+        st.session_state.selected_student = selected_student
+        
+        if selected_student != "All Students":
+            # Create weekly attendance heatmap
+            heatmap_chart = create_weekly_heatmap(selected_student, weeks=4)
+            st.plotly_chart(heatmap_chart, use_container_width=True)
+        
         # Export to Excel button
+        st.subheader("Download Reports")
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             # Export all data
@@ -875,8 +979,13 @@ def show_report():
             # Date selection (defaulting to today)
             class_date = st.date_input("Class Date", value=datetime.now().date())
             
-            # Subject selection
-            subject = st.selectbox("Subject", get_subjects())
+            # Subject and class type selection
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                subject = st.selectbox("Subject", get_subjects())
+            with col2:
+                class_type = st.selectbox("Type", ["lec", "sec"], 
+                                        format_func=lambda x: "Lecture" if x == "lec" else "Section")
             
             # Time selection
             col1, col2 = st.columns(2)
@@ -911,11 +1020,13 @@ def show_report():
                         subject,
                         start_time,
                         end_time,
-                        attended_val
+                        attended_val,
+                        class_type
                     )
                     
                     if success:
-                        st.success(f"Successfully recorded attendance for {student_name}: {'Present' if attended_val else 'Absent'}")
+                        st.success(f"Successfully recorded attendance for {student_name}: {'Present' if attended_val else 'Absent'} " +
+                                 f"({class_type})")
                     else:
                         st.error("Failed to record attendance")
                 except Exception as e:

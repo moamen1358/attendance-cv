@@ -1393,6 +1393,112 @@ def create_subject_bar_chart(history_df):
 
 def show_student_report():
     """Display the advanced student attendance report page"""
+    
+    # Override student report's custom CSS with consistent padding
+    st.markdown("""
+    <style>
+    /* Override any page-specific padding to ensure consistency */
+    .main .block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 80px !important;
+        padding-right: 80px !important;
+        max-width: unset;
+    }
+    
+    /* Rest of the custom CSS for student report */
+    .class-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-gap: 0px;
+        margin-bottom: 15px;
+    }
+    .class-card {
+        height: 100%;
+        transition: transform 0.2s ease;
+    }
+    .class-card:hover {
+        transform: translateY(-3px);
+    }
+    
+    /* Remove extra spacing between elements */
+    .stButton, .stMarkdown p, div.block-container {
+        margin-bottom: 0.5rem;
+        padding-bottom: 0.5rem;
+    }
+
+    /* Reduce space between elements */
+    h2, h3 {
+        margin-top: 0.75rem !important;
+        margin-bottom: 0.5rem !important;
+    }
+
+    /* Ensure cards in grid stay compact */
+    .class-grid {
+        grid-gap: 10px !important;
+    }
+
+    /* Make refresh button smaller and aligned right */
+    .refresh-container {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: -15px;
+        margin-bottom: 10px;
+    }
+
+    /* Make the button more compact */
+    .refresh-container button {
+        padding: 0.25rem 0.75rem !important;
+        min-height: auto !important;
+        font-size: 0.8rem !important;
+    }
+    /* Make refresh button match the logout button */
+    .refresh-button {
+        background-color: #f44336 !important;
+        color: white !important;
+        border: none !important;
+        font-weight: bold !important;
+        width: 100% !important;
+    }
+    .refresh-button:hover {
+        background-color: #d32f2f !important;
+        border: none !important;
+    }
+    /* Make buttons align better horizontally */
+    .button-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+
+    /* Make both buttons match styling */
+    .stButton button {
+        background-color: #f44336;
+        color: white;
+        border: none;
+        font-weight: bold;
+        height: 40px;
+    }
+    .stButton button:hover {
+        background-color: #d32f2f;
+        border: none;
+    }
+    /* Right-aligned username styling */
+    .username-container {
+        text-align: right;
+        margin-bottom: 5px;
+        padding-bottom: 0;
+    }
+    .username-text {
+        font-weight: bold;
+        font-size: 1.1rem;
+        color: #1E88E5;
+        display: inline-block;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # Initialize session state for auto-refresh
     if 'last_refresh' not in st.session_state:
         st.session_state.last_refresh = datetime.now()

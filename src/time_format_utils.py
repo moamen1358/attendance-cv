@@ -113,3 +113,33 @@ def normalize_time_format(time_str):
         return time_str
     except Exception:
         return time_str
+
+def format_datetime_for_db(date_str, time_str):
+    """
+    Combine date and time strings into a datetime string format suitable for SQLite
+    
+    Args:
+        date_str (str): Date in YYYY-MM-DD format
+        time_str (str): Time in either 12 or 24 hour format
+    
+    Returns:
+        str: Datetime string in SQLite compatible format
+    """
+    try:
+        # Ensure time is normalized
+        time_str = normalize_time_format(time_str)
+        
+        # Combine date and time
+        datetime_str = f"{date_str} {time_str}"
+        
+        # Parse as datetime
+        if "AM" in datetime_str or "PM" in datetime_str:
+            dt_obj = datetime.strptime(datetime_str, "%Y-%m-%d %I:%M %p")
+        else:
+            dt_obj = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
+            
+        # Return in SQLite format
+        return dt_obj.strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        # If parsing fails, return original
+        return f"{date_str} {time_str}"
