@@ -5,121 +5,235 @@ import report
 import student_report
 import db_explorer
 import registration_form
+import subject_management
+import sqlite3
+import time
+from global_css_handler import apply_global_css, enforce_fixed_padding
 
 def show_app():
-    # Set consistent padding for all pages
+    # Apply global CSS to ensure consistency across all pages
+    apply_global_css()
+    
+    # Add JavaScript enforcement for padding
+    enforce_fixed_padding()
+    
+    # Add extra strong CSS for consistent padding
     st.markdown("""
     <style>
-    /* Apply consistent padding to all pages */
-    .main .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-        padding-left: 80px !important;  /* Force 80px padding on left */
-        padding-right: 80px !important; /* Force 80px padding on right */
-        max-width: unset;
-    }
-    
-    /* Style for sidebar logout button to match student page */
-    .stButton button[key="sidebar_logout"] {
-        background-color: #f44336;
-        color: white;
-        border: none;
-        font-weight: bold;
-        width: 100%; /* Make button full width of sidebar */
-        padding: 0.5rem 0; /* More vertical padding */
-        font-size: 1.1rem; /* Slightly larger font */
-        height: 50px; /* Fixed height for consistency */
-    }
-    .stButton button[key="sidebar_logout"]:hover {
-        background-color: #d32f2f;
-        border: none;
-    }
-    div[data-testid="stButton"] button {
-        background-color: #f44336;
-        color: white;
-        border: none;
-        font-weight: bold;
-    }
-    div[data-testid="stButton"] button:hover {
-        background-color: #d32f2f;
-        border: none;
-    }
-    
-    /* Updated admin username styling with better centering */
-    .admin-username-container {
-        display: flex;
-        align-items: center;
-        justify-content: center; /* Center contents horizontally */
-        margin-bottom: 15px;
-        padding: 10px;
-        width: 100%;
-        box-sizing: border-box;
-        background: transparent;
-        text-align: center;
-    }
-    .admin-username-text {
-        font-weight: bold;
-        font-size: 1.2rem;
-        color: #1E88E5;
-        margin-left: 8px;
-    }
-    /* Center sidebar elements */
-    section[data-testid="stSidebar"] .block-container {
-        text-align: center;
+    /* FORCED PADDING FOR ALL PAGES - Maximum specificity */
+    body .main .block-container,
+    .main .block-container,
+    div.block-container,
+    [data-testid="stAppViewBlockContainer"] div.block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 80px !important;
+        padding-right: 80px !important;
+        max-width: unset !important;
     }
     </style>
     """, unsafe_allow_html=True)
+    
+    # Remove redundant CSS that might be overriding our global styles
+    # Instead, just add role-specific styles if needed
+    st.markdown("""
+    <style>
+    /* Role-specific styles can go here */
+    .sidebar-toggle {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        background-color: rgba(30, 136, 229, 0.8);
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        font-size: 18px;
+        z-index: 100;
+        cursor: pointer;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Check login status from both session state and query params
+    if 'username' not in st.session_state:
+        # Check if logged_in parameter exists in URL
+        if "logged_in" in st.query_params and st.query_params["logged_in"] == "True":
+            if "username" in st.query_params:
+                # Restore login state from query parameters
+                st.session_state.logged_in = True
+                st.session_state.username = st.query_params["username"]
+                
+                # Retrieve the user role if not in session state
+                if 'user_role' not in st.session_state:
+                    conn = sqlite3.connect('attendance_system.db')
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT role FROM users WHERE username = ?", 
+                                 (st.session_state.username,))
+                    result = cursor.fetchone()
+                    conn.close()
+                    
+                    if result:
+                        st.session_state.user_role = result[0]
+                    else:
+                        st.session_state.user_role = 'student'  # Default
+            else:
+                st.error("Please log in to view your attendance")
+                time.sleep(1)  # Brief delay before redirecting
+                st.rerun()
+        else:
+            st.error("Please log in to view your attendance")
+            time.sleep(1)  # Brief delay before redirecting
+            st.rerun()
+    
+    # Ensure query parameters are updated with current session state
+    st.query_params["logged_in"] = "True"
+    st.query_params["username"] = st.session_state.username
     
     # Get user role from session state (default to student if not set)
     user_role = st.session_state.get('user_role', 'student')
     username = st.session_state.get('username', 'User')
     
+    # Initialize show_sidebar state - now default to TRUE for admin users
+    if 'show_sidebar' not in st.session_state:
+        st.session_state.show_sidebar = True if user_role == 'admin' else False
+    
+    # ADMIN VIEW - Full access to all pages
     if user_role == 'admin':
-        # Admin sees all pages with sidebar navigation
-        
-        # Updated sidebar header with centered style
-        st.sidebar.markdown(f"""
-        <div class="admin-username-container">
-            <span style="font-size: 24px;">👤</span>
-            <span class="admin-username-text">{username}</span>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Full-width logout button
-        st.sidebar.button("🚪 Logout", key="sidebar_logout", use_container_width=True, on_click=lambda: logout_user())
-        
-        # Add a subtle divider
-        st.sidebar.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+        # Admin sees all pages with a top navigation bar and sidebar
         
         # Create a dictionary mapping page names to their respective functions
-        # Removed Home page and made Reports the first item
+        # Removed "Reports" from the pages dictionary
         pages = {
-            "Reports": report.show_report,
-            "Real-Time Face Recognition": real_time_prediction.show_real_time_prediction,
-            "Student Registration": registration_form.show_registration_form,
+            "Subject Management": subject_management.show_subject_management,
+            "Real-Time Recognition": real_time_prediction.show_real_time_prediction,
+            "Registration": registration_form.show_registration_form,
             "Database Explorer": db_explorer.show_db_explorer
         }
         
-        # If there's no current page or it's "Home" (which is now removed), 
-        # set it to "Reports" as the default
-        if 'current_page' not in st.session_state or st.session_state.current_page == "Home":
-            st.session_state.current_page = "Reports"
+        # Set default page to Subject Management if not already set or if was previously Reports
+        if 'current_page' not in st.session_state or st.session_state.current_page == "Reports":
+            st.session_state.current_page = "Subject Management"
         
-        # Get the index for the current page in the new menu
-        current_index = list(pages.keys()).index(st.session_state.current_page) if st.session_state.current_page in pages else 0
+        # Always show sidebar for admin (remove toggle button)
+        with st.sidebar:
+            # Updated sidebar header with centered style
+            st.markdown(f"""
+            <div class="admin-username-container">
+                <span style="font-size: 24px;">👤</span>
+                <span class="admin-username-text">{username}</span>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Full-width logout button
+            if st.button("🚪 Logout", key="sidebar_logout", use_container_width=True):
+                logout_user()
+            
+            # Add a subtle divider
+            st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+            
+            # Get the index for the current page
+            current_index = list(pages.keys()).index(st.session_state.current_page) if st.session_state.current_page in pages else 0
+            
+            # Create a radio button for navigation
+            selection = st.radio("", list(pages.keys()), index=current_index)
+            
+            # Update current page
+            if selection != st.session_state.current_page:
+                st.session_state.current_page = selection
+                st.rerun()
         
-        # Create a radio button for navigation (without the "Navigation" header)
-        selection = st.sidebar.radio("", 
-                                   list(pages.keys()),
-                                   index=current_index)
+        # Create simplified top navigation bar (no menu toggle needed)
+        st.markdown(f"## 👤 {username} - {st.session_state.current_page}")
         
         # Call the selected page function
-        st.session_state.current_page = selection
-        pages[selection]()
+        pages[st.session_state.current_page]()
                 
+    # PROFESSOR VIEW - Only access to Reports page with no sidebar
+    elif user_role == 'professor':
+        # Use consistent method to hide sidebar
+        st.markdown("""
+        <script>
+        // Hide sidebar for professor users with !important to prevent CSS conflicts
+        document.addEventListener('DOMContentLoaded', function() {
+            const style = document.createElement('style');
+            style.innerHTML = `
+                section[data-testid="stSidebar"] { 
+                    display: none !important;
+                    width: 0px !important;
+                }
+                .main .block-container {
+                    padding-left: 80px !important;
+                    padding-right: 80px !important;
+                }
+            `;
+            document.head.appendChild(style);
+        });
+        </script>
+        """, unsafe_allow_html=True)
+        
+        # Top navigation bar with title and user info in a better layout (matching student report)
+        top_col1, top_col2 = st.columns([3, 2])
+        
+        with top_col1:
+            st.markdown("## 📚 Teacher Dashboard", unsafe_allow_html=False)
+        
+        # User info and buttons in column 2
+        with top_col2:
+            # Username display with right alignment
+            st.markdown(f"""
+            <div class="username-container">
+                <div class="username-text">
+                    👤 {username}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Refresh and logout buttons side by side
+            button_col1, button_col2 = st.columns(2)
+            
+            with button_col1:
+                # Refresh button with same style as logout
+                if st.button("🔄 Refresh", key="prof_refresh", use_container_width=True):
+                    st.rerun()
+            
+            with button_col2:
+                # Logout button
+                if st.button("🚪 Logout", key="prof_logout", use_container_width=True):
+                    logout_user()
+        
+        # Always show reports page for professor role
+        report.show_report()
+    
+    # STUDENT VIEW - Only access to Student Report
     else:
+        # Apply the same sidebar hiding technique for consistency
+        st.markdown("""
+        <script>
+        // Hide sidebar for student users with !important to prevent CSS conflicts
+        document.addEventListener('DOMContentLoaded', function() {
+            const style = document.createElement('style');
+            style.innerHTML = `
+                section[data-testid="stSidebar"] { 
+                    display: none !important;
+                    width: 0px !important;
+                }
+                .main .block-container {
+                    padding-left: 80px !important;
+                    padding-right: 80px !important;
+                }
+            `;
+            document.head.appendChild(style);
+        });
+        </script>
+        """, unsafe_allow_html=True)
+        
         # Student only sees their attendance
-        # Keep the top navigation for student view with the improved styling
         student_report.show_student_report()
 
 # Helper function for logout

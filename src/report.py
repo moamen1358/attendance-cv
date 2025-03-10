@@ -10,6 +10,8 @@ from real_time_prediction import create_or_add_to_collection
 from time_format_utils import normalize_time_format
 from student_visualization import create_attendance_sunburst, create_attendance_gauge
 from student_visualization import create_subject_radial_chart, create_weekly_heatmap
+from setup_teacher_subjects import get_teacher_subjects
+from global_css_handler import apply_global_css, enforce_fixed_padding
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -64,7 +66,7 @@ def get_attendance_data(start_date=None, end_date=None, student_name=None, limit
     return df
 
 # Function to get class attendance data
-def get_class_attendance_data(start_date=None, end_date=None, student_name=None, subject=None):
+def get_class_attendance_data(start_date=None, end_date=None, student_name=None, subject=None, teacher_subjects=None):
     conn = get_db_connection()
     
     query_parts = ["SELECT student_name, class_date, subject, start_time, end_time, attended FROM class_attendance"]
@@ -88,6 +90,12 @@ def get_class_attendance_data(start_date=None, end_date=None, student_name=None,
     if subject and subject != "All Subjects":
         where_clauses.append("subject = ?")
         params.append(subject)
+    
+    # Add filter for teacher's subjects
+    if teacher_subjects and "All Subjects" not in teacher_subjects:
+        placeholders = ", ".join(["?"] * len(teacher_subjects))
+        where_clauses.append(f"subject IN ({placeholders})")
+        params.extend(teacher_subjects)
     
     if where_clauses:
         query_parts.append("WHERE " + " AND ".join(where_clauses))
@@ -117,13 +125,22 @@ def get_registered_students():
     conn.close()
     return df['name'].tolist()
 
-# Function to get list of subjects from the database
-def get_subjects():
+# Modified function to get list of subjects filtered by teacher
+def get_subjects(username=None):
     conn = get_db_connection()
+    
+    if username and username != "All Teachers":
+        # Get only subjects taught by this teacher
+        teacher_subjects = get_teacher_subjects(username)
+        if teacher_subjects:
+            # Return the teacher's subjects
+            return ["All Subjects"] + teacher_subjects
+    
+    # Default: get all subjects
     query = "SELECT DISTINCT subject FROM control_4 WHERE subject != '' ORDER BY subject"
     df = pd.read_sql(query, conn)
     conn.close()
-    return df['subject'].tolist()
+    return ["All Subjects"] + df['subject'].tolist()
 
 # Modified function to add manual attendance record with improved synchronization
 def add_manual_attendance(student_name, class_date, subject, start_time, end_time, attended, class_type='lec'):
@@ -243,8 +260,8 @@ def add_manual_attendance(student_name, class_date, subject, start_time, end_tim
     finally:
         conn.close()
 
-# Function to get attendance summary data with enhanced performance for large student counts
-def get_attendance_summary(start_date=None, end_date=None, search_term=None, sort_by="student_name", sort_dir="asc", limit=100, offset=0):
+# Modified function to get attendance summary filtered by teacher subjects
+def get_attendance_summary(start_date=None, end_date=None, search_term=None, sort_by="student_name", sort_dir="asc", limit=100, offset=0, teacher_subjects=None):
     """Get attendance summary with pagination, search and sorting options"""
     conn = get_db_connection()
     
@@ -266,6 +283,13 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
         date_condition += "AND ca.class_date <= ?"
         params.append(end_date)
     
+    # Build subject filter condition
+    subject_condition = ""
+    if teacher_subjects and "All Subjects" not in teacher_subjects:
+        placeholders = ", ".join(["?"] * len(teacher_subjects))
+        subject_condition = f"AND ca.subject IN ({placeholders})"
+        params.extend(teacher_subjects)
+    
     # Main query with proper sorting
     # Make sure the sort_by column is valid to prevent SQL injection
     valid_sort_columns = ["student_name", "attendance_rate", "attended_classes", "total_classes"]
@@ -279,7 +303,7 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
     count_query = f"""
     SELECT COUNT(DISTINCT ca.student_name) as total_count
     FROM class_attendance ca
-    WHERE 1=1 {date_condition} {search_condition}
+    WHERE 1=1 {date_condition} {search_condition} {subject_condition}
     """
     
     count_df = pd.read_sql_query(count_query, conn, params=params)
@@ -295,7 +319,7 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
         MIN(ca.class_date) as first_date,
         MAX(ca.class_date) as last_date
     FROM class_attendance ca
-    WHERE 1=1 {date_condition} {search_condition}
+    WHERE 1=1 {date_condition} {search_condition} {subject_condition}
     GROUP BY ca.student_name
     ORDER BY {sort_by} {sort_dir}
     LIMIT ? OFFSET ?
@@ -317,8 +341,8 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
     
     return df, total_count
 
-# Function to get subject attendance summary with enhanced performance
-def get_subject_attendance_summary(start_date=None, end_date=None, search_term=None):
+# Modified function to get subject attendance summary
+def get_subject_attendance_summary(start_date=None, end_date=None, search_term=None, teacher_subjects=None):
     """Get subject attendance summary with search capability"""
     conn = get_db_connection()
     
@@ -337,6 +361,12 @@ def get_subject_attendance_summary(start_date=None, end_date=None, search_term=N
     if search_term:
         conditions.append("ca.subject LIKE ?")
         params.append(f"%{search_term}%")
+    
+    # Add filter for teacher's subjects
+    if teacher_subjects and "All Subjects" not in teacher_subjects:
+        placeholders = ", ".join(["?"] * len(teacher_subjects))
+        conditions.append(f"ca.subject IN ({placeholders})")
+        params.extend(teacher_subjects)
     
     # Build WHERE clause
     where_clause = " AND ".join(conditions)
@@ -367,8 +397,8 @@ def get_subject_attendance_summary(start_date=None, end_date=None, search_term=N
     
     return df
 
-# New function to get monthly attendance trends
-def get_monthly_attendance_trends(start_date=None, end_date=None):
+# New function to get monthly attendance trends with subject filtering
+def get_monthly_attendance_trends(start_date=None, end_date=None, teacher_subjects=None):
     """Get attendance trend data aggregated by month"""
     conn = get_db_connection()
     
@@ -383,6 +413,12 @@ def get_monthly_attendance_trends(start_date=None, end_date=None):
     if end_date:
         conditions.append("ca.class_date <= ?")
         params.append(end_date)
+    
+    # Add filter for teacher's subjects
+    if teacher_subjects and "All Subjects" not in teacher_subjects:
+        placeholders = ", ".join(["?"] * len(teacher_subjects))
+        conditions.append(f"ca.subject IN ({placeholders})")
+        params.extend(teacher_subjects)
     
     # Build WHERE clause
     where_clause = " AND ".join(conditions)
@@ -415,8 +451,8 @@ def get_monthly_attendance_trends(start_date=None, end_date=None):
     
     return df
 
-# New function to get top and bottom performers
-def get_attendance_outliers(start_date=None, end_date=None, limit=5):
+# New function to get top and bottom performers with subject filtering
+def get_attendance_outliers(start_date=None, end_date=None, limit=5, teacher_subjects=None):
     """Get top and bottom performers based on attendance rate"""
     conn = get_db_connection()
     
@@ -431,6 +467,12 @@ def get_attendance_outliers(start_date=None, end_date=None, limit=5):
     if end_date:
         conditions.append("ca.class_date <= ?")
         params.append(end_date)
+    
+    # Add filter for teacher's subjects
+    if teacher_subjects and "All Subjects" not in teacher_subjects:
+        placeholders = ", ".join(["?"] * len(teacher_subjects))
+        conditions.append(f"ca.subject IN ({placeholders})")
+        params.extend(teacher_subjects)
     
     # Build WHERE clause
     where_clause = " AND ".join(conditions)
@@ -531,10 +573,10 @@ def create_trend_chart(df):
             title_font=dict(color='green')
         ),
         legend=dict(
-            orientation='h',
-            yanchor='bottom',
+            orientation="h",
+            yanchor="bottom",
             y=1.02,
-            xanchor='right',
+            xanchor="right",
             x=1
         ),
         margin=dict(l=20, r=20, t=50, b=100),
@@ -568,30 +610,62 @@ def create_trend_chart(df):
     return fig
 
 def show_report():
+    # Apply global CSS to ensure consistency
+    apply_global_css()
+    
+    # Add extra padding enforcement for professor view
+    enforce_fixed_padding()
+    
+    # Force override any page-specific padding that might conflict
+    st.markdown("""
+    <style>
+    /* FORCED PADDING FOR PROFESSOR PAGE - Maximum specificity */
+    body .main .block-container,
+    .main .block-container,
+    div.block-container,
+    [data-testid="stAppViewBlockContainer"] div.block-container,
+    #root > div:nth-child(1) > div > div > div > section > div > div > div > div > div.block-container {
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+        padding-left: 80px !important;
+        padding-right: 80px !important;
+        max-width: unset !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     st.title("Attendance Management Dashboard")
-    st.write("Comprehensive attendance reports and management tools for administrators")
-
-    # Add tabs for different report sections
-    tabs = st.tabs(["Attendance Summary", "Class Attendance", "Raw Attendance Logs", "Manual Entry"])
     
-    # Get list of all students for filtering
-    students = ["All Students"] + get_registered_students()
-    subjects = ["All Subjects"] + get_subjects()
+    # Get the current user's username and role
+    username = st.session_state.get('username', '')
+    user_role = st.session_state.get('user_role', '')
     
-    # Date filters that apply to all tabs
-    with st.sidebar:
+    # Get teacher's subjects
+    teacher_subjects = ["All Subjects"]
+    if user_role == 'admin' or user_role == 'professor':
+        teacher_subjects = get_teacher_subjects(username)
+        if not teacher_subjects:
+            teacher_subjects = ["All Subjects"]
+        else:
+            teacher_subjects = ["All Subjects"] + teacher_subjects
+    
+    # Show teacher's name and subjects at the top
+    st.write(f"Viewing attendance data for: **{username}**")
+    if "All Subjects" not in teacher_subjects or len(teacher_subjects) > 1:
+        st.write(f"Subjects: {', '.join([s for s in teacher_subjects if s != 'All Subjects'])}")
+    
+    # Date filters - moved out of sidebar for professor view
+    if user_role == 'professor':
+        # Show date filters directly in the main content area for professors
         st.header("Filter Options")
-        
-        # Date range selector
-        st.subheader("Date Range")
-        col1, col2 = st.columns(2)
-        with col1:
+        filter_col1, filter_col2 = st.columns(2)
+        with filter_col1:
             start_date = st.date_input(
                 "Start Date",
                 value=datetime.now().date() - timedelta(days=90),
                 max_value=datetime.now().date()
             )
-        with col2:
+        with filter_col2:
             end_date = st.date_input(
                 "End Date",
                 value=datetime.now().date(),
@@ -605,13 +679,48 @@ def show_report():
         # Add refresh button
         if st.button("🔄 Refresh Data", use_container_width=True):
             st.rerun()
-
+    else:
+        # Keep sidebar for admins
+        with st.sidebar:
+            st.header("Filter Options")
+            
+            # Date range selector
+            st.subheader("Date Range")
+            col1, col2 = st.columns(2)
+            with col1:
+                start_date = st.date_input(
+                    "Start Date",
+                    value=datetime.now().date() - timedelta(days=90),
+                    max_value=datetime.now().date()
+                )
+            with col2:
+                end_date = st.date_input(
+                    "End Date",
+                    value=datetime.now().date(),
+                    max_value=datetime.now().date()
+                )
+            
+            # Format dates for database queries
+            start_date_str = start_date.strftime('%Y-%m-%d')
+            end_date_str = end_date.strftime('%Y-%m-%d')
+            
+            # Add refresh button
+            if st.button("🔄 Refresh Data", use_container_width=True):
+                st.rerun()
+    
+    # Add tabs for different report sections
+    tabs = st.tabs(["Attendance Summary", "Class Attendance", "Raw Attendance Logs", "Manual Entry"])
+    
+    # Get list of all students for filtering
+    students = ["All Students"] + get_registered_students()
+    subjects = teacher_subjects  # Now using teacher-specific subjects
+    
     # Tab 1: Enhanced Attendance Summary with beautiful visualizations
     with tabs[0]:
         st.header("Attendance Summary Statistics")
         
-        # Get overall attendance metrics - we'll keep this but remove the trend chart
-        monthly_trends = get_monthly_attendance_trends(start_date_str, end_date_str)
+        # Get overall attendance metrics - filtered by teacher subjects
+        monthly_trends = get_monthly_attendance_trends(start_date_str, end_date_str, teacher_subjects=teacher_subjects)
         total_attended = monthly_trends['attended_classes'].sum() if not monthly_trends.empty else 0
         total_classes = monthly_trends['total_classes'].sum() if not monthly_trends.empty else 0
         overall_rate = total_attended / total_classes * 100 if total_classes > 0 else 0
@@ -656,8 +765,8 @@ def show_report():
         # Create a divider
         st.markdown("<hr style='margin: 25px 0; opacity: 0.3;'>", unsafe_allow_html=True)
         
-        # Get top performers
-        top_df, _ = get_attendance_outliers(start_date_str, end_date_str, limit=3)  # Reduced from 6 to 3
+        # Get top performers - filtered by teacher subjects
+        top_df, _ = get_attendance_outliers(start_date_str, end_date_str, limit=3, teacher_subjects=teacher_subjects)
         
         # Display top performers section with reduced height
         st.subheader("Top Students by Attendance")
@@ -694,24 +803,7 @@ def show_report():
             justify-content: center;
             font-size: 22px;  /* Smaller font */
             font-weight: bold;
-            margin-bottom: 0.75rem;  /* Reduced margin */
-            box-shadow: 0 2px 5px rgba(25, 118, 210, 0.3);  /* Lighter shadow */
-        }
-        .perfect-attendance {
-            background: linear-gradient(135deg, #4CAF50, #8BC34A);
-        }
-        .high-attendance {
-            background: linear-gradient(135deg, #1976D2, #64B5F6);
-        }
-        .performer-name {
-            font-weight: bold;
-            font-size: 1.1rem;  /* Smaller font */
-            color: #333;
-            margin: 0.3rem 0;  /* Reduced margin */
-        }
-        .performer-stats {
-            width: 100%;
-            margin-top: 0.5rem;  /* Reduced margin */
+            margin-bottom: 0.75rem;
         }
         .performer-medal {
             font-size: 1.6rem;  /* Smaller medals */
@@ -820,7 +912,7 @@ def show_report():
         st.subheader("Individual Student Analysis")
         selected_student = st.selectbox(
             "Select a student to view detailed attendance", 
-            students,
+            students, 
             key="student_selector"
         )
         
@@ -840,16 +932,14 @@ def show_report():
             all_students_df, _ = get_attendance_summary(
                 start_date_str, end_date_str, None, 
                 "attendance_rate", "desc", 
-                limit=10000, offset=0
+                limit=10000, offset=0,
+                teacher_subjects=teacher_subjects
             )
-            
-            # Get subject data
-            subjects_df = get_subject_attendance_summary(start_date_str, end_date_str)
-            
-            # Export to Excel
             all_students_df.columns = ['Student', 'Classes Attended', 'Total Classes', 'Attendance Rate (%)', 'First Date', 'Last Date']
             all_students_df.to_excel(writer, sheet_name='Student Summary', index=False)
             
+            # Get subject data
+            subjects_df = get_subject_attendance_summary(start_date_str, end_date_str, teacher_subjects=teacher_subjects)
             if not subjects_df.empty:
                 subject_table = subjects_df[['subject', 'unique_students', 'attended_count', 'total_count', 'attendance_rate']]
                 subject_table.columns = ['Subject', 'Students', 'Classes Attended', 'Total Classes', 'Attendance Rate (%)']
@@ -865,7 +955,7 @@ def show_report():
             mime='application/vnd.ms-excel'
         )
 
-    # Tab 2: Class Attendance
+    # Tab 2: Class Attendance - Update to filter by teacher subjects
     with tabs[1]:
         st.header("Class Attendance Records")
         
@@ -881,7 +971,8 @@ def show_report():
             start_date_str, 
             end_date_str, 
             selected_student if selected_student != "All Students" else None,
-            selected_subject if selected_subject != "All Subjects" else None
+            selected_subject if selected_subject != "All Subjects" else None,
+            teacher_subjects if selected_subject == "All Subjects" else None
         )
         
         if not class_df.empty:
@@ -913,7 +1004,6 @@ def show_report():
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 table_df.to_excel(writer, sheet_name='Class Attendance', index=False)
-                
             st.download_button(
                 label="📊 Download Class Attendance",
                 data=buffer,
@@ -950,7 +1040,6 @@ def show_report():
             buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 display_df.to_excel(writer, sheet_name='Attendance Logs', index=False)
-                
             st.download_button(
                 label="📊 Download Raw Logs",
                 data=buffer,
@@ -984,8 +1073,7 @@ def show_report():
             with col1:
                 subject = st.selectbox("Subject", get_subjects())
             with col2:
-                class_type = st.selectbox("Type", ["lec", "sec"], 
-                                        format_func=lambda x: "Lecture" if x == "lec" else "Section")
+                class_type = st.selectbox("Type", ["lec", "sec"], format_func=lambda x: "Lecture" if x == "lec" else "Section")
             
             # Time selection
             col1, col2 = st.columns(2)
@@ -994,7 +1082,6 @@ def show_report():
                 start_minute = st.selectbox("Start Minute", [0, 15, 30, 45])
                 start_period = st.selectbox("AM/PM", ["AM", "PM"])
                 start_time = f"{start_hour}:{start_minute:02d} {start_period}"
-            
             with col2:
                 end_hour = st.selectbox("End Hour", list(range(1, 13)), index=9)
                 end_minute = st.selectbox("End Minute", [0, 15, 30, 45])
@@ -1009,10 +1096,10 @@ def show_report():
             submitted = st.form_submit_button("Record Attendance")
             
             if submitted:
+                # Convert date to string format
+                class_date_str = class_date.strftime('%Y-%m-%d')
+                
                 try:
-                    # Convert date to string format
-                    class_date_str = class_date.strftime('%Y-%m-%d')
-                    
                     # Add the attendance record
                     success = add_manual_attendance(
                         student_name,

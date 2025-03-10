@@ -9,6 +9,7 @@ import random
 import math
 from streamlit.components.v1 import html
 from time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
+from global_css_handler import apply_global_css, enforce_fixed_padding
 
 # Page configuration
 st.set_page_config(
@@ -1392,113 +1393,52 @@ def create_subject_bar_chart(history_df):
     return fig
 
 def show_student_report():
-    """Display the advanced student attendance report page"""
+    # Apply global CSS to ensure consistency
+    apply_global_css()
     
-    # Override student report's custom CSS with consistent padding
+    # Add extra padding enforcement for student view
+    enforce_fixed_padding()
+    
+    # Force override any page-specific padding that might conflict
+    # Modified to remove top space
     st.markdown("""
     <style>
-    /* Override any page-specific padding to ensure consistency */
-    .main .block-container {
-        padding-top: 1rem !important;
+    /* FORCED PADDING FOR STUDENT PAGE - Maximum specificity */
+    body .main .block-container,
+    .main .block-container,
+    div.block-container,
+    [data-testid="stAppViewBlockContainer"] div.block-container,
+    #root > div:nth-child(1) > div > div > div > section > div > div > div > div > div.block-container {
+        padding-top: 0rem !important;  /* Changed from 1rem to 0rem */
         padding-bottom: 1rem !important;
         padding-left: 80px !important;
         padding-right: 80px !important;
-        max-width: unset;
+        max-width: unset !important;
     }
     
-    /* Rest of the custom CSS for student report */
-    .class-grid {
-        display: grid;
-        grid-template-columns: repeat(3, 1fr);
-        grid-gap: 0px;
-        margin-bottom: 15px;
-    }
-    .class-card {
-        height: 100%;
-        transition: transform 0.2s ease;
-    }
-    .class-card:hover {
-        transform: translateY(-3px);
+    /* Remove any top margin from the first element */
+    .stApp > header:first-of-type,
+    .stApp > div:first-of-type,
+    .stApp > div:first-of-type > div:first-of-type {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
     }
     
-    /* Remove extra spacing between elements */
-    .stButton, .stMarkdown p, div.block-container {
-        margin-bottom: 0.5rem;
-        padding-bottom: 0.5rem;
+    /* Adjust top margin for top-level elements */
+    .main > div:first-child {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
     }
-
-    /* Reduce space between elements */
-    h2, h3 {
-        margin-top: 0.75rem !important;
+    
+    /* Header spacing reduction */
+    h1, h2, h3, h4, h5 {
+        margin-top: 0.5rem !important;
         margin-bottom: 0.5rem !important;
-    }
-
-    /* Ensure cards in grid stay compact */
-    .class-grid {
-        grid-gap: 10px !important;
-    }
-
-    /* Make refresh button smaller and aligned right */
-    .refresh-container {
-        display: flex;
-        justify-content: flex-end;
-        margin-top: -15px;
-        margin-bottom: 10px;
-    }
-
-    /* Make the button more compact */
-    .refresh-container button {
-        padding: 0.25rem 0.75rem !important;
-        min-height: auto !important;
-        font-size: 0.8rem !important;
-    }
-    /* Make refresh button match the logout button */
-    .refresh-button {
-        background-color: #f44336 !important;
-        color: white !important;
-        border: none !important;
-        font-weight: bold !important;
-        width: 100% !important;
-    }
-    .refresh-button:hover {
-        background-color: #d32f2f !important;
-        border: none !important;
-    }
-    /* Make buttons align better horizontally */
-    .button-row {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-
-    /* Make both buttons match styling */
-    .stButton button {
-        background-color: #f44336;
-        color: white;
-        border: none;
-        font-weight: bold;
-        height: 40px;
-    }
-    .stButton button:hover {
-        background-color: #d32f2f;
-        border: none;
-    }
-    /* Right-aligned username styling */
-    .username-container {
-        text-align: right;
-        margin-bottom: 5px;
-        padding-bottom: 0;
-    }
-    .username-text {
-        font-weight: bold;
-        font-size: 1.1rem;
-        color: #1E88E5;
-        display: inline-block;
     }
     </style>
     """, unsafe_allow_html=True)
     
+    # Rest of the function remains unchanged
     # Initialize session state for auto-refresh
     if 'last_refresh' not in st.session_state:
         st.session_state.last_refresh = datetime.now()
