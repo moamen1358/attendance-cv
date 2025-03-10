@@ -609,6 +609,8 @@ def create_trend_chart(df):
     
     return fig
 
+# Change professor page heading colors from red to purple
+
 def show_report():
     # Apply global CSS to ensure consistency
     apply_global_css()
@@ -617,6 +619,8 @@ def show_report():
     enforce_fixed_padding()
     
     # Force override any page-specific padding that might conflict
+    # PLUS: Add standardized heading styles with TEAL color scheme
+    # AND: Match username color to heading color scheme
     st.markdown("""
     <style>
     /* FORCED PADDING FOR PROFESSOR PAGE - Maximum specificity */
@@ -631,10 +635,68 @@ def show_report():
         padding-right: 80px !important;
         max-width: unset !important;
     }
+    
+    /* STANDARDIZE ALL HEADINGS WITH TEAL COLOR SCHEME */
+    /* Override Streamlit's default heading styles */
+    h1, h2, h3, h4, .main h1, .main h2, .main h3, .main h4,
+    [data-testid="stHeader"] {
+        color: #008080 !important; /* Teal color for professor view */
+        font-weight: bold !important;
+    }
+    
+    /* Apply specific sizes to match dashboard title */
+    h1, .main h1 {
+        font-size: 1.8rem !important;
+    }
+    
+    h2, .main h2, [data-testid="stHeader"] {
+        font-size: 1.5rem !important;
+    }
+    
+    h3, .main h3 {
+        font-size: 1.3rem !important;
+    }
+    
+    h4, .main h4 {
+        font-size: 1.1rem !important;
+    }
+    
+    /* Apply styling to Streamlit's native header elements */
+    .css-10trblm, .css-16idsys p {
+        color: #008080 !important; /* Teal color for professor view */
+        font-weight: bold !important;
+    }
+    
+    /* Style subheader specifically */
+    .css-10trblm.e16nr0p33 {
+        font-size: 1.3rem !important;
+        color: #008080 !important; /* Teal color for professor view */
+        font-weight: bold !important;
+        margin-top: 1rem !important;
+    }
+    
+    /* Consistent spacing between sections */
+    .main .block-container > div > div[data-testid="stVerticalBlock"] > div[data-stale="false"] {
+        margin-top: 1rem !important;
+    }
+    
+    /* Style for the title specifically */
+    .st-emotion-cache-10trblm h1 {
+        color: #008080 !important; /* Teal color for professor view */
+        font-weight: bold !important;
+        font-size: 1.8rem !important;
+    }
+    
+    /* MAKE USERNAME COLOR MATCH THE HEADING COLOR */
+    .username-text, .username-container .username-text {
+        color: #008080 !important; /* Teal color for professor view */
+        font-weight: bold !important;
+        font-size: 1.1rem !important;
+    }
     </style>
     """, unsafe_allow_html=True)
     
-    st.title("Attendance Management Dashboard")
+    # REMOVED: st.title("Attendance Management Dashboard")
     
     # Get the current user's username and role
     username = st.session_state.get('username', '')
@@ -649,10 +711,8 @@ def show_report():
         else:
             teacher_subjects = ["All Subjects"] + teacher_subjects
     
-    # Show teacher's name and subjects at the top
-    st.write(f"Viewing attendance data for: **{username}**")
-    if "All Subjects" not in teacher_subjects or len(teacher_subjects) > 1:
-        st.write(f"Subjects: {', '.join([s for s in teacher_subjects if s != 'All Subjects'])}")
+    # REMOVED: st.write(f"Viewing attendance data for: **<span class='username-text'>{username}</span>**", unsafe_allow_html=True)
+    # REMOVED: st.write(f"Subjects: {', '.join([s for s in teacher_subjects if s != 'All Subjects'])}")
     
     # Date filters - moved out of sidebar for professor view
     if user_role == 'professor':
@@ -676,9 +736,9 @@ def show_report():
         start_date_str = start_date.strftime('%Y-%m-%d')
         end_date_str = end_date.strftime('%Y-%m-%d')
         
-        # Add refresh button
-        if st.button("🔄 Refresh Data", use_container_width=True):
-            st.rerun()
+        # REMOVED: Refresh button
+        # if st.button("🔄 Refresh Data", use_container_width=True):
+        #    st.rerun()
     else:
         # Keep sidebar for admins
         with st.sidebar:
@@ -1118,3 +1178,4 @@ def show_report():
                         st.error("Failed to record attendance")
                 except Exception as e:
                     st.error(f"Error recording attendance: {e}")
+ 

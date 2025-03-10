@@ -140,3 +140,88 @@ def enforce_fixed_padding():
     });
     </script>
     """, unsafe_allow_html=True)
+
+# Add a new function specifically for student report CSS
+def apply_student_css():
+    """
+    Apply CSS styling specific to the student report page
+    """
+    st.markdown("""
+    <style>
+    /* Class grid and card styling */
+    .class-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        grid-gap: 15px;
+        margin-bottom: 15px;
+    }
+    
+    .class-card {
+        height: 100%;
+        transition: transform 0.2s ease;
+    }
+    
+    .class-card:hover {
+        transform: translateY(-3px);
+    }
+    
+    /* Make refresh button smaller and aligned right */
+    .refresh-container {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: -15px;
+        margin-bottom: 10px;
+    }
+    
+    .refresh-container button {
+        padding: 0.25rem 0.75rem !important;
+        min-height: auto !important;
+        font-size: 0.8rem !important;
+    }
+    
+    .refresh-button {
+        background-color: #f44336 !important;
+        color: white !important;
+        border: none !important;
+        font-weight: bold !important;
+        width: 100% !important;
+    }
+    
+    .refresh-button:hover {
+        background-color: #d32f2f !important;
+        border: none !important;
+    }
+    
+    .button-row {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        margin-bottom: 10px;
+    }
+    
+    /* Username styling specifically for student view */
+    .username-container {
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+        margin-bottom: 5px;
+        padding-bottom: 0;
+        margin-right: 10px;
+    }
+    
+    .username-text {
+        font-weight: bold;
+        font-size: 1.1rem;
+        color: #1E88E5;
+        margin-right: 10px;
+    }
+    
+    /* Button container with zero spacing */
+    .button-container {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 0;
+        padding-top: 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
