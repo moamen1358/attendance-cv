@@ -73,7 +73,7 @@ def show_subject_management():
     else:
         col1, col2 = st.columns([3, 1])
         with col1:
-            new_subject = st.selectbox("Select Subject", available_subjects)
+            new_subject = st.selectbox("Select Subject", available_subjects, key="add_subject_selectbox")
         with col2:
             if st.button("Add", use_container_width=True):
                 if assign_subject_to_teacher(username, new_subject):
@@ -88,7 +88,7 @@ def show_subject_management():
         
         col1, col2 = st.columns([3, 1])
         with col1:
-            subject_to_remove = st.selectbox("Select Subject to Remove", teacher_subjects)
+            subject_to_remove = st.selectbox("Select Subject to Remove", teacher_subjects, key="remove_subject_selectbox")
         with col2:
             if st.button("Remove", use_container_width=True):
                 if remove_subject_from_teacher(username, subject_to_remove):
@@ -106,13 +106,13 @@ def show_subject_management():
         col1, col2, col3 = st.columns([2, 2, 1])
         
         with col1:
-            selected_teacher = st.selectbox("Select Teacher", get_all_teachers())
+            selected_teacher = st.selectbox("Select Teacher", get_all_teachers(), key="teacher_username_selectbox")
         
         with col2:
             teacher_subs = get_teacher_subjects(selected_teacher)
             remaining_subjects = [s for s in all_subjects if s not in teacher_subs]
             if remaining_subjects:
-                selected_subject = st.selectbox("Select Subject", remaining_subjects)
+                selected_subject = st.selectbox("Select Subject", remaining_subjects, key="assign_subject_selectbox")
             else:
                 st.info("This teacher has all subjects assigned")
                 selected_subject = None
