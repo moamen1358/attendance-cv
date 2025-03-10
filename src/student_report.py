@@ -38,8 +38,8 @@ st.markdown("""
 }
 /* Set main container padding to 90px */
 .main .block-container {
-    padding-top: 90px;
-    padding-bottom: 90px;
+    padding-top: 0px;
+    padding-bottom: 0px;
     padding-left: 90px;
     padding-right: 90px;
     max-width: unset;
