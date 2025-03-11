@@ -9,7 +9,7 @@ import random
 import math
 from streamlit.components.v1 import html
 from time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
-from global_css_handler import apply_global_css, enforce_fixed_padding, apply_student_css
+from global_css_handler import apply_global_css  # Only import what we need
 
 # Page configuration
 st.set_page_config(
@@ -1261,62 +1261,40 @@ def create_subject_bar_chart(history_df):
 # Restore dashboard title while maintaining zero spacing
 
 def show_student_report():
-    # Apply global CSS to ensure consistency
+    # Apply global CSS - will only inject once per session
     apply_global_css()
     
-    # Add extra padding enforcement for student view
-    enforce_fixed_padding()
-    
-    # Apply student-specific CSS (moved from inline to global handler)
-    apply_student_css()
-    
-    # IMPROVED CSS: Add more aggressive spacing control to completely eliminate ALL gaps at top
-    st.markdown("""
-    <style>
-    /* Super aggressive top space elimination - highest specificity possible */
-    body .main .block-container,
-    .main .block-container,
-    div.block-container,
-    [data-testid="stAppViewBlockContainer"] div.block-container,
-    #root > div:nth-child(1) > div > div > div > section > div > div > div > div > div.block-container {
-        padding-top: 0 !important;
-        padding-bottom: 1rem !important;
-        padding-left: 80px !important;
-        padding-right: 80px !important;
-        max-width: unset !important;
-        margin-top: 0 !important;
-    }
-    
-    /* Force absolutely no space for the first element */
-    .element-container:first-child,
-    .stMarkdown:first-child,
-    .main .stMarkdown:first-child > div:first-child > p:first-child,
-    .element-container:first-of-type {
-        margin-top: 0 !important;
-        padding-top: 0 !important;
-        line-height: 0 !important;
-        height: auto !important;
-        min-height: 0 !important;
-    }
-    
-    /* Dashboard title styling that aligns with the username and buttons */
-    .dashboard-header {
-        display: flex;
-        align-items: center;
-        width: 100%;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-    
-    .dashboard-title {
-        margin: 0 !important;
-        padding: 0 !important;
-        font-size: 1.5rem !important;
-        color: #1E88E5 !important;
-        font-weight: bold !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
+    # Apply student-specific styles only once
+    if 'student_css_added' not in st.session_state:
+        st.session_state.student_css_added = True
+        st.markdown("""
+        <style>
+        /* Super aggressive top space elimination specific to student dashboard */
+        body .main .block-container,
+        .main .block-container,
+        div.block-container {
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+        }
+        
+        /* Dashboard title styling that aligns with the username and buttons */
+        .dashboard-header {
+            display: flex;
+            align-items: center;
+            width: %;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .dashboard-title {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 1.5rem !important;
+            color: #1E88E5 !important;
+            font-weight: bold !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
     
     # Initialize session state for auto-refresh
     if 'last_refresh' not in st.session_state:
@@ -1356,97 +1334,6 @@ def show_student_report():
     date_str = today.strftime('%Y-%m-%d')
     day_name = today.strftime('%A')
     current_time_obj = datetime.now().time()
-    
-    # Add custom CSS to remove blank space and add minimal padding
-    st.markdown("""
-    <style>
-    /* Remove default streamlit padding */
-    .main .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-        padding-left: 2rem;
-        padding-right: 2rem;
-        max-width: unset;
-    }
-    
-    /* Remove extra spacing between elements */
-    .stButton, .stMarkdown p, div.block-container {
-        margin-bottom: 0.5rem;
-        padding-bottom: 0.5rem;
-    }
-    
-    /* Reduce space between elements */
-    h2, h3 {
-        margin-top: 0.75rem !important;
-        margin-bottom: 0.5rem !important;
-    }
-    
-    /* Ensure cards in grid stay compact */
-    .class-grid {
-        grid-gap: 10px !important;
-    }
-    
-    /* Make refresh button smaller and aligned right */
-    .refresh-container {
-        display: flex;
-        justify-content: flex-end;
-        margin-top: -15px;
-        margin-bottom: 10px;
-    }
-    
-    /* Make the button more compact */
-    .refresh-container button {
-        padding: 0.25rem 0.75rem !important;
-        min-height: auto !important;
-        font-size: 0.8rem !important;
-    }
-    /* Make refresh button match the logout button */
-    .refresh-button {
-        background-color: #f44336 !important;
-        color: white !important;
-        border: none !important;
-        font-weight: bold !important;
-        width: 100% !important;
-    }
-    .refresh-button:hover {
-        background-color: #d32f2f !important;
-        border: none !important;
-    }
-    /* Make buttons align better horizontally */
-    .button-row {
-        display: flex;
-        justify-content: flex-end;
-        align-items: center;
-        margin-bottom: 10px;
-    }
-    
-    /* Make both buttons match styling */
-    .stButton button {
-        background-color: #f44336;
-        color: white;
-        border: none;
-        font-weight: bold;
-        height: 40px;
-    }
-    .stButton button:hover {
-        background-color: #d32f2f;
-        border: none;
-    }
-    /* Right-aligned username styling */
-    .username-container {
-        text-align: right;
-        margin-bottom: 5px;
-        padding-bottom: 0;
-        margin-right: 75px;
-    }
-    .username-text {
-        font-weight: bold;
-        font-size: 1.1rem;
-        color: #1E88E5;
-        display: inline-block;
-    }
-    </style>
-    """, unsafe_allow_html=True)
     
     # IMPROVED LAYOUT: Put title, username and buttons all in the same container
     st.markdown('<div style="margin-top: 0; padding-top: 0;">', unsafe_allow_html=True)
@@ -1971,7 +1858,7 @@ def create_attendance_tables():
     # Add day_of_week column to attendance_log if it doesn't exist
     cursor.execute("PRAGMA table_info(attendance_log)")
     results = cursor.fetchall()  # Fixed: get results first
-    columns = [info[1] for info in results]  # Fixed: iterate through results
+    columns = [info[1] for info[0] in results]  # Fixed: iterate through results
     
     if 'day_of_week' not in columns:
         cursor.execute("ALTER TABLE attendance_log ADD COLUMN day_of_week TEXT")
