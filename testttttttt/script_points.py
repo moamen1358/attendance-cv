@@ -291,10 +291,10 @@
 # # #             send_angles_to_servo(ser, pan_angle, tilt_angle)
 # # #             time.sleep(2)  # Wait for 2 seconds to allow the camera to move and stabilize
 
-# # #         # Check if all students have been detected
+# # #         # Check if all student_profiles have been detected
 # # #         if detected_students >= total_students:
 # # #             continue_attendance = False
-# # #             logging.info("All students have been detected. Stopping attendance process.")
+# # #             logging.info("All student_profiles have been detected. Stopping attendance process.")
 
 # # #     # Close the serial connection
 # # #     ser.close()
@@ -476,10 +476,10 @@
 #             current_pan_angle, current_tilt_angle = int(pan_angle), int(tilt_angle)  # Update current position
 #             time.sleep(2)  # Wait for 2 seconds to allow the camera to move and stabilize
 
-#         # Check if all students have been detected
+#         # Check if all student_profiles have been detected
 #         if detected_students >= total_students:
 #             continue_attendance = False
-#             logging.info("All students have been detected. Stopping attendance process.")
+#             logging.info("All student_profiles have been detected. Stopping attendance process.")
 
 #     # Close the serial connection
 #     ser.close()
@@ -655,7 +655,7 @@ def main():
 
         if detected_students >= total_students:
             continue_attendance = False
-            logging.info("All students detected. Stopping attendance process.")
+            logging.info("All student_profiles detected. Stopping attendance process.")
 
     ser.close()
     logging.info("Serial connection closed.")

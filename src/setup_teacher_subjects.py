@@ -24,12 +24,12 @@ def setup_teacher_subjects_table():
     count = cursor.fetchone()[0]
     
     if count == 0:
-        # Get existing subjects from control_4 table
-        cursor.execute("SELECT DISTINCT subject FROM control_4 WHERE subject != ''")
+        # Get existing subjects from class_schedules table
+        cursor.execute("SELECT DISTINCT subject FROM class_schedules WHERE subject != ''")
         subjects = [row[0] for row in cursor.fetchall()]
         
-        # Get existing admin users
-        cursor.execute("SELECT username FROM users WHERE role = 'admin'")
+        # Get existing admin user_accounts
+        cursor.execute("SELECT username FROM user_accounts WHERE role = 'admin'")
         teachers = [row[0] for row in cursor.fetchall()]
         
         if teachers and subjects:

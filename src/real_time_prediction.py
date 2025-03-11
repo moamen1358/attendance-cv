@@ -10,7 +10,6 @@ import uuid
 import os
 from datetime import datetime
 import time
-from time_format_utils import convert_to_ampm_format, get_current_time_ampm, time_between
 
 MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit/insightface_model'
 MODEL_NAME = 'buffalo_sc'
@@ -63,7 +62,7 @@ def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
         # Retrieve data from the SQLite database
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT name, facial_features FROM presidents_embeds")
+        cursor.execute("SELECT name, facial_features FROM facial_recognition_data")
         rows = cursor.fetchall()
         conn.close()
 
@@ -85,58 +84,20 @@ def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
         st.error(f"Error creating or adding to the collection: {str(e)}")
         return None
 
-# Update the log_attendance function to use AM/PM time format
 def log_attendance(name, confidence, device_id=None):
-    """
-    Log student attendance to the database and update the class_attendance table
-    """
+    """Log student attendance to the database"""
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
         # Get current timestamp
-        now = datetime.now()
-        timestamp = now.strftime('%Y-%m-%d %H:%M:%S')
-        day_of_week = now.strftime('%A')
-        date = now.strftime('%Y-%m-%d')
-        
-        # Get current time in AM/PM format
-        current_time_ampm = get_current_time_ampm()
+        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         
         # Insert attendance record
         cursor.execute('''
-            INSERT INTO attendance_log (name, timestamp, confidence, device_id, day_of_week)
-            VALUES (?, ?, ?, ?, ?)
-        ''', (name, timestamp, confidence, device_id or 'default', day_of_week))
-        
-        # Find any classes happening now, using AM/PM format for comparison
-        cursor.execute("""
-            SELECT subject, start_time, end_time 
-            FROM control_4
-            WHERE day = ?
-        """, (day_of_week,))
-        
-        classes = cursor.fetchall()
-        current_classes = []
-        
-        # Use time_between helper to check if the current time is during class hours
-        for subject, start_time, end_time in classes:
-            # Ensure start_time and end_time are in AM/PM format
-            start_time_ampm = convert_to_ampm_format(start_time)
-            end_time_ampm = convert_to_ampm_format(end_time)
-            
-            # Check if current time is between start and end times
-            if time_between(current_time_ampm, start_time_ampm, end_time_ampm):
-                current_classes.append((subject, start_time_ampm, end_time_ampm))
-        
-        for subject, start_time, end_time in current_classes:
-            # Update or insert into class_attendance
-            cursor.execute("""
-                INSERT INTO class_attendance (student_name, class_date, subject, start_time, end_time, attended)
-                VALUES (?, ?, ?, ?, ?, 1)
-                ON CONFLICT(student_name, class_date, subject, start_time)
-                DO UPDATE SET attended = 1
-            """, (name, date, subject, start_time, end_time))
+            INSERT INTO attendance_records (name, timestamp, confidence, device_id)
+            VALUES (?, ?, ?, ?)
+        ''', (name, timestamp, confidence, device_id or 'default'))
         
         conn.commit()
         return True

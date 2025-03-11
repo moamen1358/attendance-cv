@@ -7,9 +7,7 @@ import json
 from datetime import datetime
 import os
 import uuid
-import secrets
-import string
-
+import hashlib
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -73,21 +71,21 @@ def register_face_from_image(image, name):
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
-        # Insert into presidents_embeds
+        # Insert into facial_recognition_data
         cursor.execute('''
-            INSERT INTO presidents_embeds (name, facial_features)
+            INSERT INTO facial_recognition_data (name, facial_features)
             VALUES (?, ?)
         ''', (name, embedding_str))
 
-        # Check if the name exists in the students table
+        # Check if the name exists in the student_profiles table
         existing_name = cursor.execute('''
-            SELECT name FROM students WHERE name = ?
+            SELECT name FROM student_profiles WHERE name = ?
         ''', (name,)).fetchone()
         
-        # Insert into students if the name does not exist
+        # Insert into student_profiles if the name does not exist
         if existing_name is None:
             cursor.execute('''
-                INSERT INTO students (name)
+                INSERT INTO student_profiles (name)
                 VALUES (?)
             ''', (name,))
         
@@ -123,59 +121,73 @@ def add_embedding_to_collection(name, embedding, collection):
         print(f"Error adding embedding to collection: {e}")
         return False
 
-def register_user_credentials(name, role, password=None):
-    """Register user credentials in the users table"""
+def generate_default_password(name, section):
+    """Generate a password based on name and section"""
+    # Format: {name}_{section_abbreviated}
+    # Example: "moamen" in "Section 1" → "moamen_sec1"
+    
+    # Get section number (default to "0" if not available)
+    section_num = "0"
+    if section and "Section" in section:
+        try:
+            section_num = section.split()[-1]  # Extract number from "Section X"
+        except:
+            pass
+    
+    # Create password
+    password = f"{name}_sec{section_num}"
+    return password
+
+def register_student(name, image, section=None):
+    # ... existing code ...
+    
+    # Save to database
     try:
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
-        # Check if username exists
-        cursor.execute("SELECT username FROM users WHERE username = ?", (name,))
+        # Check if student name already exists
+        cursor.execute("SELECT name FROM student_profiles WHERE name = ?", (name,))
         if cursor.fetchone():
-            # User already exists, update role
-            cursor.execute("UPDATE users SET role = ? WHERE username = ?", (role, name))
-        else:
-            # Generate a random password if none provided
-            if password is None:
-                # Generate a random 8-character password
-                password = ''.join(secrets.choice(string.ascii_letters + string.digits) 
-                                  for _ in range(8))
-            
-            # Insert new user
-            cursor.execute("""
-                INSERT INTO users (username, password, role)
-                VALUES (?, ?, ?)
-            """, (name, password, role))
+            st.error(f"Student '{name}' already exists.")
+            return False
+        
+        # Save student info with section
+        cursor.execute(
+            "INSERT INTO student_profiles (name, section) VALUES (?, ?)",
+            (name, section)
+        )
+        
+        # Create user with default password (hashed)
+        default_password = generate_default_password(name, section)
+        hashed_password = hashlib.md5(default_password.encode()).hexdigest()
+        cursor.execute(
+            "INSERT INTO user_accounts (username, password, role) VALUES (?, ?, 'student')",
+            (name, hashed_password)
+        )
+        
+        # ... existing embedding code ...
         
         conn.commit()
-        return True, password
-    except Exception as e:
-        st.error(f"Error registering user credentials: {str(e)}")
-        return False, None
+        
+        # Additional summary showing the default password
+        st.success(f"""
+        Student registered successfully:
+        - Name: {name}
+        - Section: {section}
+        - Default Login: {name}
+        - Default Password: {default_password}
+        """)
+        return True
+    except sqlite3.Error as e:
+        st.error(f"Database error: {e}")
+        return False
     finally:
-        if 'conn' in locals():
-            conn.close()
+        conn.close()
 
 def show_registration_form():
     st.header("Registration Form")
     name = st.text_input("Name", key="reg_name")
-    
-    # Add role selection dropdown
-    role = st.selectbox(
-        "Role",
-        options=["student", "admin"],
-        index=0,
-        help="Select user role - students can only view their own attendance, admins can access all features"
-    )
-    
-    # Option to set custom password (can be hidden behind expander)
-    with st.expander("Set Password"):
-        use_custom_password = st.checkbox("Set custom password", value=False)
-        if use_custom_password:
-            password = st.text_input("Password", type="password")
-        else:
-            password = None
-            st.info("A random password will be generated if none is provided")
     
     # Initialize session state for uploaded files
     if 'uploaded_files' not in st.session_state:
@@ -198,8 +210,7 @@ def show_registration_form():
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             if image is not None:
                 resized_image = cv2.resize(image, (150, 150))
-                cols[idx % 4].image(resized_image, channels="BGR", use_container_width=True, 
-                                   caption=f"Image {idx+1}")
+                cols[idx % 4].image(resized_image, channels="BGR", use_container_width=True)
             # Reset file pointer to beginning
             uploaded_file.seek(0)
     
@@ -214,14 +225,7 @@ def show_registration_form():
             image = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
             if image is not None:
                 if register_face_from_image(image, name):
-                    # Also register user credentials
-                    success, generated_password = register_user_credentials(name, role, password)
-                    if success:
-                        st.success(f"Successfully registered {name} as {role}!")
-                        if generated_password != password:  # Only show if auto-generated
-                            st.info(f"Generated password: {generated_password}")
-                    else:
-                        st.error("Failed to register user credentials")
+                    st.success(f"Successfully registered {name} from camera!")
                 else:
                     st.error("No face detected in the image")
     
@@ -239,14 +243,6 @@ def show_registration_form():
         
         if success_count > 0:
             st.success(f"Registered {success_count} images for {name}!")
-            # Also register user credentials
-            success, generated_password = register_user_credentials(name, role, password)
-            if success:
-                st.success(f"Successfully registered {name} as {role}!")
-                if generated_password != password:  # Only show if auto-generated
-                    st.info(f"Generated password: {generated_password}")
-            else:
-                st.error("Failed to register user credentials")
         else:
             st.error("No faces detected in any uploaded images")
     

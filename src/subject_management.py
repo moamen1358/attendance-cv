@@ -13,7 +13,7 @@ def get_db_connection():
 def get_all_subjects():
     """Get a list of all subjects in the system"""
     conn = get_db_connection()
-    query = "SELECT DISTINCT subject FROM control_4 WHERE subject != '' ORDER BY subject"
+    query = "SELECT DISTINCT subject FROM class_schedules WHERE subject != '' ORDER BY subject"
     df = pd.read_sql(query, conn)
     conn.close()
     return df['subject'].tolist()
@@ -21,7 +21,7 @@ def get_all_subjects():
 def get_all_teachers():
     """Get a list of all teachers in the system"""
     conn = get_db_connection()
-    query = "SELECT username FROM users WHERE role = 'admin' ORDER BY username"
+    query = "SELECT username FROM user_accounts WHERE role = 'admin' ORDER BY username"
     df = pd.read_sql(query, conn)
     conn.close()
     return df['username'].tolist()
@@ -132,7 +132,7 @@ def show_subject_management():
         query = """
         SELECT ts.teacher_username, ts.subject
         FROM teacher_subjects ts
-        JOIN users u ON ts.teacher_username = u.username
+        JOIN user_accounts u ON ts.teacher_username = u.username
         WHERE u.role = 'admin'
         ORDER BY ts.teacher_username, ts.subject
         """

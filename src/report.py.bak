@@ -1049,7 +1049,7 @@ def show_report():
             )
             
             # Export to Excel button
-            buffer = io.BytesIO()
+            buffer = io.Bytes.IO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 table_df.to_excel(writer, sheet_name='Class Attendance', index=False)
             st.download_button(
@@ -1085,7 +1085,7 @@ def show_report():
             st.dataframe(display_df, hide_index=True, use_container_width=True)
             
             # Export to Excel button
-            buffer = io.BytesIO()
+            buffer = io.Bytes.IO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 display_df.to_excel(writer, sheet_name='Attendance Logs', index=False)
             st.download_button(

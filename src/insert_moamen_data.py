@@ -17,23 +17,23 @@ def ensure_user_exists(username="moamen", role="student"):
     conn = get_db_connection()
     cursor = conn.cursor()
     
-    # Check if user exists in users table
-    cursor.execute("SELECT username FROM users WHERE username = ?", (username,))
+    # Check if user exists in user_accounts table
+    cursor.execute("SELECT username FROM user_accounts WHERE username = ?", (username,))
     if not cursor.fetchone():
         print(f"Creating user '{username}'...")
         # Create user
         cursor.execute(
-            "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+            "INSERT INTO user_accounts (username, password, role) VALUES (?, ?, ?)",
             (username, "password123", role)
         )
         print(f"User '{username}' created with password 'password123'")
     
-    # Check if user exists in students table
-    cursor.execute("SELECT name FROM students WHERE name = ?", (username,))
+    # Check if user exists in student_profiles table
+    cursor.execute("SELECT name FROM student_profiles WHERE name = ?", (username,))
     if not cursor.fetchone():
-        print(f"Adding '{username}' to students table...")
+        print(f"Adding '{username}' to student_profiles table...")
         cursor.execute(
-            "INSERT INTO students (name) VALUES (?)",
+            "INSERT INTO student_profiles (name) VALUES (?)",
             (username,)
         )
     
@@ -59,7 +59,7 @@ def get_schedule_for_range(start_date, end_date):
         
         query = """
         SELECT subject, start_time, end_time, type
-        FROM control_4
+        FROM class_schedules
         WHERE day = ? AND subject != ''
         ORDER BY start_time
         """
@@ -118,7 +118,7 @@ def generate_attendance_logs(username, classes, attendance_rate=0.8):
         if attended:
             attended_count += 1
             
-            # Record in class_attendance table
+            # Record in class_attendance_records table
             cursor.execute("""
                 INSERT OR REPLACE INTO class_attendance 
                     (student_name, class_date, subject, start_time, end_time, attended)
@@ -156,7 +156,7 @@ def generate_attendance_logs(username, classes, attendance_rate=0.8):
                     
                     # Insert log
                     cursor.execute("""
-                        INSERT INTO attendance_log 
+                        INSERT INTO attendance_records 
                             (name, timestamp, confidence, device_id, day_of_week)
                         VALUES (?, ?, ?, ?, ?)
                     """, (
@@ -220,8 +220,8 @@ def main():
     cursor = conn.cursor()
     
     print(f"Clearing existing attendance data for user '{username}'...")
-    cursor.execute("DELETE FROM attendance_log WHERE name = ?", (username,))
-    cursor.execute("DELETE FROM class_attendance WHERE student_name = ?", (username,))
+    cursor.execute("DELETE FROM attendance_records WHERE name = ?", (username,))
+    cursor.execute("DELETE FROM class_attendance_records WHERE student_name = ?", (username,))
     conn.commit()
     conn.close()
     

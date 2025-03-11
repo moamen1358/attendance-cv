@@ -73,7 +73,7 @@ def show_app():
                 if 'user_role' not in st.session_state:
                     conn = sqlite3.connect('attendance_system.db')
                     cursor = conn.cursor()
-                    cursor.execute("SELECT role FROM users WHERE username = ?", 
+                    cursor.execute("SELECT role FROM user_accounts WHERE username = ?", 
                                  (st.session_state.username,))
                     result = cursor.fetchone()
                     conn.close()
@@ -99,7 +99,7 @@ def show_app():
     user_role = st.session_state.get('user_role', 'student')
     username = st.session_state.get('username', 'User')
     
-    # Initialize show_sidebar state - now default to TRUE for admin users
+    # Initialize show_sidebar state - now default to TRUE for admin user_accounts
     if 'show_sidebar' not in st.session_state:
         st.session_state.show_sidebar = True if user_role == 'admin' else False
     
@@ -159,7 +159,7 @@ def show_app():
         # Use consistent method to hide sidebar
         st.markdown("""
         <script>
-        // Hide sidebar for professor users with !important to prevent CSS conflicts
+        // Hide sidebar for professor user_accounts with !important to prevent CSS conflicts
         document.addEventListener('DOMContentLoaded', function() {
             const style = document.createElement('style');
             style.innerHTML = `
@@ -215,7 +215,7 @@ def show_app():
         # Apply the same sidebar hiding technique for consistency
         st.markdown("""
         <script>
-        // Hide sidebar for student users with !important to prevent CSS conflicts
+        // Hide sidebar for student user_accounts with !important to prevent CSS conflicts
         document.addEventListener('DOMContentLoaded', function() {
             const style = document.createElement('style');
             style.innerHTML = `

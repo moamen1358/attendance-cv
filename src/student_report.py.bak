@@ -149,7 +149,7 @@ def check_attendance(student_name, date, start_time, end_time):
     
     Args:
         student_name (str): Name of the student
-        date (str): Date in format 'YYYY-MM-DD'class_attendance
+        date (str): Date in format 'YYYY-MM-DD'
         start_time (str): Class start time (e.g., '9:00 AM')
         end_time (str): Class end time (e.g., '11:00 AM')
     
@@ -212,7 +212,7 @@ def check_attendance(student_name, date, start_time, end_time):
     
     # Insert the result into class_attendance for future lookups
     insert_query = """
-    INSERT OR IGNORE INTO class_attendance_records
+    INSERT OR IGNORE INTO class_attendance 
         (student_name, class_date, subject, start_time, end_time, attended)
     VALUES (?, ?, ?, ?, ?, ?)
     """

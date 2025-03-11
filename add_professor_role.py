@@ -9,18 +9,18 @@ def update_database_schema():
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
 
-    print("Checking existing users table...")
+    print("Checking existing user_accounts table...")
     cursor.execute("PRAGMA table_info(users)")
     columns = [col[1] for col in cursor.fetchall()]
 
     if 'role' in columns:
-        print("Role column already exists in users table")
+        print("Role column already exists in user_accounts table")
     else:
-        print("Adding role column to users table")
-        cursor.execute("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'student'")
+        print("Adding role column to user_accounts table")
+        cursor.execute("ALTER TABLE user_accounts ADD COLUMN role TEXT DEFAULT 'student'")
         conn.commit()
     
-    # Add sample users with proper password hashing
+    # Add sample user_accounts with proper password hashing
     test_users = [
         ('student', 'student123', 'student'),
         ('professor', 'professor123', 'professor'),
@@ -32,32 +32,32 @@ def update_database_schema():
         hashed_password = hashlib.md5(password.encode()).hexdigest()
         
         # Check if user exists
-        cursor.execute("SELECT username FROM users WHERE username = ?", (username,))
+        cursor.execute("SELECT username FROM user_accounts WHERE username = ?", (username,))
         if cursor.fetchone():
             print(f"Updating user '{username}' with role '{role}'")
             cursor.execute(
-                "UPDATE users SET password = ?, role = ? WHERE username = ?",
+                "UPDATE user_accounts SET password = ?, role = ? WHERE username = ?",
                 (hashed_password, role, username)
             )
         else:
             print(f"Creating user '{username}' with role '{role}'")
             cursor.execute(
-                "INSERT INTO users (username, password, role) VALUES (?, ?, ?)",
+                "INSERT INTO user_accounts (username, password, role) VALUES (?, ?, ?)",
                 (username, hashed_password, role)
             )
             
-            # Add to students table if student role
+            # Add to student_profiles table if student role
             if role == 'student':
-                cursor.execute("SELECT name FROM students WHERE name = ?", (username,))
+                cursor.execute("SELECT name FROM student_profiles WHERE name = ?", (username,))
                 if not cursor.fetchone():
-                    cursor.execute("INSERT INTO students (name) VALUES (?)", (username,))
-                    print(f"Added '{username}' to students table")
+                    cursor.execute("INSERT INTO student_profiles (name) VALUES (?)", (username,))
+                    print(f"Added '{username}' to student_profiles table")
 
     # Commit changes
     conn.commit()
     
     # Verify user roles
-    cursor.execute("SELECT username, role FROM users")
+    cursor.execute("SELECT username, role FROM user_accounts")
     print("\nUser roles in database:")
     for user, role in cursor.fetchall():
         print(f"  {user}: {role}")

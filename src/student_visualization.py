@@ -36,7 +36,7 @@ def create_attendance_sunburst(student_name, start_date=None, end_date=None):
         END as day_name,
         SUM(ca.attended) as attended_count,
         COUNT(*) as total_count
-    FROM class_attendance ca
+    FROM class_attendance_records ca
     WHERE ca.student_name = ?
     """
     
@@ -199,7 +199,7 @@ def create_weekly_heatmap(student_name, weeks=4, start_date=None):
     else:
         # Get the most recent class date for the student
         query = """
-        SELECT MAX(class_date) FROM class_attendance
+        SELECT MAX(class_date) FROM class_attendance_records
         WHERE student_name = ?
         """
         cursor = conn.cursor()
@@ -222,7 +222,7 @@ def create_weekly_heatmap(student_name, weeks=4, start_date=None):
         strftime('%W', ca.class_date) as week_num,
         SUM(ca.attended) as attended_count,
         COUNT(*) as total_count
-    FROM class_attendance ca
+    FROM class_attendance_records ca
     WHERE ca.student_name = ?
         AND ca.class_date >= ?
         AND ca.class_date <= ?
@@ -375,7 +375,7 @@ def create_subject_radial_chart(student_name, start_date=None, end_date=None, mi
         ca.subject,
         SUM(ca.attended) as attended_count,
         COUNT(*) as total_count
-    FROM class_attendance ca
+    FROM class_attendance_records ca
     WHERE ca.student_name = ?
     """
     
