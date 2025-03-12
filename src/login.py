@@ -23,16 +23,35 @@ def check_credentials(username, password):
     return result
 
 def get_available_users():
-    """Get a list of available user_accounts from the database"""
+    """
+    Get a list of available users from the database
+    Returns a list of tuples (username, role)
+    """
     conn = create_connection()
     cursor = conn.cursor()
     
-    # Query all user_accounts and their roles
-    cursor.execute("SELECT username, role FROM user_accounts")
-    users = cursor.fetchall()
-    conn.close()
+    try:
+        # Check if we're using the old table name or the new one
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='users' OR name='user_accounts')")
+        result = cursor.fetchone()
+        
+        if result:
+            table_name = result[0]
+            # Update to fetch both username and role
+            cursor.execute(f"SELECT username, role FROM {table_name}")
+            user_accounts = cursor.fetchall()  # This will return [(username1, role1), (username2, role2), ...]
+        else:
+            # If no table exists yet
+            user_accounts = []
+            
+        return user_accounts
     
-    return user_accounts
+    except sqlite3.Error as e:
+        st.error(f"Database error: {e}")
+        return []
+    
+    finally:
+        conn.close()
 
 def get_user_section(username):
     """Get the section for a student user (if available)"""
@@ -72,17 +91,17 @@ def show_login():
         else:
             st.error("Invalid username or password")
     
-    # Show available user_accounts from database
+    # Show available users from database
     with st.expander("Available Users"):
         users = get_available_users()
         if users:
-            st.write("Available user_accounts in the system:")
+            st.write("Available users in the system:")
             for user, role in users:
                 section = get_user_section(user) if role == "student" else "N/A"
                 st.write(f"- {user} (Role: {role}, Section: {section})")
             st.info("Note: Passwords are hashed in the database. Contact the administrator if you need access.")
         else:
-            st.warning("No user_accounts found in the database.")
+            st.warning("No users found in the database.")
 
 def main():
     # Initialize session state
