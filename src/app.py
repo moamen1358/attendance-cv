@@ -9,6 +9,7 @@ import subject_management
 import sqlite3
 import time
 from global_css_handler import apply_global_css, enforce_fixed_padding
+import enhanced_db_explorer
 
 def show_app():
     # Apply global CSS to ensure consistency across all pages
@@ -113,7 +114,7 @@ def show_app():
             "Subject Management": subject_management.show_subject_management,
             "Real-Time Recognition": real_time_prediction.show_real_time_prediction,
             "Registration": registration_form.show_registration_form,
-            "Database Explorer": db_explorer.show_db_explorer
+            "Database Explorer": enhanced_db_explorer.show_db_explorer
         }
         
         # Set default page to Subject Management if not already set or if was previously Reports
