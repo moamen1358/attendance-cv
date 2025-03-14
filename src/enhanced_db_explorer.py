@@ -1,1303 +1,665 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-from datetime import datetime, timedelta
-import os
-import json
 import re
-import io
-from PIL import Image
-import base64
+from datetime import datetime
 
-# Constants
-DATABASE_PATH = 'attendance_system.db'
-
-# Field suggestions for common fields
-DAY_SUGGESTIONS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-TIME_SUGGESTIONS = ['8:00 AM', '9:00 AM', '10:00 AM', '11:00 AM', '12:00 PM', '1:00 PM', '2:00 PM', 
-                   '3:00 PM', '4:00 PM', '5:00 PM', '6:00 PM', '7:00 PM', '8:00 PM']
-TYPE_SUGGESTIONS = ['lec', 'sec', 'lab', 'tut', 'sem']
-SECTION_SUGGESTIONS = ['SEC 1', 'SEC 2']
-TEACHER_TITLE_SUGGESTIONS = ['Dr.', 'Prof.', 'Mr.', 'Ms.', 'Mrs.']
-ROLE_SUGGESTIONS = ['student', 'professor', 'admin']
-
-# Table icons dictionary - add icons for known tables
-TABLE_ICONS = {
-    'class_schedules': '📅',
-    'attendance_records': '📝',
-    'student_profiles': '👨‍🎓',
-    'user_accounts': '👤',
-    'facial_recognition_data': '👁️',
-    'teacher_subjects': '👩‍🏫',
-    'class_attendance_records': '✓',
-    'system_metadata': '⚙️',
-    'sqlite_sequence': '🔢'
-}
-
-# Color scheme for tables
-TABLE_COLORS = {
-    'class_schedules': '#4CAF50',
-    'attendance_records': '#2196F3',
-    'student_profiles': '#FF9800',
-    'user_accounts': '#9C27B0',
-    'facial_recognition_data': '#F44336',
-    'teacher_subjects': '#3F51B5',
-    'class_attendance_records': '#607D8B',
-    'system_metadata': '#795548',
-}
-
-def get_db_connection():
-    """Create a connection to the database"""
-    return sqlite3.connect(DATABASE_PATH)
-
-def get_table_structure(table_name):
-    """Get the structure of a table"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+def execute_query(query, params=(), fetch=False, commit=False):
+    """
+    Execute a SQL query with error handling
     
-    cursor.execute(f"PRAGMA table_info({table_name})")
-    columns = cursor.fetchall()
+    Args:
+        query (str): SQL query to execute
+        params (tuple): Parameters for the query
+        fetch (bool): Whether to fetch results
+        commit (bool): Whether to commit changes
     
-    # Column info format: (cid, name, type, notnull, dflt_value, pk)
-    column_info = [{
-        'cid': col[0],
-        'name': col[1],
-        'type': col[2].lower(),
-        'notnull': col[3],
-        'default': col[4],
-        'pk': col[5]
-    } for col in columns]
-    
-    conn.close()
-    return column_info
-
-def get_table_stats(table_name):
-    """Get statistics about a table"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    stats = {
-        'name': table_name,
-        'icon': TABLE_ICONS.get(table_name, '📊'),
-        'color': TABLE_COLORS.get(table_name, '#757575'),
-        'row_count': 0,
-        'column_count': 0,
-        'has_primary_key': False,
-        'last_updated': None,
-        'size_kb': 0,
-        'related_tables': []
-    }
-    
+    Returns:
+        list or None: Query results if fetch=True, None otherwise
+    """
+    conn = None
     try:
-        # Get row count
-        cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
-        stats['row_count'] = cursor.fetchone()[0]
-        
-        # Get column count and check for primary key
-        cursor.execute(f"PRAGMA table_info({table_name})")
-        columns = cursor.fetchall()
-        stats['column_count'] = len(columns)
-        
-        # Check for primary key
-        for col in columns:
-            if col[5] == 1:  # pk flag
-                stats['has_primary_key'] = True
-                break
-        
-        # Get last updated time (if created_at or updated_at column exists)
-        try:
-            cursor.execute(f"SELECT MAX(created_at) FROM {table_name}")
-            stats['last_updated'] = cursor.fetchone()[0]
-        except:
-            try:
-                cursor.execute(f"SELECT MAX(updated_at) FROM {table_name}")
-                stats['last_updated'] = cursor.fetchone()[0]
-            except:
-                pass
-        
-        # Get foreign keys to find related tables
-        cursor.execute(f"PRAGMA foreign_key_list({table_name})")
-        foreign_keys = cursor.fetchall()
-        
-        for fk in foreign_keys:
-            stats['related_tables'].append(fk[2])  # [2] is the referenced table
-        
-        # Get approximate size (very rough estimate)
-        try:
-            # Sample some rows to get average row size
-            cursor.execute(f"SELECT * FROM {table_name} LIMIT 10")
-            sample = cursor.fetchall()
-            
-            if sample:
-                # Estimate row size based on sample
-                sample_str = str(sample)
-                avg_row_size = len(sample_str) / len(sample)
-                stats['size_kb'] = round((avg_row_size * stats['row_count']) / 1024, 2)
-        except:
-            pass
-        
-    except Exception as e:
-        print(f"Error getting stats for table {table_name}: {e}")
-    
-    conn.close()
-    return stats
-
-def backup_database():
-    """Create a backup of the database"""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_file = f"attendance_system_backup_{timestamp}.db"
-    
-    try:
-        with sqlite3.connect(DATABASE_PATH) as src_conn:
-            with sqlite3.connect(backup_file) as backup_conn:
-                src_conn.backup(backup_conn)
-        st.success(f"Created database backup: {backup_file}")
-        return True, backup_file
-    except Exception as e:
-        st.error(f"Failed to create backup: {e}")
-        return False, None
-
-def get_all_tables():
-    """Get a list of all tables in the database"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
-    tables = [row[0] for row in cursor.fetchall()]
-    
-    conn.close()
-    return tables
-
-def get_filtered_table_data(table_name, where_clause="", order_by="", limit=1000, offset=0):
-    """Get data from a table with optional filtering"""
-    conn = get_db_connection()
-    
-    query = f"SELECT * FROM {table_name}"
-    
-    if where_clause:
-        query += f" WHERE {where_clause}"
-        
-    if order_by:
-        query += f" ORDER BY {order_by}"
-    else:
-        # Try to order by primary key
+        conn = sqlite3.connect('attendance_system.db')
         cursor = conn.cursor()
-        cursor.execute(f"PRAGMA table_info({table_name})")
-        columns = cursor.fetchall()
-        for col in columns:
-            if col[5] == 1:  # Primary key
-                query += f" ORDER BY {col[1]}"
-                break
-    
-    query += f" LIMIT {limit} OFFSET {offset}"
-    
-    df = pd.read_sql_query(query, conn)
-    
-    # Get total row count
-    count_query = f"SELECT COUNT(*) FROM {table_name}"
-    if where_clause:
-        count_query += f" WHERE {where_clause}"
-    
-    total_rows = pd.read_sql_query(count_query, conn).iloc[0, 0]
-    
-    conn.close()
-    return df, total_rows
-
-def get_field_suggestions(column_name, column_type):
-    """Get suggestions for common field types"""
-    column_name = column_name.lower()
-    
-    # Check for day field
-    if 'day' in column_name:
-        return DAY_SUGGESTIONS
-    
-    # Check for time fields
-    if 'time' in column_name:
-        return TIME_SUGGESTIONS
-    
-    # Check for class type field
-    if column_name == 'type':
-        return TYPE_SUGGESTIONS
-    
-    # Check for section field
-    if 'section' in column_name:
-        return SECTION_SUGGESTIONS
+        cursor.execute(query, params)
         
-    # Check for role field
-    if 'role' in column_name:
-        return ROLE_SUGGESTIONS
-    
-    # Boolean fields
-    if column_type in ('boolean', 'bool'):
-        return [True, False]
-    
-    # Default - no suggestions
-    return None
+        if fetch:
+            result = cursor.fetchall()
+        else:
+            result = None
+            
+        if commit:
+            conn.commit()
+            
+        return result
+    except sqlite3.Error as e:
+        # Add query info to error message
+        error_msg = f"SQLite error: {e}\nQuery: {query}\nParams: {params}"
+        st.error(error_msg)
+        raise Exception(error_msg)  # Re-raise for caller to handle
+    finally:
+        if conn:
+            conn.close()
 
-def get_unique_values(table_name, column_name, limit=100):
-    """Get unique values from a column for suggestions"""
-    conn = get_db_connection()
+def get_tables():
+    """Get list of all tables in the database"""
+    result = execute_query("SELECT name FROM sqlite_master WHERE type='table';", fetch=True)
+    return [table[0] for table in result] if result else []
+
+def get_table_columns(table):
+    """Get column info for a table"""
+    result = execute_query(f"PRAGMA table_info({table});", fetch=True)
+    return result if result else []
+
+def get_column_names(table):
+    """Get column names for a table"""
+    columns = get_table_columns(table)
+    return [col[1] for col in columns]
+
+def get_primary_key(table):
+    """Get primary key column(s) for a table"""
+    columns = get_table_columns(table)
+    return [col[1] for col in columns if col[5] > 0]  # col[5] is the pk flag
+
+def show_db_explorer():
+    """Display database explorer with full CRUD functionality"""
+    st.title("SQLite Database Manager")
+    st.write("Manage your database tables with this interactive tool")
+    
+    # Initialize session state
+    if 'tables' not in st.session_state:
+        st.session_state.tables = get_tables()
+    if 'selected_table' not in st.session_state:
+        st.session_state.selected_table = st.session_state.tables[0] if st.session_state.tables else None
+    if 'editing_row' not in st.session_state:
+        st.session_state.editing_row = None
+    if 'search_term' not in st.session_state:
+        st.session_state.search_term = ""
+    
+    # Move table selection to main content
+    tables = st.session_state.tables
+    
+    if not tables:
+        st.info("No tables found in the database. Create a new table below.")
+        
+        # Move create table functionality to main content for empty database
+        create_new_table()
+    else:
+        # Table selection at the top of main content
+        # Modified to use full width instead of columns since refresh button is removed
+        selected_table = st.selectbox(
+            "Select Table",
+            tables,
+            index=tables.index(st.session_state.selected_table) if st.session_state.selected_table in tables else 0,
+            key="table_selector"
+        )
+        
+        if selected_table != st.session_state.selected_table:
+            st.session_state.selected_table = selected_table
+            st.session_state.editing_row = None
+            st.session_state.search_term = ""
+            st.rerun()
+        
+        table = st.session_state.selected_table
+        columns = get_column_names(table)
+        primary_keys = get_primary_key(table)
+        
+        # Get row count
+        row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
+        row_count = row_count_result[0][0] if row_count_result else 0
+        
+        # Table header with stats
+        st.markdown(f"""
+        <div style="background-color:#f5f5f5; padding:10px; border-radius:5px; margin:10px 0;">
+            <h3 style="margin:0;">📊 {table}</h3>
+            <p style="margin:5px 0;"><b>Columns:</b> {len(columns)} | <b>Rows:</b> {row_count} | <b>Primary Key:</b> {', '.join(primary_keys) if primary_keys else 'None'}</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Create tabs for different operations - UPDATED to include Database Operations tab
+        view_tab, add_tab, delete_tab, sql_tab, manage_tab = st.tabs(["View Data", "Add Row", "Delete Records", "SQL Query", "Database Operations"])
+        
+        # VIEW DATA TAB
+        with view_tab:
+            # Search control only (REMOVE pagination controls)
+            search_col = st.columns(1)[0]
+            
+            with search_col:
+                search_term = st.text_input("🔍 Search in any column:", value=st.session_state.search_term)
+                if search_term != st.session_state.search_term:
+                    st.session_state.search_term = search_term
+                    st.rerun()
+        
+            # Get row count
+            row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
+            row_count = row_count_result[0][0] if row_count_result else 0
+        
+            # Build query without pagination limits
+            if st.session_state.search_term:
+                # Build search condition for each column
+                search_conditions = []
+                for col in columns:
+                    search_conditions.append(f"{col} LIKE ?")
+                
+                # Combine conditions with OR (removed LIMIT and OFFSET)
+                search_query = f"SELECT * FROM {table} WHERE " + " OR ".join(search_conditions)
+                
+                # Prepare search parameters
+                search_params = [f"%{st.session_state.search_term}%"] * len(columns)
+                
+                # Execute search query
+                conn = sqlite3.connect('attendance_system.db')
+                df = pd.read_sql_query(search_query, conn, params=search_params)
+                conn.close()
+            else:
+                # Simple query without pagination
+                query = f"SELECT * FROM {table};"
+                conn = sqlite3.connect('attendance_system.db')
+                df = pd.read_sql_query(query, conn)
+                conn.close()
+        
+            # Show record count with filter info
+            showing = len(df)
+            st.markdown(f"""
+                <div style="margin:10px 0;">
+                    <div>Showing <b>{showing}</b> of <b>{row_count:,}</b> records {f"(filtered)" if st.session_state.search_term else ""}</div>
+                </div>
+            """, unsafe_allow_html=True)
+        
+            # Display table data with edit functionality
+            if not df.empty:
+                edited_df = st.data_editor(
+                    df,
+                    hide_index=True,
+                    use_container_width=True,
+                    num_rows="fixed",
+                    key="data_editor"
+                )
+                
+                # Detect changes and update database
+                if not df.equals(edited_df):
+                    if st.button("Save Changes", type="primary"):
+                        try:
+                            # Find the changed rows
+                            for index, row in edited_df.iterrows():
+                                if not df.iloc[index].equals(row):
+                                    # Get primary key value for this row
+                                    pk_values = {}
+                                    for pk in primary_keys:
+                                        pk_values[pk] = df.iloc[index][pk]
+                                    
+                                    # Build UPDATE statement
+                                    update_cols = []
+                                    update_vals = []
+                                    
+                                    for col in columns:
+                                        if df.iloc[index][col] != row[col]:
+                                            update_cols.append(f"{col} = ?")
+                                            update_vals.append(row[col])
+                                    
+                                    # Add WHERE clause parameters
+                                    where_conditions = []
+                                    for pk, val in pk_values.items():
+                                        where_conditions.append(f"{pk} = ?")
+                                        update_vals.append(val)
+                                    
+                                    update_stmt = f"UPDATE {table} SET " + ", ".join(update_cols) + " WHERE " + " AND ".join(where_conditions)
+                                    
+                                    # Execute update
+                                    execute_query(update_stmt, tuple(update_vals), commit=True)
+                                    
+                            st.success("Data updated successfully!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error updating data: {e}")
+            else:
+                st.info("No data to display.")
+        
+        # ADD ROW TAB
+        with add_tab:
+            render_add_row_form(table, columns, primary_keys)
+        
+        # DELETE TAB
+        with delete_tab:
+            st.subheader(f"Delete Records from {table}")
+            
+            # Single record deletion
+            st.write("#### Delete Single Record")
+            if primary_keys:
+                with st.form("delete_single_form"):
+                    # For each primary key, create an input field
+                    pk_values = {}
+                    for pk in primary_keys:
+                        pk_values[pk] = st.text_input(f"{pk}:", key=f"delete_pk_{pk}")
+                    
+                    delete_submitted = st.form_submit_button("Delete Record", type="primary")
+                    
+                    if delete_submitted:
+                        # Build where clause
+                        where_conditions = []
+                        delete_vals = []
+                        
+                        for pk, val in pk_values.items():
+                            if val:  # Only include non-empty values
+                                where_conditions.append(f"{pk} = ?")
+                                delete_vals.append(val)
+                        
+                        if not where_conditions:
+                            st.error("Please provide at least one primary key value")
+                        else:
+                            # Build and execute DELETE statement
+                            delete_stmt = f"DELETE FROM {table} WHERE " + " AND ".join(where_conditions)
+                            
+                            # Execute delete with confirmation
+                            if st.checkbox("I confirm this deletion", key="confirm_single_delete"):
+                                try:
+                                    affected_rows = execute_query(delete_stmt, tuple(delete_vals), commit=True)
+                                    st.success("Record deleted successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error deleting record: {str(e)}")
+            else:
+                st.info("This table doesn't have a primary key. Use the bulk delete option below.")
+            
+            # Bulk delete option
+            st.write("#### Delete Multiple Records")
+            with st.form("delete_bulk_form"):
+                where_clause = st.text_area("WHERE Clause:", placeholder=f"Example: column_name = 'value' AND other_column > 10")
+                preview_button = st.form_submit_button("Preview Records to Delete")
+                
+                if preview_button and where_clause:
+                    try:
+                        # Preview what will be deleted
+                        preview_query = f"SELECT * FROM {table} WHERE {where_clause} LIMIT 10"
+                        conn = sqlite3.connect('attendance_system.db')
+                        preview_df = pd.read_sql_query(preview_query, conn)
+                        conn.close()
+                        
+                        # Get count of all records that will be deleted
+                        count_query = f"SELECT COUNT(*) FROM {table} WHERE {where_clause}"
+                        count_result = execute_query(count_query, fetch=True)
+                        total_count = count_result[0][0] if count_result else 0
+                        
+                        st.write(f"This will delete {total_count} records. Here's a preview of up to 10 records:")
+                        st.dataframe(preview_df, use_container_width=True)
+                        
+                        # Show delete button only after preview
+                        if st.checkbox("I confirm deletion of these records", key="confirm_bulk_delete"):
+                            delete_stmt = f"DELETE FROM {table} WHERE {where_clause}"
+                            try:
+                                execute_query(delete_stmt, commit=True)
+                                st.success(f"Successfully deleted {total_count} records!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error during bulk delete: {str(e)}")
+                    except Exception as e:
+                        st.error(f"Error in WHERE clause: {str(e)}")
+        
+        # SQL QUERY TAB
+        with sql_tab:
+            st.subheader("Run Custom SQL Query")
+            query = st.text_area("Enter SQL Query:", height=100, placeholder=f"Example: SELECT * FROM {table} WHERE column_name = 'value'")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                if st.button("🔍 Execute SELECT Query", use_container_width=True):
+                    if not query.strip():
+                        st.warning("Please enter a SQL query")
+                    elif query.strip().upper().startswith("SELECT"):
+                        try:
+                            conn = sqlite3.connect('attendance_system.db')
+                            result_df = pd.read_sql_query(query, conn)
+                            conn.close()
+                            
+                            st.success("Query executed successfully!")
+                            st.dataframe(result_df, use_container_width=True)
+                        except Exception as e:
+                            st.error(f"Error executing query: {e}")
+                    else:
+                        st.error("Only SELECT queries are allowed with this button.")
+            
+            with col2:
+                if st.button("⚠️ Execute Action Query", type="primary", use_container_width=True):
+                    if not query.strip():
+                        st.warning("Please enter a SQL query")
+                    elif query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+                        # Show confirmation checkbox
+                        if st.checkbox("I understand this will modify the database", key="confirm_action_query"):
+                            try:
+                                execute_query(query, commit=True)
+                                st.success("Query executed successfully!")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error executing query: {e}")
+                    else:
+                        st.error("Only INSERT, UPDATE, or DELETE queries are allowed with this button.")
+        
+        # DATABASE OPERATIONS TAB (new)
+        with manage_tab:
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.subheader("Create New Table")
+                create_new_table()
+            
+            with col2:
+                st.subheader("Delete Current Table")
+                if st.session_state.selected_table:
+                    st.warning(f"Are you sure you want to delete table '{st.session_state.selected_table}'?\nThis action cannot be undone!")
+                    confirm_name = st.text_input("Type the table name to confirm deletion:", key="confirm_delete_main")
+                    
+                    if st.button("🗑️ DELETE TABLE", type="primary", use_container_width=True):
+                        if confirm_name == st.session_state.selected_table:
+                            execute_query(f"DROP TABLE {st.session_state.selected_table};", commit=True)
+                            st.success(f"Table '{st.session_state.selected_table}' deleted successfully!")
+                            st.session_state.tables = get_tables()
+                            if st.session_state.tables:
+                                st.session_state.selected_table = st.session_state.tables[0]
+                            else:
+                                st.session_state.selected_table = None
+                            st.rerun()
+                        else:
+                            st.error("Table name doesn't match. Deletion cancelled.")
+                else:
+                    st.info("No table selected to delete.")
+    
+    # Remove database info sidebar completely - keep empty sidebar to prevent layout issues
+    with st.sidebar:
+        # Empty sidebar
+        pass
+
+# Add a new function for creating tables to avoid code duplication
+def create_new_table():
+    """Create a new table form component"""
+    new_table_name = st.text_input("Table Name", key="new_table_name_main")
+    
+    # Column definition section
+    st.write("Define Columns:")
+    col1, col2, col3 = st.columns([3, 2, 1])
+    with col1:
+        st.write("Name")
+    with col2:
+        st.write("Type")
+    with col3:
+        st.write("PK")
+        
+    # Initialize columns list if not exists
+    if 'new_table_columns' not in st.session_state:
+        st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
+        
+    # Display column inputs
+    columns_to_add = []
+    for i, col in enumerate(st.session_state.new_table_columns):
+        col1, col2, col3, col4 = st.columns([3, 2, 1, 0.5])
+        with col1:
+            col_name = st.text_input("", value=col["name"], key=f"col_name_main_{i}")
+        with col2:
+            col_type = st.selectbox("", ["TEXT", "INTEGER", "REAL", "BLOB", "DATETIME"], 
+                                   index=["TEXT", "INTEGER", "REAL", "BLOB", "DATETIME"].index(col["type"]),
+                                   key=f"col_type_main_{i}")
+        with col3:
+            col_pk = st.checkbox("", value=col["pk"], key=f"col_pk_main_{i}")
+        with col4:
+            # Only show delete button if there's more than one column
+            if len(st.session_state.new_table_columns) > 1:
+                if st.button("❌", key=f"del_col_main_{i}"):
+                    st.session_state.new_table_columns.pop(i)
+                    st.rerun()
+                    
+        columns_to_add.append({"name": col_name, "type": col_type, "pk": col_pk})
+    
+    # Update column definitions
+    st.session_state.new_table_columns = columns_to_add
+    
+    # Add column button
+    if st.button("➕ Add Column", key="add_column_main"):
+        st.session_state.new_table_columns.append({"name": "", "type": "TEXT", "pk": False})
+        st.rerun()
+    
+    # Create table button
+    if st.button("Create Table", key="create_table_main"):
+        if not new_table_name:
+            st.error("Please provide a table name")
+        else:
+            # Check if any columns are defined and have names
+            if not any(col["name"] for col in st.session_state.new_table_columns):
+                st.error("Please define at least one column with a name")
+            else:
+                # Build CREATE TABLE statement
+                column_defs = []
+                for col in st.session_state.new_table_columns:
+                    if col["name"]:
+                        col_def = f"{col['name']} {col['type']}"
+                        if col["pk"]:
+                            col_def += " PRIMARY KEY"
+                        column_defs.append(col_def)
+                        
+                if column_defs:
+                    create_stmt = f"CREATE TABLE {new_table_name} (\n" + ",\n".join(column_defs) + "\n);"
+                    
+                    # Execute create table
+                    try:
+                        execute_query(create_stmt, commit=True)
+                        st.success(f"Table '{new_table_name}' created successfully!")
+                        st.session_state.tables = get_tables()
+                        st.session_state.selected_table = new_table_name
+                        st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Error creating table: {e}")
+
+# Add these new helper functions for improved input fields
+def get_foreign_key_values(table_name, column_name):
+    """Get possible values for a foreign key column"""
+    conn = sqlite3.connect('attendance_system.db')
     cursor = conn.cursor()
     
+    # Get foreign key info
+    cursor.execute(f"PRAGMA foreign_key_list({table_name})")
+    fk_data = cursor.fetchall()
+    
+    # Check if this column is a foreign key
+    ref_table = None
+    ref_col = None
+    
+    for fk in fk_data:
+        if fk[3] == column_name:  # [3] is the "from" column
+            ref_table = fk[2]     # [2] is the referenced table
+            ref_col = fk[4]       # [4] is the referenced column
+            break
+    
+    if not ref_table:
+        return []
+    
+    # Get values from the referenced table
     try:
-        cursor.execute(f"SELECT DISTINCT {column_name} FROM {table_name} LIMIT {limit}")
-        values = [row[0] for row in cursor.fetchall() if row[0] is not None]
+        # First check if the table has a "name" column for better display
+        cursor.execute(f"PRAGMA table_info({ref_table})")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        if 'name' in columns:
+            # Include both ID and name for better display
+            cursor.execute(f"SELECT {ref_col}, name FROM {ref_table} ORDER BY name")
+            values = [(str(row[0]), f"{row[0]} - {row[1]}") for row in cursor.fetchall()]
+        else:
+            # Just use the referenced column value
+            cursor.execute(f"SELECT {ref_col} FROM {ref_table} ORDER BY {ref_col}")
+            values = [(str(row[0]), str(row[0])) for row in cursor.fetchall()]
+        
         return values
-    except:
+    except Exception as e:
+        st.warning(f"Error fetching foreign key values: {e}")
         return []
     finally:
         conn.close()
 
-def delete_record(table_name, pk_column, pk_value):
-    """Delete a record from a table"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+def get_common_values(column_name):
+    """Return common values for known column types"""
+    column_name_lower = column_name.lower()
     
-    try:
-        # Create a backup before deleting
-        backup_success, _ = backup_database()
-        if not backup_success:
-            if not st.warning("Failed to create backup. Continue anyway?", icon="⚠️"):
-                st.error("Delete operation canceled")
-                return False
+    # Role columns
+    if 'role' in column_name_lower:
+        return [('admin', 'Administrator'), ('user', 'Regular User'), ('student', 'Student'), ('professor', 'Professor')]
+    
+    # Status columns
+    elif 'status' in column_name_lower:
+        return [('active', 'Active'), ('inactive', 'Inactive'), ('pending', 'Pending')]
         
-        # Delete the record
-        cursor.execute(f"DELETE FROM {table_name} WHERE {pk_column} = ?", (pk_value,))
-        conn.commit()
+    # Day columns
+    elif 'day' in column_name_lower:
+        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        return [(day, day) for day in days]
         
-        rows_affected = cursor.rowcount
-        if rows_affected > 0:
-            st.success(f"Deleted {rows_affected} record(s)")
-            return True
-        else:
-            st.warning("No records were deleted")
-            return False
-    except Exception as e:
-        st.error(f"Error deleting record: {e}")
-        return False
-    finally:
-        conn.close()
+    # Yes/No or boolean-like columns
+    elif any(x in column_name_lower for x in ['is_', 'has_', 'enable', 'active', 'visible', 'allow']):
+        return [('1', 'Yes'), ('0', 'No')]
+    
+    # No common values detected
+    return []
 
-def bulk_delete_records(table_name, where_clause):
-    """Delete multiple records based on a WHERE clause"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
+# ADD ROW TAB - enhanced version
+def render_add_row_form(table, columns, primary_keys):
+    """Render an enhanced form for adding a new row with smart input fields"""
+    st.subheader(f"Add New Row to {table}")
     
-    try:
-        # First count how many records will be deleted
-        cursor.execute(f"SELECT COUNT(*) FROM {table_name} WHERE {where_clause}")
-        count = cursor.fetchone()[0]
+    with st.form("add_row_form"):
+        # Create input fields for each column
+        new_row_data = {}
         
-        if count == 0:
-            st.warning("No records match the criteria")
-            return False
-            
-        # Create a backup before deleting
-        backup_success, _ = backup_database()
-        if not backup_success:
-            if not st.warning("Failed to create backup. Continue anyway?", icon="⚠️"):
-                st.error("Delete operation canceled")
-                return False
-        
-        # Delete the records
-        cursor.execute(f"DELETE FROM {table_name} WHERE {where_clause}")
-        conn.commit()
-        
-        rows_affected = cursor.rowcount
-        if rows_affected > 0:
-            st.success(f"Deleted {rows_affected} record(s)")
-            return True
-        else:
-            st.warning("No records were deleted")
-            return False
-    except Exception as e:
-        st.error(f"Error deleting records: {e}")
-        return False
-    finally:
-        conn.close()
-
-def insert_record(table_name, values):
-    """Insert a new record into a table"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # Filter out None values from autoincrement primary keys
-        columns = []
-        filtered_values = []
-        
-        for col, val in values.items():
-            if val is not None:
-                columns.append(col)
-                filtered_values.append(val)
-        
-        # Build and execute query
-        columns_str = ', '.join(columns)
-        placeholders = ', '.join(['?' for _ in columns])
-        
-        query = f"INSERT INTO {table_name} ({columns_str}) VALUES ({placeholders})"
-        
-        cursor.execute(query, filtered_values)
-        conn.commit()
-        
-        st.success(f"Record inserted successfully (ID: {cursor.lastrowid})")
-        return True
-    except Exception as e:
-        st.error(f"Error inserting record: {e}")
-        return False
-    finally:
-        conn.close()
-
-def update_record(table_name, pk_column, pk_value, values):
-    """Update a record in a table"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # Filter out None values and the primary key
-        updates = {k: v for k, v in values.items() if k != pk_column and v is not None}
-        
-        if not updates:
-            st.warning("No fields to update")
-            return False
-        
-        # Build and execute query
-        set_clause = ', '.join([f"{col} = ?" for col in updates.keys()])
-        values_list = list(updates.values()) + [pk_value]  # Add pk_value at the end for WHERE clause
-        
-        query = f"UPDATE {table_name} SET {set_clause} WHERE {pk_column} = ?"
-        
-        cursor.execute(query, values_list)
-        conn.commit()
-        
-        if cursor.rowcount > 0:
-            st.success(f"Record updated successfully")
-            return True
-        else:
-            st.warning("No changes made")
-            return False
-    except Exception as e:
-        st.error(f"Error updating record: {e}")
-        return False
-    finally:
-        conn.close()
-
-def execute_custom_query(query, is_select=True):
-    """Execute a custom SQL query"""
-    conn = get_db_connection()
-    
-    try:
-        if is_select:
-            # SELECT query
-            df = pd.read_sql_query(query, conn)
-            return True, df
-        else:
-            # Non-SELECT query
-            cursor = conn.cursor()
-            cursor.execute(query)
-            conn.commit()
-            return True, cursor.rowcount
-    except Exception as e:
-        return False, str(e)
-    finally:
-        conn.close()
-
-def delete_record_by_column(table_name, column_name, column_value):
-    """Delete a record from a table based on any column value"""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # Create a backup before deleting
-        backup_success, _ = backup_database()
-        if not backup_success:
-            if not st.warning("Failed to create backup. Continue anyway?", icon="⚠️"):
-                st.error("Delete operation canceled")
-                return False
-        
-        # Delete the record
-        cursor.execute(f"DELETE FROM {table_name} WHERE {column_name} = ?", (column_value,))
-        conn.commit()
-        
-        rows_affected = cursor.rowcount
-        if rows_affected > 0:
-            st.success(f"Deleted {rows_affected} record(s)")
-            return True
-        else:
-            st.warning("No records were deleted")
-            return False
-    except Exception as e:
-        st.error(f"Error deleting record: {e}")
-        return False
-    finally:
-        conn.close()
-
-def render_editable_table(df, table_name, column_info):
-    """Render an editable table with enhanced delete buttons"""
-    # Identify primary key column
-    pk_column = next((col['name'] for col in column_info if col['pk'] == 1), None)
-    
-    # Allow editing with Streamlit's built-in data editor
-    edited_df = st.data_editor(
-        df,
-        use_container_width=True,
-        height=400,
-        hide_index=True,
-        num_rows="fixed",
-    )
-    
-    # Check for any changes
-    if not df.equals(edited_df):
-        changes = ~(df == edited_df).all(axis=1)
-        changed_rows = df[changes]
-        
-        if not changed_rows.empty:
-            st.info(f"Changes detected in {len(changed_rows)} row(s)")
-            
-            if st.button("Save Changes"):
-                # Update each changed row
-                for idx in changed_rows.index:
-                    pk_value = df.loc[idx, pk_column] if pk_column else idx  # Use index if no PK
-                    new_values = edited_df.loc[idx].to_dict()  # Get new values
+        # Create 2 columns layout for better form organization
+        col_size = 2
+        for i in range(0, len(columns), col_size):
+            cols = st.columns(min(col_size, len(columns) - i))
+            for j, col_idx in enumerate(range(i, min(i + col_size, len(columns)))):
+                col_name = columns[col_idx]
+                
+                # Get column type information
+                col_info = get_table_columns(table)[col_idx]
+                col_type = col_info[2].upper()  # [2] is the type
+                
+                with cols[j]:
+                    # Skip auto-increment primary keys
+                    if (col_name in primary_keys and len(primary_keys) == 1 and 
+                        "INTEGER" in col_type):
+                        st.text_input(col_name, value="(Auto)", disabled=True)
+                        continue
                     
-                    # Update the record
-                    if pk_column:
-                        update_record(table_name, pk_column, pk_value, new_values)
-                    else:
-                        st.warning(f"Cannot update row {idx} - no primary key available")
-                
-                st.rerun()  # Refresh to show updated data
-
-    # Add delete functionality
-    with st.expander("Delete Records", expanded=False):
-        st.subheader("Delete Options")
-        
-        # Option 1: Delete by any column
-        st.markdown("#### Delete by Column Value")
-        
-        # Select any column
-        column_options = df.columns.tolist()
-        selected_column = st.selectbox("Select column:", column_options)
-        
-        # Get unique values from the selected column
-        unique_values = df[selected_column].unique()
-        selected_value = st.selectbox(f"Select value from {selected_column}:", unique_values)
-        
-        if st.button("Delete Records with Selected Value"):
-            confirm = st.checkbox("I confirm I want to delete records where " + 
-                               f"{selected_column} = '{selected_value}'")
-            if confirm:
-                if delete_record_by_column(table_name, selected_column, selected_value):
-                    st.rerun()
-        
-        # Option 2: Bulk delete with WHERE clause
-        st.markdown("#### Advanced: Delete with WHERE Clause")
-        where_clause = st.text_input("WHERE clause:", placeholder="e.g., active = 0 or name = 'John'")
-        
-        if where_clause and st.button("Preview Matching Records"):
-            # Show preview of what will be deleted
-            try:
-                preview_query = f"SELECT * FROM {table_name} WHERE {where_clause} LIMIT 10"
-                success, preview_data = execute_custom_query(preview_query)
-                
-                if success:
-                    if not preview_data.empty:
-                        st.write(f"Preview of records to be deleted (showing up to 10):")
-                        st.dataframe(preview_data)
-                        
-                        # Count total
-                        count_query = f"SELECT COUNT(*) FROM {table_name} WHERE {where_clause}"
-                        _, count_result = execute_custom_query(count_query)
-                        total_count = count_result.iloc[0, 0]
-                        
-                        st.warning(f"This will delete {total_count} record(s)")
-                        
-                        confirm = st.checkbox(f"I confirm I want to delete these {total_count} records")
-                        if confirm and st.button("Confirm Delete"):
-                            if bulk_delete_records(table_name, where_clause):
-                                st.rerun()
-                    else:
-                        st.info("No records match this criteria")
-                else:
-                    st.error(f"Error previewing records: {preview_data}")
-            except Exception as e:
-                st.error(f"Error in WHERE clause: {e}")
-
-def add_new_record_form(table_name, column_info):
-    """Create a form to add a new record with smart suggestions"""
-    with st.expander("Add New Record", expanded=False):
-        with st.form(key=f"add_record_{table_name}"):
-            # Create input fields for each column
-            values = {}
-            
-            for col in column_info:
-                col_name = col['name']
-                col_type = col['type']
-                is_pk = col['pk'] == 1
-                not_null = col['notnull'] == 1
-                default_val = col['default']
-                
-                # Skip autoincrement primary keys
-                if is_pk and col_type == 'integer':
-                    values[col_name] = None
-                    continue
-                
-                # Format label
-                label = f"{col_name} ({col_type})"
-                if not_null:
-                    label += " *"
-                
-                # Get suggestions for this field
-                suggestions = get_field_suggestions(col_name, col_type)
-                
-                # If no predefined suggestions, try to get unique values from the table
-                if not suggestions and not is_pk:
-                    suggestions = get_unique_values(table_name, col_name)
-                
-                # Create appropriate input widget based on column type and suggestions
-                if suggestions:
-                    # Add "Other" option for custom input
-                    if not isinstance(suggestions, (bool, int, float)):
-                        suggestions = list(suggestions) + ["-- Custom --"]
-                    
-                    selection = st.selectbox(
-                        label, 
-                        options=suggestions,
-                        key=f"add_{table_name}_{col_name}"
-                    )
-                    
-                    # Handle custom input
-                    if selection == "-- Custom --":
-                        custom_value = st.text_input(
-                            f"Custom {col_name}:",
-                            key=f"custom_{table_name}_{col_name}"
+                    # Check if this is a foreign key
+                    fk_values = get_foreign_key_values(table, col_name)
+                    if fk_values:
+                        # Add an empty option for nullable foreign keys
+                        options = [('', '-- Select Value --')] + fk_values
+                        selected = st.selectbox(
+                            col_name,
+                            options=options,
+                            format_func=lambda x: x[1],  # Display the formatted value
+                            key=f"fk_{table}_{col_name}"
                         )
-                        values[col_name] = custom_value
-                    else:
-                        values[col_name] = selection
-                
-                elif 'date' in col_type:
-                    # Date picker
-                    values[col_name] = st.date_input(
-                        label,
-                        value=datetime.now().date(),
-                        key=f"add_{table_name}_{col_name}"
-                    )
-                
-                elif 'time' in col_type or ('time' in col_name.lower() and 'stamp' not in col_name.lower()):
-                    # Time input for time fields
-                    values[col_name] = st.time_input(
-                        label,
-                        value=datetime.now().time(),
-                        key=f"add_{table_name}_{col_name}"
-                    )
-                    
-                    # Convert time to string for storage
-                    if values[col_name]:
-                        values[col_name] = values[col_name].strftime("%H:%M:%S")
-                
-                elif 'int' in col_type:
-                    # Integer input
-                    values[col_name] = st.number_input(
-                        label,
-                        step=1,
-                        value=0 if not_null else None,
-                        key=f"add_{table_name}_{col_name}"
-                    )
-                
-                elif col_type in ('real', 'double', 'float'):
-                    # Float input
-                    values[col_name] = st.number_input(
-                        label,
-                        value=0.0 if not_null else None,
-                        key=f"add_{table_name}_{col_name}"
-                    )
-                
-                elif col_type in ('boolean', 'bool'):
-                    # Boolean input
-                    values[col_name] = st.checkbox(
-                        label,
-                        key=f"add_{table_name}_{col_name}"
-                    )
-                
-                else:
-                    # Default text input
-                    values[col_name] = st.text_input(
-                        label,
-                        key=f"add_{table_name}_{col_name}"
-                    )
-            
-            submit = st.form_submit_button("Add Record")
-            
-            if submit:
-                # Check required fields
-                missing_fields = [col['name'] for col in column_info 
-                                 if col['notnull'] == 1 and not col['pk'] and not values.get(col['name'])]
-                
-                if missing_fields:
-                    st.error(f"Missing required fields: {', '.join(missing_fields)}")
-                else:
-                    # Insert the record
-                    if insert_record(table_name, values):
-                        st.rerun()  # Refresh to show the new record
-
-def create_data_visualization(df, table_name):
-    """Create visualizations for data exploration"""
-    if df.empty:
-        st.info("No data available for visualization")
-        return
-    
-    # Only show visualization options if there's enough data
-    if len(df) < 2:
-        st.info("Not enough data for visualization")
-        return
-    
-    st.subheader("Data Visualization")
-    
-    # Determine which columns might be good for visualization
-    numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
-    categorical_cols = df.select_dtypes(include=['object']).columns.tolist()
-    date_cols = []
-    
-    # Try to identify date columns
-    for col in df.columns:
-        if 'date' in col.lower() or 'time' in col.lower():
-            try:
-                pd.to_datetime(df[col])
-                date_cols.append(col)
-            except:
-                pass
-    
-    # Let user choose visualization type
-    viz_type = st.selectbox(
-        "Select Visualization Type:",
-        options=[
-            "Bar Chart (Categorical)",
-            "Line Chart (Time Series)",
-            "Scatter Plot (Correlation)",
-            "Histogram (Distribution)",
-            "Box Plot (Distribution)"
-        ]
-    )
-    
-    if viz_type == "Bar Chart (Categorical)":
-        if not categorical_cols:
-            st.warning("No categorical columns available for bar chart")
-            return
-            
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            cat_col = st.selectbox("Select Category Column:", categorical_cols)
-        
-        with col2:
-            if numeric_cols:
-                value_col = st.selectbox("Select Value Column (optional):", ["Count"] + numeric_cols)
-            else:
-                value_col = "Count"
-        
-        # Create dataframe for the chart
-        if value_col == "Count":
-            chart_data = df[cat_col].value_counts().reset_index()
-            chart_data.columns = [cat_col, 'Count']
-            
-            # Create bar chart
-            fig = px.bar(
-                chart_data,
-                x=cat_col,
-                y='Count',
-                title=f"Count of {cat_col} in {table_name}",
-                labels={cat_col: cat_col, 'Count': 'Count'},
-                color_discrete_sequence=['#2196F3'],
-                template="plotly_white"
-            )
-        else:
-            # Group by category and calculate mean of value column
-            chart_data = df.groupby(cat_col)[value_col].agg(['mean', 'sum', 'count']).reset_index()
-            
-            # Create bar chart with option to show mean or sum
-            agg_func = st.radio("Aggregation:", ["Mean", "Sum", "Count"], horizontal=True)
-            
-            agg_map = {"Mean": "mean", "Sum": "sum", "Count": "count"}
-            selected_agg = agg_map[agg_func]
-            
-            fig = px.bar(
-                chart_data,
-                x=cat_col,
-                y=selected_agg,
-                title=f"{agg_func} of {value_col} by {cat_col} in {table_name}",
-                labels={cat_col: cat_col, selected_agg: f"{agg_func} of {value_col}"},
-                color_discrete_sequence=['#2196F3'],
-                template="plotly_white"
-            )
-        
-        st.plotly_chart(fig, use_container_width=True)
-        
-    elif viz_type == "Line Chart (Time Series)":
-        if not date_cols:
-            st.warning("No date/time columns detected for time series chart")
-            return
-            
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            date_col = st.selectbox("Select Date/Time Column:", date_cols)
-        
-        with col2:
-            if numeric_cols:
-                value_col = st.selectbox("Select Value Column:", ["Count"] + numeric_cols)
-            else:
-                value_col = "Count"
-        
-        # Create dataframe for time series
-        try:
-            # Convert to datetime
-            chart_df = df.copy()
-            chart_df[date_col] = pd.to_datetime(chart_df[date_col])
-            
-            # Group by date
-            if value_col == "Count":
-                # Count records by date
-                chart_data = chart_df.groupby(pd.Grouper(key=date_col, freq='D')).size().reset_index()
-                chart_data.columns = [date_col, 'Count']
-                y_col = 'Count'
-            else:
-                # Group by date and calculate mean
-                chart_data = chart_df.groupby(pd.Grouper(key=date_col, freq='D'))[value_col].mean().reset_index()
-                y_col = value_col
-            
-            # Create line chart
-            fig = px.line(
-                chart_data,
-                x=date_col,
-                y=y_col,
-                title=f"{y_col} Over Time in {table_name}",
-                labels={date_col: "Date", y_col: y_col},
-                template="plotly_white"
-            )
-            
-            st.plotly_chart(fig, use_container_width=True)
-            
-        except Exception as e:
-            st.error(f"Error creating time series chart: {e}")
-    
-    elif viz_type == "Scatter Plot (Correlation)":
-        if len(numeric_cols) < 2:
-            st.warning("Need at least 2 numeric columns for scatter plot")
-            return
-            
-        col1, col2, col3 = st.columns(3)
-        
-        with col1:
-            x_col = st.selectbox("Select X-Axis:", numeric_cols)
-        
-        with col2:
-            y_col = st.selectbox("Select Y-Axis:", [col for col in numeric_cols if col != x_col])
-        
-        with col3:
-            if categorical_cols:
-                color_col = st.selectbox("Color By (optional):", ["None"] + categorical_cols)
-            else:
-                color_col = "None"
-        
-        # Create scatter plot
-        if color_col == "None":
-            fig = px.scatter(
-                df,
-                x=x_col,
-                y=y_col,
-                title=f"Correlation between {x_col} and {y_col} in {table_name}",
-                labels={x_col: x_col, y_col: y_col},
-                template="plotly_white"
-            )
-        else:
-            fig = px.scatter(
-                df,
-                x=x_col,
-                y=y_col,
-                color=color_col,
-                title=f"Correlation between {x_col} and {y_col} by {color_col} in {table_name}",
-                labels={x_col: x_col, y_col: y_col, color_col: color_col},
-                template="plotly_white"
-            )
-        
-        # Add trendline
-        add_trendline = st.checkbox("Add Trendline")
-        if add_trendline:
-            fig.update_layout(
-                shapes=[
-                    dict(
-                        type='line',
-                        yref='paper', y0=0, y1=1,
-                        xref='paper', x0=0, x1=1,
-                        line=dict(color="red", width=2, dash="dash")
-                    )
-                ]
-            )
-            
-            # Add correlation coefficient
-            corr = df[[x_col, y_col]].corr().iloc[0, 1]
-            fig.add_annotation(
-                text=f"Correlation: {corr:.2f}",
-                x=0.05,
-                y=0.95,
-                showarrow=False,
-                font=dict(color="black", size=12),
-                bgcolor="white",
-                bordercolor="black",
-                borderwidth=1
-            )
-        
-        st.plotly_chart(fig, use_container_width=True)
-
-def show_table_browser(table_name):
-    """Show table data browser with filtering and visualization"""
-    st.subheader(f"Browse Table: {table_name}")
-    
-    # Get table structure
-    column_info = get_table_structure(table_name)
-    
-    # Filter options
-    with st.expander("Filter & Sort", expanded=False):
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            where_clause = st.text_input("WHERE clause:", key=f"where_{table_name}", 
-                                       placeholder="e.g., name LIKE '%John%'")
-            
-        with col2:
-            # Get column names for ORDER BY suggestion
-            column_names = [col['name'] for col in column_info]
-            order_by = st.selectbox("Order by:", 
-                                  options=[""] + [f"{col} ASC" for col in column_names] + 
-                                          [f"{col} DESC" for col in column_names],
-                                  key=f"order_{table_name}")
-    
-    # Get and display data
-    df, total_rows = get_filtered_table_data(table_name, where_clause, order_by)
-    
-    # Show record count
-    st.info(f"Showing {len(df)} of {total_rows} records")
-    
-    # Display editable table with enhanced deletion capability
-    render_editable_table(df, table_name, column_info)
-    
-    # Add form to add new records with smart suggestions
-    add_new_record_form(table_name, column_info)
-    
-    # Add data visualization
-    create_data_visualization(df, table_name)
-
-def show_sql_editor():
-    """Show SQL editor with query history"""
-    st.subheader("SQL Query Editor")
-    
-    # Initialize query history in session state
-    if 'query_history' not in st.session_state:
-        st.session_state.query_history = []
-    
-    # Query input
-    with st.expander("Query History", expanded=False):
-        history = st.session_state.query_history
-        
-        if history:
-            selected_idx = st.selectbox(
-                "Select previous query:", 
-                options=range(len(history)),
-                format_func=lambda i: f"{i+1}. {history[i][:50]}{'...' if len(history[i]) > 50 else ''}"
-            )
-            
-            if st.button("Load Selected Query"):
-                st.session_state.current_query = history[selected_idx]
-        else:
-            st.info("No query history yet")
-    
-    # Query input
-    if 'current_query' not in st.session_state:
-        st.session_state.current_query = ""
-        
-    query = st.text_area("SQL Query:", 
-                       value=st.session_state.current_query,
-                       height=150, 
-                       placeholder="SELECT * FROM table_name")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        execute = st.button("Execute Query", type="primary")
-    
-    with col2:
-        is_select = st.checkbox("SELECT query", value=query.strip().lower().startswith('select'))
-    
-    if execute and query:
-        # Save to history if not already there
-        if query not in st.session_state.query_history:
-            st.session_state.query_history.append(query)
-            if len(st.session_state.query_history) > 20:  # Keep only last 20
-                st.session_state.query_history.pop(0)
-        
-        # Execute query
-        success, result = execute_custom_query(query, is_select)
-        
-        if success:
-            if is_select:
-                st.success("Query executed successfully")
-                if isinstance(result, pd.DataFrame):
-                    if not result.empty:
-                        st.dataframe(result)
+                        new_row_data[col_name] = selected[0] if selected else None
                         
-                        # Export options
-                        col1, col2, col3 = st.columns(3)
-                        with col1:
-                            if st.button("Export to CSV"):
-                                csv = result.to_csv(index=False)
-                                st.download_button(
-                                    label="Download CSV",
-                                    data=csv,
-                                    file_name=f"query_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-                                    mime="text/csv"
-                                )
+                    # Check for date type
+                    elif 'DATE' in col_type:
+                        value = st.date_input(
+                            col_name,
+                            value=datetime.now().date(),
+                            key=f"date_{table}_{col_name}"
+                        )
+                        new_row_data[col_name] = value
                         
-                        with col2:
-                            if st.button("Export to Excel"):
-                                try:
-                                    excel_buffer = io.BytesIO()
-                                    result.to_excel(excel_buffer, index=False)
-                                    excel_buffer.seek(0)
-                                    
-                                    st.download_button(
-                                        label="Download Excel",
-                                        data=excel_buffer,
-                                        file_name=f"query_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
-                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                    )
-                                except Exception as e:
-                                    st.error(f"Error exporting to Excel: {e}")
+                    # Check for time type
+                    elif 'TIME' in col_type or ('time' in col_name.lower() and 'stamp' not in col_name.lower()):
+                        value = st.time_input(
+                            col_name,
+                            value=datetime.now().time(),
+                            key=f"time_{table}_{col_name}"
+                        )
+                        # Format time as string for storage
+                        new_row_data[col_name] = value.strftime("%H:%M:%S")
                         
-                        with col3:
-                            if st.button("Export to JSON"):
-                                json_str = result.to_json(orient="records")
-                                st.download_button(
-                                    label="Download JSON",
-                                    data=json_str,
-                                    file_name=f"query_result_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                                    mime="application/json"
-                                )
-                    else:
-                        st.info("Query returned no rows")
-                else:
-                    st.write(result)
-            else:
-                st.success(f"Query executed successfully. Rows affected: {result}")
-        else:
-            st.error(f"Error executing query: {result}")
-
-def show_db_maintenance():
-    """Show database maintenance tools"""
-    st.subheader("Database Maintenance")
-    
-    maintenance_option = st.radio(
-        "Select Maintenance Operation:",
-        options=["Create Backup", "Vacuum Database", "Analyze Tables", "Check Foreign Key Constraints"]
-    )
-    
-    if maintenance_option == "Create Backup":
-        if st.button("Create Database Backup", type="primary"):
-            backup_database()
-    
-    elif maintenance_option == "Vacuum Database":
-        st.info("Vacuum rebuilds the database to reclaim unused space and optimize performance.")
-        if st.button("Vacuum Database", type="primary"):
-            conn = get_db_connection()
-            try:
-                cursor = conn.cursor()
-                cursor.execute("VACUUM")
-                st.success("Database vacuum completed successfully")
-            except Exception as e:
-                st.error(f"Error vacuuming database: {e}")
-            finally:
-                conn.close()
-    
-    elif maintenance_option == "Analyze Tables":
-        st.info("Analyze collects statistics about tables that help optimize future queries.")
-        if st.button("Analyze Tables", type="primary"):
-            conn = get_db_connection()
-            try:
-                cursor = conn.cursor()
-                cursor.execute("ANALYZE")
-                st.success("Tables analyzed successfully")
-            except Exception as e:
-                st.error(f"Error analyzing tables: {e}")
-            finally:
-                conn.close()
-    
-    elif maintenance_option == "Check Foreign Key Constraints":
-        st.info("Check for foreign key constraint violations in the database.")
-        if st.button("Check Foreign Key Constraints", type="primary"):
-            conn = get_db_connection()
-            try:
-                cursor = conn.cursor()
-                cursor.execute("PRAGMA foreign_key_check")
-                violations = cursor.fetchall()
-                
-                if violations:
-                    st.error("Foreign key violations found:")
-                    violations_df = pd.DataFrame(violations, 
-                                               columns=["Table", "RowId", "Parent", "Foreign Key"])
-                    st.dataframe(violations_df)
-                else:
-                    st.success("No foreign key violations found")
-            except Exception as e:
-                st.error(f"Error checking foreign key constraints: {e}")
-            finally:
-                conn.close()
-
-def create_table_card(table_name, stats):
-    """Create a visual card for table selection using native Streamlit components"""
-    # Get icon and color, or use defaults
-    icon = stats.get('icon', '📊')
-    color = stats.get('color', '#757575')
-    row_count = stats.get('row_count', 0)
-    col_count = stats.get('column_count', 0)
-    has_pk = "✓" if stats.get('has_primary_key', False) else "✗"
-    
-    # Use standard HTML with styling for the card
-    return f"""
-    <div style="border: 2px solid {color}; border-radius: 10px; padding: 15px; 
-                height: 100%; background-color: white; margin-bottom: 10px;
-                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
-            <div style="font-size: 18px; font-weight: bold; color: {color};">
-                <span style="font-size: 24px; margin-right: 10px;">{icon}</span>{table_name}
-            </div>
-        </div>
-        <div style="display: flex; justify-content: space-between; font-size: 14px; color: #555;">
-            <div>{row_count:,} rows</div>
-            <div>{col_count} columns</div>
-            <div>PK: {has_pk}</div>
-        </div>
-    </div>
-    """
-
-def show_db_explorer():
-    """Main function for database explorer"""
-    # Apply styling - keeping most of the existing CSS for styling consistency
-    st.markdown("""
-    <style>
-    /* Modern UI styling for database explorer */
-    /* ... existing CSS styles ... */
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.title("Database Explorer")
-    
-    # Get list of tables
-    tables = get_all_tables()
-    
-    if not tables:
-        # Enhanced empty state
-        st.markdown("""
-            <div style="text-align:center; padding:50px 0;">
-                <img src="https://cdn-icons-png.flaticon.com/512/1548/1548682.png" width="100">
-                <h2>No tables found</h2>
-                <p>The database exists but doesn't contain any tables yet.</p>
-            </div>
-        """, unsafe_allow_html=True)
-        return
-    
-    # Main tabbed interface - simplified to just 2 tabs
-    tab1, tab2 = st.tabs(["Browse Tables", "Delete Records"])
-    
-    # Maintain selected table in session state for consistency between tabs
-    if 'selected_table' not in st.session_state:
-        st.session_state.selected_table = None
-    
-    with tab1:
-        # First tab: Table selection and visualization
-        st.subheader("Select and Browse Tables")
-        
-        # Create a dropdown to select tables
-        selected_table = st.selectbox(
-            "Choose a table to view:",
-            options=tables,
-            index=tables.index(st.session_state.selected_table) if st.session_state.selected_table in tables else 0
-        )
-        
-        # Update session state
-        st.session_state.selected_table = selected_table
-        
-        # Get table structure and stats
-        column_info = get_table_structure(selected_table)
-        stats = get_table_stats(selected_table)
-        
-        # Show table info
-        st.info(f"Table: {selected_table} - {stats.get('row_count', 0):,} rows, {stats.get('column_count', 0)} columns")
-        
-        # Different approach for student_profiles table vs other tables
-        where_clause = ""
-        order_by = ""
-        
-        if selected_table == "student_profiles":
-            # Simple search functionality for student_profiles instead of Filter & Sort
-            search_term = st.text_input(
-                "🔍 Search students:", 
-                placeholder="Enter name, ID, or any keyword...",
-                help="Search across all columns"
-            )
-            
-            if search_term:
-                # Create search conditions for each text column
-                search_conditions = []
-                for col in column_info:
-                    col_name = col['name']
-                    col_type = col['type'].lower()
-                    # Only include text-like columns in search
-                    if any(text_type in col_type for text_type in ['char', 'text', 'varchar']):
-                        search_conditions.append(f"{col_name} LIKE '%{search_term}%'")
-                
-                # Include numeric columns for exact matches if the search term is numeric
-                if search_term.isdigit():
-                    for col in column_info:
-                        col_name = col['name']
-                        col_type = col['type'].lower()
-                        if any(num_type in col_type for num_type in ['int', 'integer', 'numeric']):
-                            search_conditions.append(f"{col_name} = {search_term}")
-                
-                if search_conditions:
-                    where_clause = " OR ".join(search_conditions)
-        else:
-            # Standard Filter & Sort for other tables
-            with st.expander("Filter & Sort", expanded=False):
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    # Column names for WHERE clause
-                    column_names = [col['name'] for col in column_info]
-                    filter_col = st.selectbox(
-                        "Filter column:", 
-                        ["None"] + column_names, 
-                        key="filter_column"
-                    )
-                    
-                    if filter_col != "None":
-                        # Get unique values for the selected column
-                        unique_vals = get_unique_values(selected_table, filter_col)
+                    # Check for datetime/timestamp type
+                    elif any(x in col_type for x in ['DATETIME', 'TIMESTAMP']):
+                        date_val = st.date_input(
+                            f"{col_name} (Date)",
+                            value=datetime.now().date(),
+                            key=f"dt_date_{table}_{col_name}"
+                        )
+                        time_val = st.time_input(
+                            f"{col_name} (Time)",
+                            value=datetime.now().time(),
+                            key=f"dt_time_{table}_{col_name}"
+                        )
+                        # Combine date and time
+                        combined = datetime.combine(date_val, time_val)
+                        new_row_data[col_name] = combined.strftime("%Y-%m-%d %H:%M:%S")
                         
-                        # Show dropdown or text input based on number of unique values
-                        if len(unique_vals) <= 30:
-                            filter_val = st.selectbox("Value:", ["All"] + unique_vals)
-                            where_clause = f"{filter_col} = '{filter_val}'" if filter_val != "All" else ""
+                    # Check for boolean type
+                    elif 'BOOL' in col_type:
+                        value = st.checkbox(
+                            col_name,
+                            key=f"bool_{table}_{col_name}"
+                        )
+                        new_row_data[col_name] = 1 if value else 0
+                        
+                    # Check for numeric types
+                    elif any(x in col_type for x in ['INT', 'REAL', 'FLOAT', 'DOUBLE', 'DECIMAL']):
+                        if 'INT' in col_type:
+                            # Integer input
+                            value = st.number_input(
+                                col_name,
+                                step=1,
+                                key=f"int_{table}_{col_name}"
+                            )
                         else:
-                            filter_val = st.text_input("Filter value:", placeholder="Enter value...")
-                            filter_type = st.radio("Filter type:", ["Contains", "Equals", "Starts with"], horizontal=True)
-                            
-                            if filter_val:
-                                if filter_type == "Contains":
-                                    where_clause = f"{filter_col} LIKE '%{filter_val}%'"
-                                elif filter_type == "Equals":
-                                    where_clause = f"{filter_col} = '{filter_val}'"
-                                else:  # Starts with
-                                    where_clause = f"{filter_col} LIKE '{filter_val}%'"
-                
-                with col2:
-                    # Order by options
-                    order_col = st.selectbox("Order by:", ["None"] + column_names, key="order_column")
-                    
-                    if order_col != "None":
-                        order_dir = st.radio("Direction:", ["ASC", "DESC"], horizontal=True)
-                        order_by = f"{order_col} {order_dir}"
+                            # Float input
+                            value = st.number_input(
+                                col_name,
+                                key=f"float_{table}_{col_name}"
+                            )
+                        new_row_data[col_name] = value
+                        
+                    # Check for common values
+                    else:
+                        common_values = get_common_values(col_name)
+                        if common_values:
+                            selected = st.selectbox(
+                                col_name,
+                                options=[('', '-- Select Value --')] + common_values,
+                                format_func=lambda x: x[1],  # Display the formatted value
+                                key=f"common_{table}_{col_name}"
+                            )
+                            new_row_data[col_name] = selected[0] if selected else None
+                        else:
+                            # Default to text input
+                            new_row_data[col_name] = st.text_input(col_name, key=f"new_{col_name}")
         
-        # Add a limit control (common for both approaches)
-        limit = st.slider("Maximum rows to display:", min_value=10, max_value=500, value=100, step=10)
-        
-        # Get and display data
-        with st.spinner("Loading data..."):
-            df, total_rows = get_filtered_table_data(selected_table, where_clause, order_by, limit=limit)
+        submitted = st.form_submit_button("Add Row", use_container_width=True)
+        if submitted:
+            # Prepare column names and values for non-auto-increment fields
+            cols_to_insert = []
+            vals_to_insert = []
+            for col, val in new_row_data.items():
+                # Skip empty auto-increment primary keys
+                if (col in primary_keys and len(primary_keys) == 1 and 
+                    "INTEGER" in get_table_columns(table)[columns.index(col)][2].upper() and not val):
+                    continue
+                cols_to_insert.append(col)
+                vals_to_insert.append(val if val != "" else None)
             
-            # Show record count
-            showing = min(len(df), limit)
-            
-            if selected_table == "student_profiles" and search_term:
-                st.write(f"Found {showing} of {total_rows:,} records matching '{search_term}'")
+            if not cols_to_insert:
+                st.error("Please provide at least one value")
             else:
-                st.write(f"Showing {showing} of {total_rows:,} records {f'(filtered)' if where_clause else ''}")
-            
-            # Display the dataframe
-            st.dataframe(df, use_container_width=True)
-        
-        # Add visualization option if data is available
-        if not df.empty and len(df) > 1:
-            with st.expander("Data Visualization", expanded=False):
-                create_data_visualization(df, selected_table)
-    
-    with tab2:
-        # Second tab: Delete records by column value
-        st.subheader("Delete Records")
-        
-        # Show warning message
-        st.warning("⚠️ Warning: Deletion cannot be undone. Please backup your database first.")
-        
-        # If the user has already selected a table in the first tab, use that table
-        delete_table = st.selectbox(
-            "Select table:", 
-            tables,
-            index=tables.index(st.session_state.selected_table) if st.session_state.selected_table in tables else 0,
-            key="delete_table_select"
-        )
-        
-        # Get table structure for the selected table
-        delete_column_info = get_table_structure(delete_table)
-        
-        # Show current row count
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute(f"SELECT COUNT(*) FROM {delete_table}")
-        row_count = cursor.fetchone()[0]
-        conn.close()
-        
-        st.info(f"Table '{delete_table}' has {row_count:,} records")
-        
-        # Get column names for the selected table
-        delete_columns = [col['name'] for col in delete_column_info]
-        
-        # Select column to filter by
-        selected_column = st.selectbox("Select column to filter by:", delete_columns)
-        
-        # Get unique values for the selected column
-        unique_values = get_unique_values(delete_table, selected_column, limit=100)
-        
-        if not unique_values:
-            st.error(f"No values found in column '{selected_column}' or column is empty")
-        else:
-            # Select value to delete
-            selected_value = st.selectbox(f"Select value from {selected_column}:", unique_values)
-            
-            # Preview data to be deleted
-            st.subheader("Records to be deleted")
-            preview_query = f"SELECT * FROM {delete_table} WHERE {selected_column} = ?"
-            
-            conn = get_db_connection()
-            try:
-                preview_df = pd.read_sql_query(preview_query, conn, params=(selected_value,))
-                conn.close()
+                # Build INSERT statement
+                placeholders = ", ".join(["?"] * len(cols_to_insert))
+                insert_stmt = f"INSERT INTO {table} ({', '.join(cols_to_insert)}) VALUES ({placeholders});"
                 
-                if preview_df.empty:
-                    st.info(f"No records found with {selected_column} = '{selected_value}'")
-                else:
-                    st.dataframe(preview_df, use_container_width=True)
-                    st.warning(f"This will delete {len(preview_df)} record(s). This action cannot be undone.")
-                    
-                    # Add confirmation checkbox and delete button
-                    confirm = st.checkbox(f"I confirm I want to delete records where {selected_column} = '{selected_value}'")
-                    
-                    if confirm:
-                        if st.button("Delete Records", type="primary"):
-                            if delete_record_by_column(delete_table, selected_column, selected_value):
-                                st.success(f"Successfully deleted records where {selected_column} = '{selected_value}'")
-                                st.rerun()
-            except Exception as e:
-                conn.close()
-                st.error(f"Error previewing records: {e}")
+                # Execute insert
+                try:
+                    execute_query(insert_stmt, tuple(vals_to_insert), commit=True)
+                    st.success("Row added successfully!")
+                    # Clear form by resetting the page
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Error adding row: {e}")
+
+if __name__ == "__main__":
+    show_db_explorer()
