@@ -3,7 +3,7 @@ import home
 import real_time_prediction
 import report
 import student_report
-import db_explorer
+# Remove this line: import db_explorer
 import registration_form
 import subject_management
 import sqlite3
