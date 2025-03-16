@@ -51,7 +51,7 @@ def get_student_attendance(student_name, date=None, detailed=False):
         SELECT * 
         FROM attendance_records 
         WHERE name = ? AND timestamp BETWEEN ? AND ?
-        ORDER BY timestamp DESC
+        ORDER BY timestamp DESC  # Explicitly sort by newest first
         """
         df = pd.read_sql(query, conn, params=(student_name, date_start, date_end))
     else:
@@ -59,7 +59,7 @@ def get_student_attendance(student_name, date=None, detailed=False):
         SELECT * 
         FROM attendance_records 
         WHERE name = ?
-        ORDER BY timestamp DESC
+        ORDER BY timestamp DESC  # Explicitly sort by newest first
         """
         df = pd.read_sql(query, conn, params=(student_name,))
     
@@ -165,7 +165,7 @@ def check_attendance(student_name, date, start_time, end_time):
     # First check if we have a record in the class_attendance table
     query = """
     SELECT attended
-    FROM class_attendance_records
+    FROM class_attendance
     WHERE student_name = ?
       AND class_date = ?
       AND start_time = ?
@@ -894,7 +894,7 @@ def get_extended_attendance_history(student_name, days=30):
             ca.subject,
             SUM(ca.attended) as attended_classes,
             COUNT(*) as total_classes
-        FROM class_attendance_records ca
+        FROM class_attendance ca
         WHERE ca.student_name = ? 
         AND ca.class_date BETWEEN ? AND ?
         GROUP BY ca.class_date, ca.subject
@@ -1387,8 +1387,22 @@ def show_student_report():
     # Get schedule for today
     schedule_df = get_schedule_for_day(day_name)
     
-    # Main content - today's schedule
+    # Main content starts here
+    
+    # Show welcome message - but continue displaying data even if no schedule today
     if schedule_df.empty:
+        # Create a welcome message for days with no classes
+        welcome_message = f"""
+        <div style="background-color: #E3F2FD; color: #0D47A1; padding: 15px; border-radius: 5px; border-left: 5px solid #2196F3; margin-bottom: 20px;">
+            <div style="font-size: 16px; font-weight: bold;">
+                👋 Welcome {student_name}! You have no classes scheduled for today ({day_name}).
+                Here's your attendance history:
+            </div>
+        </div>
+        """
+        html(welcome_message, height=70)
+        
+        # Don't return/stop here - continue to show analytics
         st.info(f"No classes scheduled for today ({day_name})")
     else:
         # Show welcome message with next class info
@@ -1706,147 +1720,149 @@ def show_student_report():
             
             st.plotly_chart(fig, use_container_width=True)
     
-        # Add Attendance History Section
-        st.header("📈 Attendance History & Analytics")
+    # The following sections should now ALWAYS show, even if there are no classes today
+    
+    # Add Attendance History Section
+    st.header("📈 Attendance History & Analytics")
+    
+    # Get extended attendance history data
+    history_df = get_extended_attendance_history(student_name, days=30)
+    
+    # Create visualizations
+    weekly_chart, day_pattern_chart, recent_chart = create_attendance_history_dashboards(history_df)
+    
+    # Display analytics in tabs
+    tab1, tab2, tab3, tab4 = st.tabs(["Recent Trends", "Weekly Stats", "Day Patterns", "Subject Patterns"])
+    
+    with tab1:
+        st.plotly_chart(recent_chart, use_container_width=True)
         
-        # Get extended attendance history data
-        history_df = get_extended_attendance_history(student_name, days=30)
+        # Calculate overall attendance stats
+        total_attended = history_df['attended_classes'].sum()
+        total_scheduled = history_df['total_classes'].sum()
+        overall_rate = (total_attended / total_scheduled * 100) if total_scheduled > 0 else 0
         
-        # Create visualizations
-        weekly_chart, day_pattern_chart, recent_chart = create_attendance_history_dashboards(history_df)
+        st.markdown(f"**Overall Attendance:** {overall_rate:.1f}% ({total_attended} out of {total_scheduled} classes)")
         
-        # Display analytics in tabs
-        tab1, tab2, tab3, tab4 = st.tabs(["Recent Trends", "Weekly Stats", "Day Patterns", "Subject Patterns"])
+        # Recent streak calculation - consecutive days with perfect attendance
+        # Identify dates with classes
+        dates_with_classes = history_df[history_df['total_classes'] > 0].copy()
+        if not dates_with_classes.empty:
+            dates_with_classes['perfect_day'] = dates_with_classes['attended_classes'] == dates_with_classes['total_classes']
+            
+            # Calculate current streak
+            current_streak = 0
+            for perfect in reversed(dates_with_classes['perfect_day'].tolist()):
+                if (perfect):
+                    current_streak += 1
+                else:
+                    break
+            
+            if current_streak > 0:
+                st.success(f"🔥 Current streak: {current_streak} {'day' if current_streak == 1 else 'days'} of perfect attendance!")
+    
+    with tab2:
+        st.plotly_chart(weekly_chart, use_container_width=True)
         
-        with tab1:
-            st.plotly_chart(recent_chart, use_container_width=True)
-            
-            # Calculate overall attendance stats
-            total_attended = history_df['attended_classes'].sum()
-            total_scheduled = history_df['total_classes'].sum()
-            overall_rate = (total_attended / total_scheduled * 100) if total_scheduled > 0 else 0
-            
-            st.markdown(f"**Overall Attendance:** {overall_rate:.1f}% ({total_attended} out of {total_scheduled} classes)")
-            
-            # Recent streak calculation - consecutive days with perfect attendance
-            # Identify dates with classes
-            dates_with_classes = history_df[history_df['total_classes'] > 0].copy()
-            if not dates_with_classes.empty:
-                dates_with_classes['perfect_day'] = dates_with_classes['attended_classes'] == dates_with_classes['total_classes']
-                
-                # Calculate current streak
-                current_streak = 0
-                for perfect in reversed(dates_with_classes['perfect_day'].tolist()):
-                    if (perfect):
-                        current_streak += 1
-                    else:
-                        break
-                
-                if current_streak > 0:
-                    st.success(f"🔥 Current streak: {current_streak} {'day' if current_streak == 1 else 'days'} of perfect attendance!")
+        # Add weekly stats summary
+        weekly_stats = history_df.groupby('week').agg({
+            'attended_classes': 'sum',
+            'total_classes': 'sum',
+            'attendance_rate': 'mean'
+        }).reset_index()
         
-        with tab2:
-            st.plotly_chart(weekly_chart, use_container_width=True)
-            
-            # Add weekly stats summary
-            weekly_stats = history_df.groupby('week').agg({
-                'attended_classes': 'sum',
-                'total_classes': 'sum',
-                'attendance_rate': 'mean'
-            }).reset_index()
-            
-            best_week = weekly_stats.loc[weekly_stats['attendance_rate'].idxmax()]
-            worst_week = weekly_stats.loc[weekly_stats['attendance_rate'].idxmin()]
+        best_week = weekly_stats.loc[weekly_stats['attendance_rate'].idxmax()]
+        worst_week = weekly_stats.loc[weekly_stats['attendance_rate'].idxmin()]
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            st.metric("Best Week", f"Week {int(best_week['week'])}", f"{best_week['attendance_rate']:.1f}%")
+        with col2:
+            st.metric("Worst Week", f"Week {int(worst_week['week'])}", f"{worst_week['attendance_rate']:.1f}%")
+    
+    with tab3:
+        st.plotly_chart(day_pattern_chart, use_container_width=True)
+        
+        # Find best and worst days
+        day_stats = history_df.groupby(['day_of_week', 'day_name']).agg({
+            'attended_classes': 'sum',
+            'total_classes': 'sum'
+        }).reset_index()
+        
+        day_stats['attendance_rate'] = day_stats.apply(
+            lambda row: (row['attended_classes'] / row['total_classes'] * 100) if row['total_classes'] > 0 else 0, 
+            axis=1
+        )
+        
+        day_stats = day_stats[day_stats['total_classes'] > 0]
+        
+        if not day_stats.empty:
+            best_day = day_stats.loc[day_stats['attendance_rate'].idxmax()]
+            worst_day = day_stats.loc[day_stats['attendance_rate'].idxmin()]
             
             col1, col2 = st.columns(2)
             with col1:
-                st.metric("Best Week", f"Week {int(best_week['week'])}", f"{best_week['attendance_rate']:.1f}%")
+                st.metric("Best Day", best_day['day_name'], f"{best_day['attendance_rate']:.1f}%")
             with col2:
-                st.metric("Worst Week", f"Week {int(worst_week['week'])}", f"{worst_week['attendance_rate']:.1f}%")
-        
-        with tab3:
-            st.plotly_chart(day_pattern_chart, use_container_width=True)
+                st.metric("Worst Day", worst_day['day_name'], f"{worst_day['attendance_rate']:.1f}%")
             
-            # Find best and worst days
-            day_stats = history_df.groupby(['day_of_week', 'day_name']).agg({
-                'attended_classes': 'sum',
-                'total_classes': 'sum'
-            }).reset_index()
+            # Attendance tip based on pattern
+            if worst_day['attendance_rate'] < 70:
+                st.warning(f"⚠️ Your attendance on {worst_day['day_name']} needs improvement. Consider setting an earlier alarm or adjusting your schedule.")
+    
+    with tab4:
+        try:
+            # Only keep the subject bar chart, remove heatmap and trend chart
+            st.plotly_chart(create_subject_bar_chart(history_df), use_container_width=True)
             
-            day_stats['attendance_rate'] = day_stats.apply(
-                lambda row: (row['attended_classes'] / row['total_classes'] * 100) if row['total_classes'] > 0 else 0, 
-                axis=1
-            )
-            
-            day_stats = day_stats[day_stats['total_classes'] > 0]
-            
-            if not day_stats.empty:
-                best_day = day_stats.loc[day_stats['attendance_rate'].idxmax()]
-                worst_day = day_stats.loc[day_stats['attendance_rate'].idxmin()]
+            # Show top/bottom subjects based on attendance if subject data exists
+            if 'subject' in history_df.columns:
+                subject_stats = history_df.groupby('subject').agg({
+                    'attended_classes': 'sum',
+                    'total_classes': 'sum'
+                }).reset_index()
                 
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Best Day", best_day['day_name'], f"{best_day['attendance_rate']:.1f}%")
-                with col2:
-                    st.metric("Worst Day", worst_day['day_name'], f"{worst_day['attendance_rate']:.1f}%")
+                subject_stats['attendance_rate'] = (subject_stats['attended_classes'] / subject_stats['total_classes'] * 100).fillna(0)
+                subject_stats = subject_stats.sort_values('attendance_rate', ascending=False)
                 
-                # Attendance tip based on pattern
-                if worst_day['attendance_rate'] < 70:
-                    st.warning(f"⚠️ Your attendance on {worst_day['day_name']} needs improvement. Consider setting an earlier alarm or adjusting your schedule.")
-        
-        with tab4:
-            try:
-                # Only keep the subject bar chart, remove heatmap and trend chart
-                st.plotly_chart(create_subject_bar_chart(history_df), use_container_width=True)
-                
-                # Show top/bottom subjects based on attendance if subject data exists
-                if 'subject' in history_df.columns:
-                    subject_stats = history_df.groupby('subject').agg({
-                        'attended_classes': 'sum',
-                        'total_classes': 'sum'
-                    }).reset_index()
+                # Show top and bottom subjects in columns
+                if len(subject_stats) > 1:
+                    st.subheader("Subject Rankings")
+                    col1, col2 = st.columns(2)
                     
-                    subject_stats['attendance_rate'] = (subject_stats['attended_classes'] / subject_stats['total_classes'] * 100).fillna(0)
-                    subject_stats = subject_stats.sort_values('attendance_rate', ascending=False)
-                    
-                    # Show top and bottom subjects in columns
-                    if len(subject_stats) > 1:
-                        st.subheader("Subject Rankings")
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            st.markdown("#### Best Attendance")
-                            best_subject = subject_stats.iloc[0]
-                            st.metric(
-                                best_subject['subject'], 
-                                f"{best_subject['attendance_rate']:.1f}%",
-                                f"{best_subject['attended_classes']} of {best_subject['total_classes']} classes"
-                            )
-                        
-                        with col2:
-                            st.markdown("#### Needs Improvement")
-                            worst_subject = subject_stats.iloc[-1]
-                            st.metric(
-                                worst_subject['subject'], 
-                                f"{worst_subject['attendance_rate']:.1f}%",
-                                f"{worst_subject['attended_classes']} of {worst_subject['total_classes']} classes"
-                            )
-                    elif len(subject_stats) == 1:
-                        # Only one subject
-                        st.subheader("Subject Performance")
-                        subject = subject_stats.iloc[0]
+                    with col1:
+                        st.markdown("#### Best Attendance")
+                        best_subject = subject_stats.iloc[0]
                         st.metric(
-                            subject['subject'], 
-                            f"{subject['attendance_rate']:.1f}%",
-                            f"{subject['attended_classes']} of {subject['total_classes']} classes"
+                            best_subject['subject'], 
+                            f"{best_subject['attendance_rate']:.1f}%",
+                            f"{best_subject['attended_classes']} of {best_subject['total_classes']} classes"
                         )
-                    else:
-                        st.info("No subject attendance data available yet.")
+                    
+                    with col2:
+                        st.markdown("#### Needs Improvement")
+                        worst_subject = subject_stats.iloc[-1]
+                        st.metric(
+                            worst_subject['subject'], 
+                            f"{worst_subject['attendance_rate']:.1f}%",
+                            f"{worst_subject['attended_classes']} of {worst_subject['total_classes']} classes"
+                        )
+                elif len(subject_stats) == 1:
+                    # Only one subject
+                    st.subheader("Subject Performance")
+                    subject = subject_stats.iloc[0]
+                    st.metric(
+                        subject['subject'], 
+                        f"{subject['attendance_rate']:.1f}%",
+                        f"{subject['attended_classes']} of {subject['total_classes']} classes"
+                    )
                 else:
-                    st.info("No subject attendance data available. Please check your database configuration.")
-            except Exception as e:
-                st.error(f"Error displaying subject patterns: {str(e)}")
-                st.info("This might happen if there are no attendance records yet or if your database schema is incomplete.")
+                    st.info("No subject attendance data available yet.")
+            else:
+                st.info("No subject attendance data available. Please check your database configuration.")
+        except Exception as e:
+            st.error(f"Error displaying subject patterns: {str(e)}")
+            st.info("This might happen if there are no attendance records yet or if your database schema is incomplete.")
 
 # Fix the syntax error in the create_attendance_tables function
 

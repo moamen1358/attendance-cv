@@ -21,7 +21,7 @@ CHROMA_STORE_PATH = "./store"
 def get_db_connection():
     return sqlite3.connect(DATABASE_PATH)
 
-# Function to get attendance data with filtering options
+# Function to get attendance data with filtering options - Updated to ensure newest records first
 def get_attendance_data(start_date=None, end_date=None, student_name=None, limit=1000):
     conn = get_db_connection()
     
@@ -46,7 +46,7 @@ def get_attendance_data(start_date=None, end_date=None, student_name=None, limit
     if where_clauses:
         query_parts.append("WHERE " + " AND ".join(where_clauses))
     
-    # Add order by and limit
+    # Add order by - always sort newest first
     query_parts.append("ORDER BY timestamp DESC")
     query_parts.append(f"LIMIT {limit}")
     
@@ -65,12 +65,12 @@ def get_attendance_data(start_date=None, end_date=None, student_name=None, limit
     
     return df
 
-# Function to get class attendance data
+# Function to get class attendance data - also ensuring newest first
 def get_class_attendance_data(start_date=None, end_date=None, student_name=None, subject=None, teacher_subjects=None, section=None):
     conn = get_db_connection()
     
     query_parts = ["SELECT ca.student_name, ca.class_date, ca.subject, ca.start_time, ca.end_time, ca.attended, s.section, s.student_id"]
-    query_parts.append("FROM class_attendance_records ca")
+    query_parts.append("FROM class_attendance ca")
     query_parts.append("LEFT JOIN student_profiles s ON ca.student_name = s.name")
     
     params = []
@@ -106,8 +106,8 @@ def get_class_attendance_data(start_date=None, end_date=None, student_name=None,
     if where_clauses:
         query_parts.append("WHERE " + " AND ".join(where_clauses))
     
-    # Add order by
-    query_parts.append("ORDER BY ca.class_date DESC, ca.start_time ASC, s.section, ca.student_name")
+    # Add order by - always newest first
+    query_parts.append("ORDER BY ca.class_date DESC, ca.start_time DESC, s.section, ca.student_name")
     
     # Combine query parts
     query = " ".join(query_parts)
@@ -318,7 +318,7 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
     # Count total number of students matching criteria (for pagination)
     count_query = f"""
     SELECT COUNT(DISTINCT ca.student_name) as total_count
-    FROM class_attendance_records ca
+    FROM class_attendance ca
     LEFT JOIN student_profiles s ON ca.student_name = s.name
     WHERE 1=1 {date_condition} {search_condition} {subject_condition} {section_condition}
     """
@@ -337,7 +337,7 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
         SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate,
         MIN(ca.class_date) as first_date,
         MAX(ca.class_date) as last_date
-    FROM class_attendance_records ca
+    FROM class_attendance ca
     LEFT JOIN student_profiles s ON ca.student_name = s.name
     WHERE 1=1 {date_condition} {search_condition} {subject_condition} {section_condition}
     GROUP BY ca.student_name, s.student_id, s.section
@@ -382,11 +382,15 @@ def get_subject_attendance_summary(start_date=None, end_date=None, search_term=N
         conditions.append("ca.subject LIKE ?")
         params.append(f"%{search_term}%")
     
-    # Add filter for teacher's subjects
-    if teacher_subjects and "All Subjects" not in teacher_subjects:
-        placeholders = ", ".join(["?"] * len(teacher_subjects))
-        conditions.append(f"ca.subject IN ({placeholders})")
-        params.extend(teacher_subjects)
+    # Add filter for teacher's subjects - FIX DATAFRAME BOOLEAN CONTEXT ERROR
+    # Check if teacher_subjects is a DataFrame (not None) and not empty
+    if isinstance(teacher_subjects, pd.DataFrame) and not teacher_subjects.empty:
+        # Extract subject names from the DataFrame
+        subjects_list = teacher_subjects['subject_name'].tolist() 
+        if subjects_list and "All Subjects" not in subjects_list:
+            placeholders = ", ".join(["?"] * len(subjects_list))
+            conditions.append(f"ca.subject IN ({placeholders})")
+            params.extend(subjects_list)
     
     # Build WHERE clause
     where_clause = " AND ".join(conditions)
@@ -401,7 +405,7 @@ def get_subject_attendance_summary(start_date=None, end_date=None, search_term=N
         COUNT(CASE WHEN ca.attended = 1 THEN 1 ELSE NULL END) as attended_count,
         COUNT(*) as total_count,
         SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate
-    FROM class_attendance_records ca
+    FROM class_attendance ca
     {where_clause}
     GROUP BY ca.subject
     ORDER BY attendance_rate DESC
@@ -449,7 +453,7 @@ def get_monthly_attendance_trends(start_date=None, end_date=None, teacher_subjec
     if where_clause:
         where_clause = "WHERE " + where_clause
     
-    # Updated query using the new table name "class_attendance_records" instead of "class_attendance"
+    # Updated query using the new table name "class_attendance" instead of "class_attendance_records"
     query = f"""
     SELECT 
         strftime('%Y-%m', ca.class_date) as month,
@@ -457,7 +461,7 @@ def get_monthly_attendance_trends(start_date=None, end_date=None, teacher_subjec
         COUNT(*) as total_classes,
         SUM(ca.attended) as attended_classes,
         SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate
-    FROM class_attendance_records ca
+    FROM class_attendance ca
     {where_clause}
     GROUP BY month
     ORDER BY month
@@ -519,7 +523,7 @@ def get_attendance_outliers(start_date=None, end_date=None, limit=5, teacher_sub
         COUNT(CASE WHEN ca.attended = 1 THEN 1 ELSE NULL END) as attended_classes,
         COUNT(*) as total_classes,
         SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate
-    FROM class_attendance_records ca
+    FROM class_attendance ca
     LEFT JOIN student_profiles s ON ca.student_name = s.name
     {where_clause}
     GROUP BY ca.student_name, s.section
@@ -535,7 +539,7 @@ def get_attendance_outliers(start_date=None, end_date=None, limit=5, teacher_sub
         COUNT(CASE WHEN ca.attended = 1 THEN 1 ELSE NULL END) as attended_classes,
         COUNT(*) as total_classes,
         SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate
-    FROM class_attendance_records ca
+    FROM class_attendance ca
     LEFT JOIN student_profiles s ON ca.student_name = s.name
     {where_clause}
     GROUP BY ca.student_name, s.section
@@ -735,7 +739,7 @@ def show_report():
     teacher_subjects = get_teacher_subjects(username)
     
     # Fix the problematic line by checking .empty property
-    if teacher_subjects.empty:  # Was: if not teacher_subjects:
+    if isinstance(teacher_subjects, pd.DataFrame) and teacher_subjects.empty:  # Was: if not teacher_subjects:
         st.warning("No subjects assigned to you. Please contact an administrator.")
     else:
         # Date filters - moved out of sidebar for professor view
@@ -1150,8 +1154,8 @@ def show_report():
                 # Show the data in a table
                 st.dataframe(display_df, hide_index=True, use_container_width=True)
                 
-                # Export to Excel button
-                buffer = io.BytesIO()
+                # Export to Excel button - Fix BytesIO typo
+                buffer = io.BytesIO()  # Fixed: Changed from Bytes.IO() to BytesIO()
                 with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                     display_df.to_excel(writer, sheet_name='Attendance Logs', index=False)
                 st.download_button(

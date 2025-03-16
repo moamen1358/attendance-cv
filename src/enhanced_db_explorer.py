@@ -4,6 +4,16 @@ import pandas as pd
 import re
 from datetime import datetime
 
+# Define a list of tables that should be hidden from the UI
+HIDDEN_TABLES = [
+    'sqlite_sequence',  # SQLite internal table for autoincrement
+    'sqlite_stat1',     # SQLite statistics table
+    'sqlite_master',    # SQLite schema table 
+    'facial_recognition_data',  # Sensitive data table with face embeddings
+    'embedding_store',     # Internal table for embeddings
+    'control_4'         # Legacy control table
+]
+
 def execute_query(query, params=(), fetch=False, commit=False):
     """
     Execute a SQL query with error handling
@@ -42,9 +52,25 @@ def execute_query(query, params=(), fetch=False, commit=False):
             conn.close()
 
 def get_tables():
-    """Get list of all tables in the database"""
+    """Get list of all tables in the database, filtering out system tables"""
     result = execute_query("SELECT name FROM sqlite_master WHERE type='table';", fetch=True)
-    return [table[0] for table in result] if result else []
+    if not result:
+        return []
+    
+    # Filter out hidden tables
+    visible_tables = [table[0] for table in result if table[0] not in HIDDEN_TABLES]
+    
+    # Sort tables in logical groups
+    student_tables = [t for t in visible_tables if "student" in t.lower()]
+    attendance_tables = [t for t in visible_tables if "attend" in t.lower()]
+    subject_tables = [t for t in visible_tables if "subject" in t.lower() or "class" in t.lower()]
+    user_tables = [t for t in visible_tables if "user" in t.lower() or "account" in t.lower()]
+    other_tables = [t for t in visible_tables if t not in 
+                   student_tables + attendance_tables + subject_tables + user_tables]
+    
+    # Return tables in a logical order
+    return (student_tables + attendance_tables + subject_tables + 
+            user_tables + other_tables)
 
 def get_table_columns(table):
     """Get column info for a table"""
@@ -660,6 +686,54 @@ def render_add_row_form(table, columns, primary_keys):
                     st.rerun()
                 except Exception as e:
                     st.error(f"Error adding row: {e}")
+
+class CustomTableView:
+    # ... existing code ...
+
+    def _get_filtered_data(self, where_clause="", order_by="", limit=1000, offset=0):
+        """Get data from the table with optional filtering"""
+        conn = self._get_db_connection()
+        
+        # Check if this is an attendance-related table and apply special sorting
+        is_attendance_table = any(name in self.table_name.lower() for name in ['attendance', 'class_attendance'])
+        
+        query = f"SELECT * FROM {self.table_name}"
+        
+        if where_clause:
+            query += f" WHERE {where_clause}"
+            
+        # For attendance tables, default to timestamp/date descending if no explicit order is given
+        if is_attendance_table and not order_by:
+            # Try to find date/time column for sorting
+            for time_col in ['timestamp', 'class_date', 'date', 'created_at', 'time']:
+                cursor = conn.cursor()
+                cursor.execute(f"PRAGMA table_info({self.table_name})")
+                columns = [col[1] for col in cursor.fetchall()]
+                if time_col in columns:
+                    order_by = f"{time_col} DESC"
+                    break
+        
+        # Apply order_by clause
+        if order_by:
+            query += f" ORDER BY {order_by}"
+        elif self.primary_key:
+            query += f" ORDER BY {self.primary_key}"
+            
+        query += f" LIMIT {limit} OFFSET {offset}"
+        
+        df = pd.read_sql_query(query, conn)
+        
+        # Get total row count
+        count_query = f"SELECT COUNT(*) FROM {self.table_name}"
+        if where_clause:
+            count_query += f" WHERE {where_clause}"
+        
+        total_rows = pd.read_sql_query(count_query, conn).iloc[0, 0]
+        
+        conn.close()
+        return df, total_rows
+
+    # ... rest of the class methods ...
 
 if __name__ == "__main__":
     show_db_explorer()
