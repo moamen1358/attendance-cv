@@ -666,506 +666,504 @@ def show_report():
     user_role = st.session_state.get('user_role', '')
     
     # Get teacher's subjects
-    teacher_subjects = ["All Subjects"]
-    if user_role == 'admin' or user_role == 'professor':
-        teacher_subjects = get_teacher_subjects(username)
-        if not teacher_subjects:
-            teacher_subjects = ["All Subjects"]
-        else:
-            teacher_subjects = ["All Subjects"] + teacher_subjects
+    teacher_subjects = get_teacher_subjects(username)
     
-    # Date filters - moved out of sidebar for professor view
-    if user_role == 'professor':
-        # Show date filters directly in the main content area for professors
-        st.header("Filter Options")
-        
-        # Create 3-column layout for filters
-        filter_col1, filter_col2, filter_col3 = st.columns(3)
-        
-        with filter_col1:
-            start_date = st.date_input(
-                "Start Date",
-                value=datetime.now().date() - timedelta(days=90),
-                max_value=datetime.now().date()
-            )
-            
-        with filter_col2:
-            end_date = st.date_input(
-                "End Date",
-                value=datetime.now().date(),
-                max_value=datetime.now().date()
-            )
-            
-        with filter_col3:
-            # Add section filter
-            selected_section = st.selectbox(
-                "Section",
-                options=get_sections(),
-                key="section_filter"
-            )
-        
-        # Format dates for database queries
-        start_date_str = start_date.strftime('%Y-%m-%d')
-        end_date_str = end_date.strftime('%Y-%m-%d')
-        
+    # Fix the problematic line by checking .empty property
+    if teacher_subjects.empty:  # Was: if not teacher_subjects:
+        st.warning("No subjects assigned to you. Please contact an administrator.")
     else:
-        # Keep sidebar for admins
-        with st.sidebar:
+        # Date filters - moved out of sidebar for professor view
+        if user_role == 'professor':
+            # Show date filters directly in the main content area for professors
             st.header("Filter Options")
             
-            # Date range selector
-            st.subheader("Date Range")
-            col1, col2 = st.columns(2)
-            with col1:
+            # Create 3-column layout for filters
+            filter_col1, filter_col2, filter_col3 = st.columns(3)
+            
+            with filter_col1:
                 start_date = st.date_input(
                     "Start Date",
                     value=datetime.now().date() - timedelta(days=90),
                     max_value=datetime.now().date()
                 )
-            with col2:
+                
+            with filter_col2:
                 end_date = st.date_input(
                     "End Date",
                     value=datetime.now().date(),
                     max_value=datetime.now().date()
+                )
+                
+            with filter_col3:
+                # Add section filter
+                selected_section = st.selectbox(
+                    "Section",
+                    options=get_sections(),
+                    key="section_filter"
                 )
             
             # Format dates for database queries
             start_date_str = start_date.strftime('%Y-%m-%d')
             end_date_str = end_date.strftime('%Y-%m-%d')
             
-            # Add section filter
-            selected_section = st.selectbox(
-                "Section",
-                options=get_sections(),
-                key="section_filter"
-            )
+        else:
+            # Keep sidebar for admins
+            with st.sidebar:
+                st.header("Filter Options")
+                
+                # Date range selector
+                st.subheader("Date Range")
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_date = st.date_input(
+                        "Start Date",
+                        value=datetime.now().date() - timedelta(days=90),
+                        max_value=datetime.now().date()
+                    )
+                with col2:
+                    end_date = st.date_input(
+                        "End Date",
+                        value=datetime.now().date(),
+                        max_value=datetime.now().date()
+                    )
+                
+                # Format dates for database queries
+                start_date_str = start_date.strftime('%Y-%m-%d')
+                end_date_str = end_date.strftime('%Y-%m-%d')
+                
+                # Add section filter
+                selected_section = st.selectbox(
+                    "Section",
+                    options=get_sections(),
+                    key="section_filter"
+                )
+                
+                # Add refresh button
+                if st.button("🔄 Refresh Data", use_container_width=True):
+                    st.rerun()
+        
+        # Add tabs for different report sections
+        tabs = st.tabs(["Attendance Summary", "Class Attendance", "Raw Attendance Logs", "Manual Entry"])
+        
+        # Get list of all students for filtering
+        students = ["All Students"] + get_registered_students()
+        subjects = teacher_subjects  # Now using teacher-specific subjects
+        
+        # Tab 1: Enhanced Attendance Summary with beautiful visualizations
+        with tabs[0]:
+            st.header("Attendance Summary Statistics")
             
-            # Add refresh button
-            if st.button("🔄 Refresh Data", use_container_width=True):
-                st.rerun()
-    
-    # Add tabs for different report sections
-    tabs = st.tabs(["Attendance Summary", "Class Attendance", "Raw Attendance Logs", "Manual Entry"])
-    
-    # Get list of all students for filtering
-    students = ["All Students"] + get_registered_students()
-    subjects = teacher_subjects  # Now using teacher-specific subjects
-    
-    # Tab 1: Enhanced Attendance Summary with beautiful visualizations
-    with tabs[0]:
-        st.header("Attendance Summary Statistics")
-        
-        # Get overall attendance metrics - filtered by teacher subjects
-        monthly_trends = get_monthly_attendance_trends(start_date_str, end_date_str, teacher_subjects=teacher_subjects)
-        total_attended = monthly_trends['attended_classes'].sum() if not monthly_trends.empty else 0
-        total_classes = monthly_trends['total_classes'].sum() if not monthly_trends.empty else 0
-        overall_rate = total_attended / total_classes * 100 if total_classes > 0 else 0
-        
-        # Create a row with two columns for overall metrics and gauge chart
-        col1, col2 = st.columns([3, 2])
-        
-        # Column 1: Overall metrics in a more visual format
-        with col1:
-            st.subheader("Overall Attendance")
+            # Get overall attendance metrics - filtered by teacher subjects
+            monthly_trends = get_monthly_attendance_trends(start_date_str, end_date_str, teacher_subjects=teacher_subjects)
+            total_attended = monthly_trends['attended_classes'].sum() if not monthly_trends.empty else 0
+            total_classes = monthly_trends['total_classes'].sum() if not monthly_trends.empty else 0
+            overall_rate = total_attended / total_classes * 100 if total_classes > 0 else 0
             
-            # Create a nice metric row
-            metric_cols = st.columns(3)
-            with metric_cols[0]:
-                st.metric("Total Students", monthly_trends['active_students'].max() if not monthly_trends.empty else 0)
-            with metric_cols[1]:
-                st.metric("Classes Attended", f"{total_attended}/{total_classes}")
-            with metric_cols[2]:
-                st.metric("Attendance Rate", f"{overall_rate:.1f}%")
+            # Create a row with two columns for overall metrics and gauge chart
+            col1, col2 = st.columns([3, 2])
             
-            # Add a progress bar showing overall attendance with transparent background
-            st.markdown(f"""
-            <div style="margin-top: 20px;">
-                <p style="font-weight: bold; margin-bottom: 5px;">Overall Progress</p>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <div style="flex-grow: 1; height: 20px; background-color: rgba(238, 238, 238, 0.5); border-radius: 10px; overflow: hidden;">
-                        <div style="width: {overall_rate}%; height: 100%; background: linear-gradient(to right, #4CAF50, #8BC34A);"></div>
-                    </div>
-                    <div style="width: 60px; text-align: right;">
-                        <span style="font-weight: bold;">{overall_rate:.1f}%</span>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Column 2: Add a beautiful gauge chart
-        with col2:
-            if total_classes > 0:
-                gauge_chart = create_attendance_gauge(overall_rate)
-                st.plotly_chart(gauge_chart, use_container_width=True)
-        
-        # Create a divider
-        st.markdown("<hr style='margin: 25px 0; opacity: 0.3;'>", unsafe_allow_html=True)
-        
-        # Get top performers - filtered by teacher subjects
-        top_df, _ = get_attendance_outliers(start_date_str, end_date_str, limit=3, teacher_subjects=teacher_subjects, section=selected_section if selected_section != "All Sections" else None)
-        
-        # Display top performers section with reduced height
-        st.subheader("Top Students by Attendance")
-        
-        # Custom CSS for cards with improved styling and reduced size
-        st.markdown("""
-        <style>
-        .performer-card {
-            padding: 0.9rem;  /* Reduced padding */
-            border-radius: 8px;  /* Smaller radius */
-            border: none;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);  /* Lighter shadow */
-            transition: transform 0.3s, box-shadow 0.3s;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(248, 249, 250, 0.8));  /* More transparent */
-            margin-bottom: 0.75rem;  /* Reduced margin */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            text-align: center;
-            height: 100%;
-        }
-        .performer-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-        }
-        .performer-avatar {
-            width: 55px;  /* Smaller avatar */
-            height: 55px;  /* Smaller avatar */
-            border-radius: 50%;
-            background-color: #1976D2;
-            color: white;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;  /* Smaller font */
-            font-weight: bold;
-            margin-bottom: 0.75rem;
-        }
-        .performer-medal {
-            font-size: 1.6rem;  /* Smaller medals */
-            margin-bottom: 0.3rem;  /* Reduced margin */
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));  /* Lighter shadow */
-        }
-        .progress-outer {
-            width: 100%;
-            height: 8px;  /* Thinner progress bar */
-            background-color: rgba(238, 238, 238, 0.5);  /* More transparent */
-            border-radius: 8px;  /* Smaller radius */
-            overflow: hidden;
-            margin-top: 0.4rem;  /* Reduced margin */
-        }
-        .progress-inner {
-            height: 100%;
-            border-radius: 8px;  /* Smaller radius */
-        }
-        .progress-perfect {
-            background: linear-gradient(to right, #4CAF50, #8BC34A);
-        }
-        .progress-high {
-            background: linear-gradient(to right, #1976D2, #64B5F6);
-        }
-        .attendance-badge {
-            padding: 3px 6px;  /* Smaller padding */
-            border-radius: 16px;  /* Smaller radius */
-            font-size: 0.7rem;  /* Smaller font */
-            font-weight: bold;
-            color: white;
-            display: inline-block;
-            margin-top: 5px;  /* Reduced margin */
-        }
-        .perfect-badge {
-            background-color: #4CAF50;
-        }
-        .high-badge {
-            background-color: #1976D2;
-        }
-        .card-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-gap: 15px;  /* Reduced gap */
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
-        # Display the top performers cards - keeping the existing implementation but with updated CSS
-        if not top_df.empty:
-            # Count how many perfect 100% attendance students
-            perfect_students = top_df[top_df['attendance_rate'] == 100.0]
-            has_perfect = len(perfect_students) > 0
-            
-            # Start the grid container
-            st.markdown('<div class="card-grid">', unsafe_allow_html=True)
-            
-            # For each of the top students (limited to 3)
-            for i, (_, row) in enumerate(top_df.iterrows()):
-                if i < 3:  # Show only up to 3 students
-                    # ... existing card creation code ...
-                    is_perfect = row['attendance_rate'] == 100.0
-                    
-                    # Determine medal emoji (all 3 get medals now)
-                    medals = ["🥇", "🥈", "🥉"]
-                    medal = f'<div class="performer-medal">{medals[i]}</div>'
-                    
-                    # Set CSS classes based on attendance
-                    avatar_class = "performer-avatar perfect-attendance" if is_perfect else "performer-avatar high-attendance"
-                    progress_class = "progress-inner progress-perfect" if is_perfect else "progress-inner progress-high"
-                    badge_class = "attendance-badge perfect-badge" if is_perfect else "attendance-badge high-badge"
-                    badge_text = "PERFECT" if is_perfect else f"{row['attendance_rate']:.1f}%"
-                    
-                    # Create card with appropriate styling
-                    st.markdown(f"""
-                    <div class="performer-card">
-                        {medal}
-                        <div class="{avatar_class}">{row['student_name'][0].upper()}</div>
-                        <div class="performer-name">{row['student_name']}</div>
-                        <div class="performer-stats">
-                            <div>Classes: <strong>{row['attended_classes']}/{row['total_classes']}</strong></div>
-                            <div class="progress-outer">
-                                <div class="{progress_class}" style="width: {row['attendance_rate']}%;"></div>
-                            </div>
-                            <div class="{badge_class}">{badge_text}</div>
+            # Column 1: Overall metrics in a more visual format
+            with col1:
+                st.subheader("Overall Attendance")
+                
+                # Create a nice metric row
+                metric_cols = st.columns(3)
+                with metric_cols[0]:
+                    st.metric("Total Students", monthly_trends['active_students'].max() if not monthly_trends.empty else 0)
+                with metric_cols[1]:
+                    st.metric("Classes Attended", f"{total_attended}/{total_classes}")
+                with metric_cols[2]:
+                    st.metric("Attendance Rate", f"{overall_rate:.1f}%")
+                
+                # Add a progress bar showing overall attendance with transparent background
+                st.markdown(f"""
+                <div style="margin-top: 20px;">
+                    <p style="font-weight: bold; margin-bottom: 5px;">Overall Progress</p>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="flex-grow: 1; height: 20px; background-color: rgba(238, 238, 238, 0.5); border-radius: 10px; overflow: hidden;">
+                            <div style="width: {overall_rate}%; height: 100%; background: linear-gradient(to right, #4CAF50, #8BC34A);"></div>
+                        </div>
+                        <div style="width: 60px; text-align: right;">
+                            <span style="font-weight: bold;">{overall_rate:.1f}%</span>
                         </div>
                     </div>
-                    """, unsafe_allow_html=True)
+                </div>
+                """, unsafe_allow_html=True)
             
-            # Close the grid container
-            st.markdown('</div>', unsafe_allow_html=True)
-            
-            # If there are perfect attendance students, show recognition message
-            if has_perfect:
-                perfect_names = ", ".join(perfect_students['student_name'].tolist())
-                if len(perfect_students) > 1:
-                    st.success(f"🌟 {len(perfect_students)} students have perfect attendance: {perfect_names}")
-                else:
-                    st.success(f"🌟 {perfect_names} has perfect attendance!")
-        else:
-            st.info("No attendance data available to determine top performers")
-        
-        # Create a divider with reduced margin
-        st.markdown("<hr style='margin: 20px 0; opacity: 0.3;'>", unsafe_allow_html=True)
-        
-        # Add student selector for individual analysis
-        st.subheader("Individual Student Analysis")
-        selected_student = st.selectbox(
-            "Select a student to view detailed attendance", 
-            students, 
-            key="student_selector"
-        )
-        
-        # Store the selected student in session state for the visualizations to use
-        st.session_state.selected_student = selected_student
-        
-        if selected_student != "All Students":
-            # Create weekly attendance heatmap
-            heatmap_chart = create_weekly_heatmap(selected_student, weeks=4)
-            st.plotly_chart(heatmap_chart, use_container_width=True)
-        
-        # Export to Excel button
-        st.subheader("Download Reports")
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-            # Export all data
-            all_students_df, _ = get_attendance_summary(
-                start_date_str, end_date_str, None, 
-                "attendance_rate", "desc", 
-                limit=10000, offset=0,
-                teacher_subjects=teacher_subjects
-            )
-            all_students_df.columns = [
-                'Student', 
-                'ID', 
-                'Section', 
-                'Classes Attended', 
-                'Total Classes', 
-                'Attendance Rate (%)', 
-                'First Date', 
-                'Last Date'
-            ]
-            all_students_df.to_excel(writer, sheet_name='Student Summary', index=False)
-            
-            # Get subject data
-            subjects_df = get_subject_attendance_summary(start_date_str, end_date_str, teacher_subjects=teacher_subjects)
-            if not subjects_df.empty:
-                subject_table = subjects_df[['subject', 'unique_students', 'attended_count', 'total_count', 'attendance_rate']]
-                subject_table.columns = ['Subject', 'Students', 'Classes Attended', 'Total Classes', 'Attendance Rate (%)']
-                subject_table.to_excel(writer, sheet_name='Subject Summary', index=False)
-            
-            if not monthly_trends.empty:
-                monthly_trends.to_excel(writer, sheet_name='Monthly Trends', index=False)
-        
-        st.download_button(
-            label="📊 Download Complete Report",
-            data=buffer,
-            file_name=f'attendance_summary_{start_date_str}_to_{end_date_str}.xlsx',
-            mime='application/vnd.ms-excel'
-        )
-
-    # Tab 2: Class Attendance - Update to filter by teacher subjects
-    with tabs[1]:
-        st.header("Class Attendance Records")
-        
-        # Add filter row with student, subject, and section filters
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            selected_student = st.selectbox("Student", students, key="class_student")
-        with col2:
-            selected_subject = st.selectbox("Subject", subjects, key="class_subject")
-        with col3:
-            tab2_section = st.selectbox("Section", get_sections(), key="class_section")
-        
-        # Get class attendance data with section filter
-        class_df = get_class_attendance_data(
-            start_date_str, 
-            end_date_str, 
-            selected_student if selected_student != "All Students" else None,
-            selected_subject if selected_subject != "All Subjects" else None,
-            teacher_subjects if selected_subject == "All Subjects" else None,
-            tab2_section if tab2_section != "All Sections" else None
-        )
-        
-        if not class_df.empty:
-            # Calculate attendance rate
-            attendance_rate = class_df['attended'].mean() * 100
-            
-            # Display attendance rate
-            st.metric("Class Attendance Rate", f"{attendance_rate:.1f}%")
-            
-            # Show the data in a table
-            table_df = class_df[['student_name', 'student_id', 'section', 'class_date', 'subject', 'start_time', 'end_time', 'attended_status']]
-            table_df.columns = ['Student', 'ID', 'Section', 'Date', 'Subject', 'Start Time', 'End Time', 'Attended']
-            
-            # Apply style to highlight attended/absent
-            st.dataframe(
-                table_df,
-                hide_index=True,
-                use_container_width=True,
-                column_config={
-                    "Attended": st.column_config.TextColumn(
-                        "Attended",
-                        help="Whether the student attended the class",
-                        width="medium"
-                    )
-                }
-            )
-            
-            # Export to Excel button
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                table_df.to_excel(writer, sheet_name='Class Attendance', index=False)
-            st.download_button(
-                label="📊 Download Class Attendance",
-                data=buffer,
-                file_name=f'class_attendance_{start_date_str}_to_{end_date_str}.xlsx',
-                mime='application/vnd.ms-excel'
-            )
-        else:
-            st.info("No class attendance data found for the selected filters.")
-
-    # Tab 3: Raw Attendance Logs
-    with tabs[2]:
-        st.header("Raw Attendance Logs")
-        
-        # Add student filter specific to this tab
-        selected_student = st.selectbox("Filter by Student", students, key="raw_student")
-        
-        # Get attendance data with filters
-        df = get_attendance_data(
-            start_date_str, 
-            end_date_str, 
-            selected_student if selected_student != "All Students" else None,
-            1000  # Limit to 1000 records for performance
-        )
-        
-        if not df.empty:
-            # Format the data for display
-            display_df = df[['name', 'date', 'time', 'confidence', 'device_id']]
-            display_df.columns = ['Student', 'Date', 'Time', 'Confidence', 'Device']
-            
-            # Show the data in a table
-            st.dataframe(display_df, hide_index=True, use_container_width=True)
-            
-            # Export to Excel button
-            buffer = io.BytesIO()
-            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
-                display_df.to_excel(writer, sheet_name='Attendance Logs', index=False)
-            st.download_button(
-                label="📊 Download Raw Logs",
-                data=buffer,
-                file_name=f'attendance_logs_{start_date_str}_to_{end_date_str}.xlsx',
-                mime='application/vnd.ms-excel'
-            )
-            
-            # Show record count and warning if limited
-            record_count = len(df)
-            st.write(f"Showing {record_count} records")
-            if record_count >= 1000:
-                st.warning("Results limited to 1000 records. Use date filters to narrow down results.")
-        else:
-            st.info("No attendance logs found for the selected filters.")
-
-    # Tab 4: Manual Entry
-    with tabs[3]:
-        st.header("Manual Attendance Entry")
-        st.write("Use this form to manually record attendance for a student")
-        
-        # Create the form
-        with st.form("manual_attendance_form"):
-            # Student selection
-            student_name = st.selectbox("Student", get_registered_students())
-            
-            # Date selection (defaulting to today)
-            class_date = st.date_input("Class Date", value=datetime.now().date())
-            
-            # Subject and class type selection
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                subject = st.selectbox("Subject", get_subjects())
+            # Column 2: Add a beautiful gauge chart
             with col2:
-                class_type = st.selectbox("Type", ["lec", "sec"], format_func=lambda x: "Lecture" if x == "lec" else "Section")
+                if total_classes > 0:
+                    gauge_chart = create_attendance_gauge(overall_rate)
+                    st.plotly_chart(gauge_chart, use_container_width=True)
             
-            # Time selection
-            col1, col2 = st.columns(2)
-            with col1:
-                start_hour = st.selectbox("Start Hour", list(range(1, 13)), index=8)
-                start_minute = st.selectbox("Start Minute", [0, 15, 30, 45])
-                start_period = st.selectbox("AM/PM", ["AM", "PM"])
-                start_time = f"{start_hour}:{start_minute:02d} {start_period}"
-            with col2:
-                end_hour = st.selectbox("End Hour", list(range(1, 13)), index=9)
-                end_minute = st.selectbox("End Minute", [0, 15, 30, 45])
-                end_period = st.selectbox("AM/PM", ["AM", "PM"], key="end_period")
-                end_time = f"{end_hour}:{end_minute:02d} {end_period}"
+            # Create a divider
+            st.markdown("<hr style='margin: 25px 0; opacity: 0.3;'>", unsafe_allow_html=True)
             
-            # Attendance status
-            attended = st.radio("Attendance Status", ["Present", "Absent"], horizontal=True)
-            attended_val = attended == "Present"
+            # Get top performers - filtered by teacher subjects
+            top_df, _ = get_attendance_outliers(start_date_str, end_date_str, limit=3, teacher_subjects=teacher_subjects, section=selected_section if selected_section != "All Sections" else None)
             
-            # Submit button
-            submitted = st.form_submit_button("Record Attendance")
+            # Display top performers section with reduced height
+            st.subheader("Top Students by Attendance")
             
-            if submitted:
-                # Convert date to string format
-                class_date_str = class_date.strftime('%Y-%m-%d')
+            # Custom CSS for cards with improved styling and reduced size
+            st.markdown("""
+            <style>
+            .performer-card {
+                padding: 0.9rem;  /* Reduced padding */
+                border-radius: 8px;  /* Smaller radius */
+                border: none;
+                box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);  /* Lighter shadow */
+                transition: transform 0.3s, box-shadow 0.3s;
+                background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(248, 249, 250, 0.8));  /* More transparent */
+                margin-bottom: 0.75rem;  /* Reduced margin */
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                text-align: center;
+                height: 100%;
+            }
+            .performer-card:hover {
+                transform: translateY(-3px);
+                box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+            }
+            .performer-avatar {
+                width: 55px;  /* Smaller avatar */
+                height: 55px;  /* Smaller avatar */
+                border-radius: 50%;
+                background-color: #1976D2;
+                color: white;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 22px;  /* Smaller font */
+                font-weight: bold;
+                margin-bottom: 0.75rem;
+            }
+            .performer-medal {
+                font-size: 1.6rem;  /* Smaller medals */
+                margin-bottom: 0.3rem;  /* Reduced margin */
+                filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));  /* Lighter shadow */
+            }
+            .progress-outer {
+                width: 100%;
+                height: 8px;  /* Thinner progress bar */
+                background-color: rgba(238, 238, 238, 0.5);  /* More transparent */
+                border-radius: 8px;  /* Smaller radius */
+                overflow: hidden;
+                margin-top: 0.4rem;  /* Reduced margin */
+            }
+            .progress-inner {
+                height: 100%;
+                border-radius: 8px;  /* Smaller radius */
+            }
+            .progress-perfect {
+                background: linear-gradient(to right, #4CAF50, #8BC34A);
+            }
+            .progress-high {
+                background: linear-gradient(to right, #1976D2, #64B5F6);
+            }
+            .attendance-badge {
+                padding: 3px 6px;  /* Smaller padding */
+                border-radius: 16px;  /* Smaller radius */
+                font-size: 0.7rem;  /* Smaller font */
+                font-weight: bold;
+                color: white;
+                display: inline-block;
+                margin-top: 5px;  /* Reduced margin */
+            }
+            .perfect-badge {
+                background-color: #4CAF50;
+            }
+            .high-badge {
+                background-color: #1976D2;
+            }
+            .card-grid {
+                display: grid;
+                grid-template-columns: repeat(3, 1fr);
+                grid-gap: 15px;  /* Reduced gap */
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Display the top performers cards - keeping the existing implementation but with updated CSS
+            if not top_df.empty:
+                # Count how many perfect 100% attendance students
+                perfect_students = top_df[top_df['attendance_rate'] == 100.0]
+                has_perfect = len(perfect_students) > 0
                 
-                try:
-                    # Add the attendance record
-                    success = add_manual_attendance(
-                        student_name,
-                        class_date_str,
-                        subject,
-                        start_time,
-                        end_time,
-                        attended_val,
-                        class_type
-                    )
-                    
-                    if success:
-                        st.success(f"Successfully recorded attendance for {student_name}: {'Present' if attended_val else 'Absent'} " +
-                                 f"({class_type})")
+                # Start the grid container
+                st.markdown('<div class="card-grid">', unsafe_allow_html=True)
+                
+                # For each of the top students (limited to 3)
+                for i, (_, row) in enumerate(top_df.iterrows()):
+                    if i < 3:  # Show only up to 3 students
+                        # ... existing card creation code ...
+                        is_perfect = row['attendance_rate'] == 100.0
+                        
+                        # Determine medal emoji (all 3 get medals now)
+                        medals = ["🥇", "🥈", "🥉"]
+                        medal = f'<div class="performer-medal">{medals[i]}</div>'
+                        
+                        # Set CSS classes based on attendance
+                        avatar_class = "performer-avatar perfect-attendance" if is_perfect else "performer-avatar high-attendance"
+                        progress_class = "progress-inner progress-perfect" if is_perfect else "progress-inner progress-high"
+                        badge_class = "attendance-badge perfect-badge" if is_perfect else "attendance-badge high-badge"
+                        badge_text = "PERFECT" if is_perfect else f"{row['attendance_rate']:.1f}%"
+                        
+                        # Create card with appropriate styling
+                        st.markdown(f"""
+                        <div class="performer-card">
+                            {medal}
+                            <div class="{avatar_class}">{row['student_name'][0].upper()}</div>
+                            <div class="performer-name">{row['student_name']}</div>
+                            <div class="performer-stats">
+                                <div>Classes: <strong>{row['attended_classes']}/{row['total_classes']}</strong></div>
+                                <div class="progress-outer">
+                                    <div class="{progress_class}" style="width: {row['attendance_rate']}%;"></div>
+                                </div>
+                                <div class="{badge_class}">{badge_text}</div>
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                
+                # Close the grid container
+                st.markdown('</div>', unsafe_allow_html=True)
+                
+                # If there are perfect attendance students, show recognition message
+                if has_perfect:
+                    perfect_names = ", ".join(perfect_students['student_name'].tolist())
+                    if len(perfect_students) > 1:
+                        st.success(f"🌟 {len(perfect_students)} students have perfect attendance: {perfect_names}")
                     else:
-                        st.error("Failed to record attendance")
-                except Exception as e:
-                    st.error(f"Error recording attendance: {e}")
+                        st.success(f"🌟 {perfect_names} has perfect attendance!")
+            else:
+                st.info("No attendance data available to determine top performers")
+            
+            # Create a divider with reduced margin
+            st.markdown("<hr style='margin: 20px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+            
+            # Add student selector for individual analysis
+            st.subheader("Individual Student Analysis")
+            selected_student = st.selectbox(
+                "Select a student to view detailed attendance", 
+                students, 
+                key="student_selector"
+            )
+            
+            # Store the selected student in session state for the visualizations to use
+            st.session_state.selected_student = selected_student
+            
+            if selected_student != "All Students":
+                # Create weekly attendance heatmap
+                heatmap_chart = create_weekly_heatmap(selected_student, weeks=4)
+                st.plotly_chart(heatmap_chart, use_container_width=True)
+            
+            # Export to Excel button
+            st.subheader("Download Reports")
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                # Export all data
+                all_students_df, _ = get_attendance_summary(
+                    start_date_str, end_date_str, None, 
+                    "attendance_rate", "desc", 
+                    limit=10000, offset=0,
+                    teacher_subjects=teacher_subjects
+                )
+                all_students_df.columns = [
+                    'Student', 
+                    'ID', 
+                    'Section', 
+                    'Classes Attended', 
+                    'Total Classes', 
+                    'Attendance Rate (%)', 
+                    'First Date', 
+                    'Last Date'
+                ]
+                all_students_df.to_excel(writer, sheet_name='Student Summary', index=False)
+                
+                # Get subject data
+                subjects_df = get_subject_attendance_summary(start_date_str, end_date_str, teacher_subjects=teacher_subjects)
+                if not subjects_df.empty:
+                    subject_table = subjects_df[['subject', 'unique_students', 'attended_count', 'total_count', 'attendance_rate']]
+                    subject_table.columns = ['Subject', 'Students', 'Classes Attended', 'Total Classes', 'Attendance Rate (%)']
+                    subject_table.to_excel(writer, sheet_name='Subject Summary', index=False)
+                
+                if not monthly_trends.empty:
+                    monthly_trends.to_excel(writer, sheet_name='Monthly Trends', index=False)
+            
+            st.download_button(
+                label="📊 Download Complete Report",
+                data=buffer,
+                file_name=f'attendance_summary_{start_date_str}_to_{end_date_str}.xlsx',
+                mime='application/vnd.ms-excel'
+            )
+
+        # Tab 2: Class Attendance - Update to filter by teacher subjects
+        with tabs[1]:
+            st.header("Class Attendance Records")
+            
+            # Add filter row with student, subject, and section filters
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                selected_student = st.selectbox("Student", students, key="class_student")
+            with col2:
+                selected_subject = st.selectbox("Subject", subjects, key="class_subject")
+            with col3:
+                tab2_section = st.selectbox("Section", get_sections(), key="class_section")
+            
+            # Get class attendance data with section filter
+            class_df = get_class_attendance_data(
+                start_date_str, 
+                end_date_str, 
+                selected_student if selected_student != "All Students" else None,
+                selected_subject if selected_subject != "All Subjects" else None,
+                teacher_subjects if selected_subject == "All Subjects" else None,
+                tab2_section if tab2_section != "All Sections" else None
+            )
+            
+            if not class_df.empty:
+                # Calculate attendance rate
+                attendance_rate = class_df['attended'].mean() * 100
+                
+                # Display attendance rate
+                st.metric("Class Attendance Rate", f"{attendance_rate:.1f}%")
+                
+                # Show the data in a table
+                table_df = class_df[['student_name', 'student_id', 'section', 'class_date', 'subject', 'start_time', 'end_time', 'attended_status']]
+                table_df.columns = ['Student', 'ID', 'Section', 'Date', 'Subject', 'Start Time', 'End Time', 'Attended']
+                
+                # Apply style to highlight attended/absent
+                st.dataframe(
+                    table_df,
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "Attended": st.column_config.TextColumn(
+                            "Attended",
+                            help="Whether the student attended the class",
+                            width="medium"
+                        )
+                    }
+                )
+                
+                # Export to Excel button
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    table_df.to_excel(writer, sheet_name='Class Attendance', index=False)
+                st.download_button(
+                    label="📊 Download Class Attendance",
+                    data=buffer,
+                    file_name=f'class_attendance_{start_date_str}_to_{end_date_str}.xlsx',
+                    mime='application/vnd.ms-excel'
+                )
+            else:
+                st.info("No class attendance data found for the selected filters.")
+
+        # Tab 3: Raw Attendance Logs
+        with tabs[2]:
+            st.header("Raw Attendance Logs")
+            
+            # Add student filter specific to this tab
+            selected_student = st.selectbox("Filter by Student", students, key="raw_student")
+            
+            # Get attendance data with filters
+            df = get_attendance_data(
+                start_date_str, 
+                end_date_str, 
+                selected_student if selected_student != "All Students" else None,
+                1000  # Limit to 1000 records for performance
+            )
+            
+            if not df.empty:
+                # Format the data for display
+                display_df = df[['name', 'date', 'time', 'confidence', 'device_id']]
+                display_df.columns = ['Student', 'Date', 'Time', 'Confidence', 'Device']
+                
+                # Show the data in a table
+                st.dataframe(display_df, hide_index=True, use_container_width=True)
+                
+                # Export to Excel button
+                buffer = io.BytesIO()
+                with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                    display_df.to_excel(writer, sheet_name='Attendance Logs', index=False)
+                st.download_button(
+                    label="📊 Download Raw Logs",
+                    data=buffer,
+                    file_name=f'attendance_logs_{start_date_str}_to_{end_date_str}.xlsx',
+                    mime='application/vnd.ms-excel'
+                )
+                
+                # Show record count and warning if limited
+                record_count = len(df)
+                st.write(f"Showing {record_count} records")
+                if record_count >= 1000:
+                    st.warning("Results limited to 1000 records. Use date filters to narrow down results.")
+            else:
+                st.info("No attendance logs found for the selected filters.")
+
+        # Tab 4: Manual Entry
+        with tabs[3]:
+            st.header("Manual Attendance Entry")
+            st.write("Use this form to manually record attendance for a student")
+            
+            # Create the form
+            with st.form("manual_attendance_form"):
+                # Student selection
+                student_name = st.selectbox("Student", get_registered_students())
+                
+                # Date selection (defaulting to today)
+                class_date = st.date_input("Class Date", value=datetime.now().date())
+                
+                # Subject and class type selection
+                col1, col2 = st.columns([3, 1])
+                with col1:
+                    subject = st.selectbox("Subject", get_subjects())
+                with col2:
+                    class_type = st.selectbox("Type", ["lec", "sec"], format_func=lambda x: "Lecture" if x == "lec" else "Section")
+                
+                # Time selection
+                col1, col2 = st.columns(2)
+                with col1:
+                    start_hour = st.selectbox("Start Hour", list(range(1, 13)), index=8)
+                    start_minute = st.selectbox("Start Minute", [0, 15, 30, 45])
+                    start_period = st.selectbox("AM/PM", ["AM", "PM"])
+                    start_time = f"{start_hour}:{start_minute:02d} {start_period}"
+                with col2:
+                    end_hour = st.selectbox("End Hour", list(range(1, 13)), index=9)
+                    end_minute = st.selectbox("End Minute", [0, 15, 30, 45])
+                    end_period = st.selectbox("AM/PM", ["AM", "PM"], key="end_period")
+                    end_time = f"{end_hour}:{end_minute:02d} {end_period}"
+                
+                # Attendance status
+                attended = st.radio("Attendance Status", ["Present", "Absent"], horizontal=True)
+                attended_val = attended == "Present"
+                
+                # Submit button
+                submitted = st.form_submit_button("Record Attendance")
+                
+                if submitted:
+                    # Convert date to string format
+                    class_date_str = class_date.strftime('%Y-%m-%d')
+                    
+                    try:
+                        # Add the attendance record
+                        success = add_manual_attendance(
+                            student_name,
+                            class_date_str,
+                            subject,
+                            start_time,
+                            end_time,
+                            attended_val,
+                            class_type
+                        )
+                        
+                        if success:
+                            st.success(f"Successfully recorded attendance for {student_name}: {'Present' if attended_val else 'Absent'} " +
+                                     f"({class_type})")
+                        else:
+                            st.error("Failed to record attendance")
+                    except Exception as e:
+                        st.error(f"Error recording attendance: {e}")
 
 def get_sections():
     """Get list of available sections"""

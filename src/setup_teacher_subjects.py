@@ -1,108 +1,162 @@
-import sqlite3
+import streamlit as st
 import pandas as pd
+import sqlite3
 
-# Constants
 DATABASE_PATH = 'attendance_system.db'
 
-def setup_teacher_subjects_table():
-    """Create the teacher_subjects table to link teachers with their subjects"""
+def create_or_update_schema():
+    """Create or update the teacher_subjects table schema to ensure consistency"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
-    # Create table if it doesn't exist
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS teacher_subjects (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        teacher_username TEXT NOT NULL,
-        subject TEXT NOT NULL,
-        UNIQUE(teacher_username, subject)
-    )
-    ''')
-    
-    # Add some sample data if the table is empty
-    cursor.execute("SELECT COUNT(*) FROM teacher_subjects")
-    count = cursor.fetchone()[0]
-    
-    if count == 0:
-        # Get existing subjects from class_schedules table
-        cursor.execute("SELECT DISTINCT subject FROM class_schedules WHERE subject != ''")
-        subjects = [row[0] for row in cursor.fetchall()]
+    try:
+        # Check if table exists and what columns it has
+        cursor.execute("PRAGMA table_info(teacher_subjects)")
+        columns = cursor.fetchall()
+        column_names = [col[1] for col in columns]
         
-        # Get existing admin user_accounts
-        cursor.execute("SELECT username FROM user_accounts WHERE role = 'admin'")
-        teachers = [row[0] for row in cursor.fetchall()]
-        
-        if teachers and subjects:
-            # Assign subjects to teachers - for now, we'll just distribute them
-            # In a real system, you would have a UI for this
-            assignments = []
-            for i, teacher in enumerate(teachers):
-                # Assign 1-3 subjects to each teacher
-                for j in range(min(3, len(subjects))):
-                    subject_index = (i + j) % len(subjects)
-                    assignments.append((teacher, subjects[subject_index]))
-            
-            # Insert the assignments
-            cursor.executemany(
-                "INSERT OR IGNORE INTO teacher_subjects (teacher_username, subject) VALUES (?, ?)",
-                assignments
+        if not columns:
+            # Table doesn't exist - create it
+            cursor.execute('''
+            CREATE TABLE teacher_subjects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subject_id INTEGER,
+                teacher_name TEXT,
+                FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
             )
-            print(f"Added {len(assignments)} teacher-subject assignments")
-        else:
-            print("No teachers or subjects found to create sample data")
-    
-    conn.commit()
-    conn.close()
-    print("Teacher subjects table setup complete")
+            ''')
+            conn.commit()
+            print("Created teacher_subjects table")
+        elif 'teacher_name' not in column_names:
+            # Table exists but needs migration - check for possible columns
+            teacher_column = None
+            for possible_col in ['teacher', 'teacher_username', 'username', 'professor']:
+                if possible_col in column_names:
+                    teacher_column = possible_col
+                    break
+            
+            # Create updated table
+            cursor.execute('''
+            CREATE TABLE teacher_subjects_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subject_id INTEGER,
+                teacher_name TEXT,
+                FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
+            )
+            ''')
+            
+            # Migrate data if we found a matching column
+            if teacher_column and 'subject_id' in column_names:
+                cursor.execute(f'''
+                INSERT INTO teacher_subjects_new (subject_id, teacher_name)
+                SELECT subject_id, {teacher_column} FROM teacher_subjects
+                ''')
+            
+            # Replace tables
+            cursor.execute("DROP TABLE teacher_subjects")
+            cursor.execute("ALTER TABLE teacher_subjects_new RENAME TO teacher_subjects")
+            conn.commit()
+            print(f"Migrated teacher_subjects table (old field: {teacher_column})")
+        
+    except Exception as e:
+        conn.rollback()
+        print(f"Error in teacher_subjects schema update: {e}")
+    finally:
+        conn.close()
+
+# Initialize schema when the module is imported
+create_or_update_schema()
 
 def get_teacher_subjects(username):
-    """Get the subjects assigned to a specific teacher"""
+    """Get subjects taught by a specific teacher"""
     conn = sqlite3.connect(DATABASE_PATH)
-    query = "SELECT subject FROM teacher_subjects WHERE teacher_username = ?"
-    df = pd.read_sql(query, conn, params=(username,))
-    conn.close()
     
-    if df.empty:
-        return []
-    return df['subject'].tolist()
+    try:
+        # First check the column name for teacher
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(teacher_subjects)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        # Determine the teacher column name
+        teacher_column = 'teacher_name'
+        if teacher_column not in columns:
+            if 'teacher_username' in columns:
+                teacher_column = 'teacher_username'
+            elif 'username' in columns:
+                teacher_column = 'username'
+            elif 'teacher' in columns:
+                teacher_column = 'teacher'
+            else:
+                # If we can't find a suitable column, return empty DataFrame
+                return pd.DataFrame(columns=['subject_id', 'subject_name'])
+        
+        # Get subjects using JOIN with subjects table
+        query = f"""
+        SELECT s.subject_id, s.subject_name
+        FROM subjects s
+        JOIN teacher_subjects ts ON s.subject_id = ts.subject_id
+        WHERE ts.{teacher_column} = ?
+        ORDER BY s.subject_name
+        """
+        df = pd.read_sql(query, conn, params=(username,))
+        return df
+    
+    except Exception as e:
+        st.error(f"Error retrieving teacher subjects: {e}")
+        # Return empty DataFrame with expected structure
+        return pd.DataFrame(columns=['subject_id', 'subject_name'])
+    finally:
+        conn.close()
 
-def assign_subject_to_teacher(teacher_username, subject):
+def get_all_subjects():
+    """Get all subjects from database"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    query = "SELECT * FROM subjects ORDER BY subject_name"
+    
+    try:
+        df = pd.read_sql(query, conn)
+    except:
+        df = pd.DataFrame(columns=['subject_id', 'subject_name', 'course_code'])
+    
+    conn.close()
+    return df
+
+def assign_subject_to_teacher(teacher_username, subject_id):
     """Assign a subject to a teacher"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
     try:
-        cursor.execute(
-            "INSERT OR IGNORE INTO teacher_subjects (teacher_username, subject) VALUES (?, ?)",
-            (teacher_username, subject)
-        )
-        conn.commit()
-        success = True
-    except:
+        # Check if this assignment already exists
+        teacher_column = 'teacher_name'
+        
+        # Check column name first
+        cursor.execute("PRAGMA table_info(teacher_subjects)")
+        columns = [col[1] for col in cursor.fetchall()]
+        if teacher_column not in columns:
+            if 'teacher_username' in columns:
+                teacher_column = 'teacher_username'
+            elif 'username' in columns:
+                teacher_column = 'username'
+            elif 'teacher' in columns:
+                teacher_column = 'teacher'
+        
+        # Check for existing assignment
+        cursor.execute(f"SELECT id FROM teacher_subjects WHERE {teacher_column} = ? AND subject_id = ?",
+                     (teacher_username, subject_id))
+        exists = cursor.fetchone()
+        
+        if not exists:
+            # Create new assignment
+            cursor.execute(f"INSERT INTO teacher_subjects (subject_id, {teacher_column}) VALUES (?, ?)",
+                         (subject_id, teacher_username))
+            conn.commit()
+            return True, "Subject assigned successfully"
+        else:
+            return False, "This subject is already assigned to this teacher"
+    
+    except Exception as e:
         conn.rollback()
-        success = False
-    
-    conn.close()
-    return success
-
-def remove_subject_from_teacher(teacher_username, subject):
-    """Remove a subject assignment from a teacher"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    
-    try:
-        cursor.execute(
-            "DELETE FROM teacher_subjects WHERE teacher_username = ? AND subject = ?",
-            (teacher_username, subject)
-        )
-        conn.commit()
-        success = True
-    except:
-        conn.rollback()
-        success = False
-    
-    conn.close()
-    return success
-
-if __name__ == "__main__":
-    setup_teacher_subjects_table()
+        return False, f"Error assigning subject: {e}"
+    finally:
+        conn.close()
