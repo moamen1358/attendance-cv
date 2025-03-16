@@ -172,19 +172,58 @@ def get_teacher_subjects(teacher):
     return df
 
 def get_subject_schedules(subject_id=None):
-    """Get all schedules or for a specific subject"""
+    """Get all schedules or for a specific subject with enhanced schema detection"""
     conn = get_db_connection()
-    if subject_id:
-        query = "SELECT * FROM class_schedules WHERE subject_id = ? ORDER BY day, start_time"
-        df = pd.read_sql_query(query, conn, params=(subject_id,))
+    cursor = conn.cursor()
+    
+    # Check the actual schema of the class_schedules table
+    cursor.execute("PRAGMA table_info(class_schedules)")
+    columns = [col[1] for col in cursor.fetchall()]
+    
+    # Determine if we have subject_id column or just subject column
+    has_subject_id = 'subject_id' in columns
+    has_subject = 'subject' in columns
+    
+    if subject_id is not None:
+        if has_subject_id:
+            # Use subject_id for filtering if available
+            query = "SELECT * FROM class_schedules WHERE subject_id = ? ORDER BY day, start_time"
+            df = pd.read_sql_query(query, conn, params=(subject_id,))
+        elif has_subject:
+            # Get subject name for filtering by name
+            cursor.execute("SELECT subject_name FROM subjects WHERE subject_id = ?", (subject_id,))
+            result = cursor.fetchone()
+            if result:
+                subject_name = result[0]
+                query = "SELECT * FROM class_schedules WHERE subject = ? ORDER BY day, start_time"
+                df = pd.read_sql_query(query, conn, params=(subject_name,))
+            else:
+                df = pd.DataFrame()  # Empty DataFrame if subject not found
+        else:
+            # No suitable column found
+            st.warning("Schema issue: class_schedules table is missing required columns")
+            df = pd.DataFrame()
     else:
-        query = """
-        SELECT cs.*, s.subject_name 
-        FROM class_schedules cs
-        JOIN subjects s ON cs.subject_id = s.subject_id
-        ORDER BY s.subject_name, cs.day, cs.start_time
-        """
+        # For getting all schedules
+        if has_subject_id and 'subject_name' in columns:
+            query = """
+            SELECT cs.*, s.subject_name 
+            FROM class_schedules cs
+            JOIN subjects s ON cs.subject_id = s.subject_id
+            ORDER BY s.subject_name, cs.day, cs.start_time
+            """
+        elif has_subject:
+            query = """
+            SELECT * FROM class_schedules 
+            ORDER BY subject, day, start_time
+            """
+        else:
+            query = """
+            SELECT * FROM class_schedules 
+            ORDER BY day, start_time
+            """
         df = pd.read_sql_query(query, conn)
+    
     conn.close()
     return df
 
@@ -217,22 +256,72 @@ def add_new_subject(subject_data):
         conn.close()
 
 def add_class_schedule(schedule_data):
-    """Add a new class schedule"""
+    """Add a new class schedule with enhanced schema detection"""
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
-        cursor.execute(
-            "INSERT INTO class_schedules (subject_id, day, start_time, end_time, room, type) VALUES (?, ?, ?, ?, ?, ?)",
-            (
-                schedule_data['subject_id'], 
-                schedule_data['day'], 
-                schedule_data['start_time'], 
-                schedule_data['end_time'], 
-                schedule_data['room'],
-                schedule_data['type']
+        # Check the actual schema of the class_schedules table
+        cursor.execute("PRAGMA table_info(class_schedules)")
+        columns = [col[1] for col in cursor.fetchall()]
+        
+        # Determine columns to use based on schema
+        has_subject_id = 'subject_id' in columns
+        has_subject = 'subject' in columns
+        
+        if has_subject_id and has_subject:
+            # If both columns exist, populate both
+            subject_id = schedule_data['subject_id']
+            
+            # Get subject name from ID
+            cursor.execute("SELECT subject_name FROM subjects WHERE subject_id = ?", (subject_id,))
+            result = cursor.fetchone()
+            subject_name = result[0] if result else "Unknown"
+            
+            cursor.execute(
+                "INSERT INTO class_schedules (subject_id, subject, day, start_time, end_time, room, type) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (
+                    subject_id,
+                    subject_name,
+                    schedule_data['day'], 
+                    schedule_data['start_time'], 
+                    schedule_data['end_time'], 
+                    schedule_data['room'],
+                    schedule_data['type']
+                )
             )
-        )
+        elif has_subject_id:
+            cursor.execute(
+                "INSERT INTO class_schedules (subject_id, day, start_time, end_time, room, type) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    schedule_data['subject_id'], 
+                    schedule_data['day'], 
+                    schedule_data['start_time'], 
+                    schedule_data['end_time'], 
+                    schedule_data['room'],
+                    schedule_data['type']
+                )
+            )
+        elif has_subject:
+            # Get subject name from ID
+            cursor.execute("SELECT subject_name FROM subjects WHERE subject_id = ?", (schedule_data['subject_id'],))
+            result = cursor.fetchone()
+            subject_name = result[0] if result else "Unknown"
+            
+            cursor.execute(
+                "INSERT INTO class_schedules (subject, day, start_time, end_time, room, type) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    subject_name,
+                    schedule_data['day'], 
+                    schedule_data['start_time'], 
+                    schedule_data['end_time'], 
+                    schedule_data['room'],
+                    schedule_data['type']
+                )
+            )
+        else:
+            raise Exception("Schema issue: class_schedules table is missing required columns")
+        
         conn.commit()
         return True, ""
     except Exception as e:
@@ -278,6 +367,41 @@ def delete_schedule(schedule_id):
         return False, str(e)
     finally:
         conn.close()
+
+def get_common_subject_names():
+    """Return a list of common subject names for suggestions"""
+    return [
+        "Introduction to Computer Science",
+        "Data Structures and Algorithms",
+        "Database Systems",
+        "Operating Systems",
+        "Computer Networks",
+        "Web Development",
+        "Mobile App Development",
+        "Machine Learning",
+        "Artificial Intelligence",
+        "Software Engineering",
+        "Computer Architecture",
+        "Discrete Mathematics",
+        "Calculus I",
+        "Calculus II",
+        "Linear Algebra",
+        "Statistics",
+        "Physics I",
+        "Physics II",
+        "Chemistry",
+        "Biology"
+    ]
+
+def get_common_course_codes():
+    """Return a list of common course code patterns"""
+    return [
+        "CS101", "CS201", "CS301", "CS401",
+        "IT101", "IT201", "IT301", "IT401",
+        "MATH101", "MATH201", "MATH301",
+        "PHYS101", "PHYS201",
+        "CHEM101", "BIO101"
+    ]
 
 def show_subject_management():
     st.title("Subject & Schedule Management")
@@ -449,51 +573,217 @@ def show_subject_management():
                         del st.session_state.view_schedule_name
                         st.rerun()
     
-    # Tab 2: Add Subject
+    # Tab 2: Add Subject - ENHANCED VERSION
     with tab2:
         st.header("Add New Subject")
         
-        with st.form("add_subject_form"):
-            col1, col2 = st.columns(2)
+        # Create a container with a nice background color
+        with st.container():
+            st.markdown("""
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 10px; border-left: 5px solid #4CAF50;">
+                <h3 style="margin-top: 0;">Subject Details</h3>
+                <p>Fill in the details below to create a new subject.</p>
+            </div>
+            """, unsafe_allow_html=True)
             
-            with col1:
-                subject_name = st.text_input("Subject Name*", placeholder="e.g., Introduction to Computer Science")
-                course_code = st.text_input("Course Code*", placeholder="e.g., CS101")
+            # Get common subject names for suggestions
+            common_subjects = get_common_subject_names()
             
-            with col2:
-                credit_hours = st.number_input("Credit Hours*", min_value=1, max_value=6, value=3, step=1)
-                subject_description = st.text_area("Description", placeholder="Brief description of the subject")
+            # Get common course codes for suggestions
+            common_codes = get_common_course_codes()
             
-            # Get all teachers for multiselect
-            all_teachers = get_teachers()
-            assigned_teachers = st.multiselect("Assign Teachers*", all_teachers)
-            
-            submit_button = st.form_submit_button("Add Subject", use_container_width=True, type="primary")
-            
-            if submit_button:
-                if not subject_name or not course_code or not assigned_teachers:
-                    st.error("Please fill all required fields marked with *")
+            with st.form("add_subject_form", clear_on_submit=True):
+                # Subject Name section with dropdown/text combo
+                st.subheader("Subject Information")
+                
+                # Option to select from common subjects or enter custom
+                use_common_subject = st.checkbox("Select from common subjects", value=True)
+                
+                if use_common_subject:
+                    subject_name = st.selectbox("Subject Name*", common_subjects)
                 else:
-                    # Prepare data
-                    subject_data = {
-                        'name': subject_name,
-                        'code': course_code,
-                        'credits': credit_hours,
-                        'description': subject_description,
-                        'teachers': assigned_teachers
-                    }
+                    subject_name = st.text_input("Subject Name*", placeholder="Enter subject name")
+                
+                # Course code with option to use common patterns
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    use_common_code = st.checkbox("Select from common codes", value=True)
                     
-                    # Add subject
-                    success, result = add_new_subject(subject_data)
-                    
-                    if success:
-                        st.success(f"Subject '{subject_name}' added successfully!")
-                        st.session_state.new_subject_id = result
-                        st.session_state.new_subject_name = subject_name
-                        # Automatic redirect to add schedules
-                        st.info("Now you can add schedules for this subject in the 'Manage Schedule' tab.")
+                    if use_common_code:
+                        course_code = st.selectbox("Course Code*", common_codes)
                     else:
-                        st.error(f"Error adding subject: {result}")
+                        course_code = st.text_input("Course Code*", placeholder="e.g., CS101")
+                
+                with col2:
+                    # MODIFIED: Replace button-based credit hours with number_input
+                    credit_hours = st.number_input(
+                        "Credit Hours*",
+                        min_value=1,
+                        max_value=6,
+                        value=3,
+                        step=1,
+                        help="Number of credit hours for this subject"
+                    )
+                
+                # Enhanced description field with character count
+                subject_description = st.text_area(
+                    "Description", 
+                    placeholder="Brief description of the subject",
+                    height=100,
+                    max_chars=500,
+                    help="A short description of the subject content and objectives"
+                )
+                
+                st.write(f"Characters: {len(subject_description)}/500")
+                
+                # Teacher assignment section
+                st.subheader("Assign Teachers")
+                
+                # Get all teachers for multiselect
+                all_teachers = get_teachers()
+                
+                # Display teachers with a more visual approach
+                if all_teachers:
+                    # Show available teachers with avatars
+                    st.markdown("""
+                    <style>
+                    .teacher-container {
+                        display: flex;
+                        flex-wrap: wrap;
+                        gap: 10px;
+                        margin-top: 10px;
+                    }
+                    .teacher-card {
+                        display: flex;
+                        align-items: center;
+                        padding: 5px 10px;
+                        border-radius: 20px;
+                        background-color: #f0f0f0;
+                        cursor: pointer;
+                    }
+                    .teacher-card.selected {
+                        background-color: #4CAF50;
+                        color: white;
+                    }
+                    .teacher-avatar {
+                        width: 25px;
+                        height: 25px;
+                        border-radius: 50%;
+                        background-color: #1976D2;
+                        color: white;
+                        display: flex;
+                        align-items: center;
+                        justify-content: center;
+                        font-size: 12px;
+                        margin-right: 5px;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
+                    
+                    # Enhanced teacher selection with search
+                    assigned_teachers = st.multiselect(
+                        "Select Teachers*", 
+                        all_teachers,
+                        placeholder="Search for teachers...",
+                        help="Assign one or more teachers to this subject"
+                    )
+                    
+                    # Preview of selected teachers
+                    if assigned_teachers:
+                        st.markdown("### Selected Teachers")
+                        cols = st.columns(len(assigned_teachers) if len(assigned_teachers) <= 4 else 4)
+                        for i, teacher in enumerate(assigned_teachers[:4]):  # Show first 4 with larger avatars
+                            with cols[i % 4]:
+                                st.markdown(f"""
+                                <div style="display: flex; flex-direction: column; align-items: center;">
+                                    <div style="width: 40px; height: 40px; border-radius: 50%; background-color: #1976D2; 
+                                        color: white; display: flex; align-items: center; justify-content: center; 
+                                        font-size: 16px; margin-bottom: 5px;">
+                                        {teacher[0].upper()}
+                                    </div>
+                                    <div style="text-align: center; font-size: 0.9em;">{teacher}</div>
+                                </div>
+                                """, unsafe_allow_html=True)
+                        
+                        if len(assigned_teachers) > 4:
+                            st.write(f"...and {len(assigned_teachers) - 4} more")
+                else:
+                    st.warning("No teachers available. Please add teachers first.")
+                    assigned_teachers = []
+                
+                # Submit button with error checking
+                submit_col1, submit_col2 = st.columns([1, 1])
+                
+                with submit_col1:
+                    st.markdown("**Required fields are marked with * **")
+                
+                with submit_col2:
+                    submit_button = st.form_submit_button(
+                        "➕ Add Subject", 
+                        use_container_width=True, 
+                        type="primary"
+                    )
+                
+                if submit_button:
+                    # Validate required fields
+                    errors = []
+                    
+                    if not subject_name:
+                        errors.append("Subject Name is required")
+                    
+                    if not course_code:
+                        errors.append("Course Code is required")
+                    
+                    if not assigned_teachers:
+                        errors.append("At least one teacher must be assigned")
+                    
+                    if errors:
+                        for error in errors:
+                            st.error(error)
+                    else:
+                        # Prepare data
+                        subject_data = {
+                            'name': subject_name,
+                            'code': course_code,
+                            'credits': credit_hours,
+                            'description': subject_description,
+                            'teachers': assigned_teachers
+                        }
+                        
+                        # Add subject
+                        success, result = add_new_subject(subject_data)
+                        
+                        if success:
+                            st.success(f"Subject '{subject_name}' added successfully!")
+                            st.session_state.new_subject_id = result
+                            st.session_state.new_subject_name = subject_name
+                            
+                            # Show confirmation with details
+                            st.markdown(f"""
+                            <div style="background-color: #eaffea; padding: 15px; border-radius: 5px; 
+                                     border-left: 5px solid #4CAF50; margin-top: 20px;">
+                                <h4 style="margin-top: 0;">Subject Created Successfully!</h4>
+                                <p><strong>Subject Name:</strong> {subject_name}</p>
+                                <p><strong>Course Code:</strong> {course_code}</p>
+                                <p><strong>Credit Hours:</strong> {credit_hours}</p>
+                                <p><strong>Teachers:</strong> {", ".join(assigned_teachers)}</p>
+                            </div>
+                            """, unsafe_allow_html=True)
+                            
+                            # Automatic redirect to add schedules
+                            st.info("Now you can add schedules for this subject in the 'Manage Schedule' tab.")
+                        else:
+                            st.error(f"Error adding subject: {result}")
+                            
+        # Add some helpful tips at the bottom
+        with st.expander("Tips for Adding Subjects", expanded=False):
+            st.markdown("""
+            - Course codes typically follow a department prefix + number format (e.g., CS101)
+            - Credit hours usually range from 1-4 for most courses
+            - You can assign multiple teachers to a subject
+            - After creating the subject, go to the "Manage Schedule" tab to set up class times
+            """)
     
     # Tab 3: Manage Schedule
     with tab3:
@@ -656,97 +946,198 @@ def show_subject_management():
                 # Get all schedules
                 schedules_df = get_subject_schedules()
                 
-                # Join with subject names for better display
-                merged_df = pd.merge(
-                    schedules_df,
-                    subjects_df[['subject_id', 'subject_name']],
-                    on='subject_id',
-                    how='left'
-                )
-                
-                # Get attendance data for subjects
+                # Handle merge with better error checking
                 try:
-                    conn = get_db_connection()
-                    attendance_query = """
-                    SELECT s.subject_name, COUNT(DISTINCT a.id) as attendance_count
-                    FROM subjects s
-                    JOIN class_schedules cs ON s.subject_id = cs.subject_id
-                    JOIN class_attendance_records a ON cs.subject = a.subject
-                    GROUP BY s.subject_name
-                    """
-                    attendance_df = pd.read_sql_query(attendance_query, conn)
-                    conn.close()
-                    
-                    # Create visualizations
-                    
-                    # 1. Subject distribution by day
-                    st.subheader("Class Schedule Distribution by Day")
-                    day_counts = merged_df['day'].value_counts().reset_index()
-                    day_counts.columns = ['Day', 'Count']
-                    
-                    # Define custom order for days
-                    day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-                    day_counts['Day_order'] = day_counts['Day'].apply(lambda x: day_order.index(x) if x in day_order else 99)
-                    day_counts = day_counts.sort_values('Day_order').drop('Day_order', axis=1)
-                    
-                    fig = px.bar(
-                        day_counts, 
-                        x='Day', 
-                        y='Count',
-                        color='Count',
-                        color_continuous_scale='Viridis',
-                        title="Number of Classes per Day"
-                    )
-                    fig.update_layout(xaxis_title="Day", yaxis_title="Number of Classes")
-                    st.plotly_chart(fig, use_container_width=True)
-                    
-                    # 2. Room utilization
-                    st.subheader("Room Utilization")
-                    room_counts = merged_df['room'].value_counts().head(10).reset_index()
-                    room_counts.columns = ['Room', 'Classes']
-                    
-                    fig2 = px.pie(
-                        room_counts, 
-                        values='Classes', 
-                        names='Room',
-                        title="Top 10 Room Usage",
-                        hole=0.4
-                    )
-                    st.plotly_chart(fig2, use_container_width=True)
-                    
-                    # 3. Subject with most classes
-                    st.subheader("Subjects by Number of Classes")
-                    subject_classes = merged_df.groupby('subject_name').size().reset_index(name='class_count')
-                    subject_classes = subject_classes.sort_values('class_count', ascending=False)
-                    
-                    fig3 = px.bar(
-                        subject_classes.head(10), 
-                        x='subject_name', 
-                        y='class_count',
-                        title="Top 10 Subjects by Number of Classes",
-                        color='class_count',
-                        color_continuous_scale='Blues'
-                    )
-                    fig3.update_layout(xaxis_title="Subject", yaxis_title="Number of Classes", xaxis_tickangle=-45)
-                    st.plotly_chart(fig3, use_container_width=True)
-                    
-                    # 4. Subjects with highest attendance
-                    if not attendance_df.empty:
-                        st.subheader("Subjects by Attendance")
-                        fig4 = px.bar(
-                            attendance_df.sort_values('attendance_count', ascending=False).head(10),
-                            x='subject_name',
-                            y='attendance_count',
-                            title="Top 10 Subjects by Attendance",
-                            color='attendance_count',
-                            color_continuous_scale='Greens'
+                    # Check if both DataFrames have the required columns
+                    if 'subject_id' in schedules_df.columns and 'subject_id' in subjects_df.columns:
+                        # Ensure subject_id has the same type in both DataFrames
+                        schedules_df['subject_id'] = schedules_df['subject_id'].astype(str)
+                        subjects_df['subject_id'] = subjects_df['subject_id'].astype(str)
+                        
+                        # Now perform the merge
+                        merged_df = pd.merge(
+                            schedules_df,
+                            subjects_df[['subject_id', 'subject_name']],
+                            on='subject_id',
+                            how='left'
                         )
-                        fig4.update_layout(xaxis_title="Subject", yaxis_title="Attendance Count", xaxis_tickangle=-45)
-                        st.plotly_chart(fig4, use_container_width=True)
-                    
+                    else:
+                        # Alternative: if subject_id is not in schedules_df but 'subject' is
+                        if 'subject' in schedules_df.columns:
+                            st.info("Using 'subject' column for joining instead of 'subject_id'")
+                            # Copy schedules_df to avoid modifying the original
+                            merged_df = schedules_df.copy()
+                        else:
+                            st.error("Required columns for joining data are missing.")
+                            st.stop()
+                
+                    # Get attendance data for subjects
+                    try:
+                        conn = get_db_connection()
+                        attendance_query = """
+                        SELECT s.subject_name, COUNT(DISTINCT a.id) as attendance_count
+                        FROM subjects s
+                        JOIN class_schedules cs ON s.subject_id = cs.subject_id
+                        JOIN class_attendance_records a ON cs.subject = a.subject
+                        GROUP BY s.subject_name
+                        """
+                        attendance_df = pd.read_sql_query(attendance_query, conn)
+                        conn.close()
+                        
+                        # Create visualizations
+                        
+                        # 1. Subject distribution by day
+                        st.subheader("Class Schedule Distribution by Day")
+                        day_counts = merged_df['day'].value_counts().reset_index()
+                        day_counts.columns = ['Day', 'Count']
+                        
+                        # Define custom order for days
+                        day_order = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+                        day_counts['Day_order'] = day_counts['Day'].apply(lambda x: day_order.index(x) if x in day_order else 99)
+                        day_counts = day_counts.sort_values('Day_order').drop('Day_order', axis=1)
+                        
+                        fig = px.bar(
+                            day_counts, 
+                            x='Day', 
+                            y='Count',
+                            color='Count',
+                            color_continuous_scale='Viridis',
+                            title="Number of Classes per Day"
+                        )
+                        fig.update_layout(xaxis_title="Day", yaxis_title="Number of Classes")
+                        st.plotly_chart(fig, use_container_width=True)
+                        
+                        # 2. Room utilization
+                        st.subheader("Room Utilization")
+                        room_counts = merged_df['room'].value_counts().head(10).reset_index()
+                        room_counts.columns = ['Room', 'Classes']
+                        
+                        fig2 = px.pie(
+                            room_counts, 
+                            values='Classes', 
+                            names='Room',
+                            title="Top 10 Room Usage",
+                            hole=0.4
+                        )
+                        st.plotly_chart(fig2, use_container_width=True)
+                        
+                        # 3. Subject with most classes
+                        st.subheader("Subjects by Number of Classes")
+                        subject_classes = merged_df.groupby('subject_name').size().reset_index(name='class_count')
+                        subject_classes = subject_classes.sort_values('class_count', ascending=False)
+                        
+                        fig3 = px.bar(
+                            subject_classes.head(10), 
+                            x='subject_name', 
+                            y='class_count',
+                            title="Top 10 Subjects by Number of Classes",
+                            color='class_count',
+                            color_continuous_scale='Blues'
+                        )
+                        fig3.update_layout(xaxis_title="Subject", yaxis_title="Number of Classes", xaxis_tickangle=-45)
+                        st.plotly_chart(fig3, use_container_width=True)
+                        
+                        # 4. Subjects with highest attendance
+                        if not attendance_df.empty:
+                            st.subheader("Subjects by Attendance")
+                            fig4 = px.bar(
+                                attendance_df.sort_values('attendance_count', ascending=False).head(10),
+                                x='subject_name',
+                                y='attendance_count',
+                                title="Top 10 Subjects by Attendance",
+                                color='attendance_count',
+                                color_continuous_scale='Greens'
+                            )
+                            fig4.update_layout(xaxis_title="Subject", yaxis_title="Attendance Count", xaxis_tickangle=-45)
+                            st.plotly_chart(fig4, use_container_width=True)
+                        
+                    except Exception as e:
+                        st.error(f"Error generating analytics: {str(e)}")
+                        st.info("Some analytics may not be available due to database schema limitations.")
+                
                 except Exception as e:
-                    st.error(f"Error generating analytics: {str(e)}")
-                    st.info("Some analytics may not be available due to database schema limitations.")
+                    st.error(f"Error merging data: {str(e)}")
+                    st.info("Please check that your database schema is properly set up.")
+                    st.stop()
 
 if __name__ == "__main__":
     show_subject_management()
+
+def update_class_schedules_schema():
+    """Update class_schedules table schema if needed"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Check if table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='class_schedules'")
+        table_exists = cursor.fetchone() is not None
+        
+        if table_exists:
+            # Check current columns
+            cursor.execute("PRAGMA table_info(class_schedules)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            # Check if we need to add subject_id column
+            if 'subject_id' not in columns:
+                cursor.execute("ALTER TABLE class_schedules ADD COLUMN subject_id INTEGER")
+                
+                # If we have subject column and subjects table, try to update subject_id values
+                if 'subject' in columns:
+                    cursor.execute("""
+                    UPDATE class_schedules
+                    SET subject_id = (
+                        SELECT subject_id FROM subjects 
+                        WHERE subjects.subject_name = class_schedules.subject
+                        LIMIT 1
+                    )
+                    WHERE subject IS NOT NULL
+                    """)
+                
+                conn.commit()
+                print("Added subject_id column to class_schedules table")
+            
+            # Check if we need to add subject column
+            if 'subject' not in columns:
+                cursor.execute("ALTER TABLE class_schedules ADD COLUMN subject TEXT")
+                
+                # If we have subject_id column and subjects table, try to update subject values
+                if 'subject_id' in columns:
+                    cursor.execute("""
+                    UPDATE class_schedules
+                    SET subject = (
+                        SELECT subject_name FROM subjects 
+                        WHERE subjects.subject_id = class_schedules.subject_id
+                        LIMIT 1
+                    )
+                    WHERE subject_id IS NOT NULL
+                    """)
+                
+                conn.commit()
+                print("Added subject column to class_schedules table")
+        else:
+            # Create table with both columns
+            cursor.execute('''
+            CREATE TABLE class_schedules (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                subject_id INTEGER,
+                subject TEXT,
+                day TEXT NOT NULL,
+                start_time TEXT NOT NULL,
+                end_time TEXT NOT NULL,
+                room TEXT,
+                type TEXT DEFAULT 'lec',
+                FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
+            )
+            ''')
+            conn.commit()
+            print("Created class_schedules table with all required columns")
+            
+    except Exception as e:
+        conn.rollback()
+        print(f"Error updating schema: {e}")
+    finally:
+        conn.close()
+
+# Run schema update at module import
+update_class_schedules_schema()

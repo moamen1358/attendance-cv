@@ -289,12 +289,16 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
         date_condition += "AND ca.class_date <= ?"
         params.append(end_date)
     
-    # Build subject filter condition
+    # Build subject filter condition - FIX FOR DATAFRAME EVALUATION
     subject_condition = ""
-    if teacher_subjects and "All Subjects" not in teacher_subjects:
-        placeholders = ", ".join(["?"] * len(teacher_subjects))
-        subject_condition = f"AND ca.subject IN ({placeholders})"
-        params.extend(teacher_subjects)
+    # Check if teacher_subjects is a DataFrame (not None) and not empty
+    if isinstance(teacher_subjects, pd.DataFrame) and not teacher_subjects.empty:
+        # Extract subject names from the DataFrame
+        subjects_list = teacher_subjects['subject_name'].tolist() 
+        if subjects_list and "All Subjects" not in subjects_list:
+            placeholders = ", ".join(["?"] * len(subjects_list))
+            subject_condition = f"AND ca.subject IN ({placeholders})"
+            params.extend(subjects_list)
     
     # Add section condition
     section_condition = ""
@@ -430,11 +434,15 @@ def get_monthly_attendance_trends(start_date=None, end_date=None, teacher_subjec
         conditions.append("ca.class_date <= ?")
         params.append(end_date)
     
-    # Add filter for teacher's subjects
-    if teacher_subjects and "All Subjects" not in teacher_subjects:
-        placeholders = ", ".join(["?"] * len(teacher_subjects))
-        conditions.append(f"ca.subject IN ({placeholders})")
-        params.extend(teacher_subjects)
+    # Add filter for teacher's subjects - FIX FOR DATAFRAME EVALUATION
+    # Check if teacher_subjects is a DataFrame (not None) and not empty
+    if isinstance(teacher_subjects, pd.DataFrame) and not teacher_subjects.empty:
+        # Extract subject names from the DataFrame
+        subjects_list = teacher_subjects['subject_name'].tolist() 
+        if subjects_list and "All Subjects" not in subjects_list:
+            placeholders = ", ".join(["?"] * len(subjects_list))
+            conditions.append(f"ca.subject IN ({placeholders})")
+            params.extend(subjects_list)
     
     # Build WHERE clause
     where_clause = " AND ".join(conditions)
@@ -484,11 +492,15 @@ def get_attendance_outliers(start_date=None, end_date=None, limit=5, teacher_sub
         conditions.append("ca.class_date <= ?")
         params.append(end_date)
     
-    # Add filter for teacher's subjects
-    if teacher_subjects and "All Subjects" not in teacher_subjects:
-        placeholders = ", ".join(["?"] * len(teacher_subjects))
-        conditions.append(f"ca.subject IN ({placeholders})")
-        params.extend(teacher_subjects)
+    # Add filter for teacher's subjects - FIX FOR DATAFRAME EVALUATION
+    # Check if teacher_subjects is a DataFrame (not None) and not empty
+    if isinstance(teacher_subjects, pd.DataFrame) and not teacher_subjects.empty:
+        # Extract subject names from the DataFrame
+        subjects_list = teacher_subjects['subject_name'].tolist() 
+        if subjects_list and "All Subjects" not in subjects_list:
+            placeholders = ", ".join(["?"] * len(subjects_list))
+            conditions.append(f"ca.subject IN ({placeholders})")
+            params.extend(subjects_list)
     
     # Add section filter
     if section and section != "All Sections":
@@ -634,6 +646,60 @@ def create_trend_chart(df):
 
 # Remove duplicate CSS, use global handler and only keep professor-specific styles
 
+def get_student_count_for_subjects(teacher_subjects=None):
+    """Get the total number of students assigned to the teacher's subjects"""
+    conn = get_db_connection()
+    
+    try:
+        # Check if we have a valid teacher_subjects DataFrame
+        if isinstance(teacher_subjects, pd.DataFrame) and not teacher_subjects.empty:
+            # Extract subject names from the DataFrame
+            subjects_list = teacher_subjects['subject_name'].tolist()
+            
+            if subjects_list:
+                # First try student_subjects table if it exists
+                cursor = conn.cursor()
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_subjects'")
+                if cursor.fetchone():
+                    # Get unique students from student_subjects table
+                    placeholders = ', '.join(['?' for _ in subjects_list])
+                    query = f"""
+                    SELECT COUNT(DISTINCT ss.student_name) 
+                    FROM student_subjects ss
+                    JOIN subjects s ON ss.subject_id = s.subject_id
+                    WHERE s.subject_name IN ({placeholders})
+                    """
+                    cursor.execute(query, subjects_list)
+                    count = cursor.fetchone()[0]
+                    
+                    if count > 0:
+                        return count
+                
+                # If no students found in student_subjects, try class_attendance_records
+                placeholders = ', '.join(['?' for _ in subjects_list])
+                query = f"""
+                SELECT COUNT(DISTINCT student_name) 
+                FROM class_attendance_records
+                WHERE subject IN ({placeholders})
+                """
+                cursor.execute(query, subjects_list)
+                count = cursor.fetchone()[0]
+                
+                if count > 0:
+                    return count
+        
+        # Fallback: Get total student count from student_profiles
+        cursor = conn.cursor()
+        cursor.execute("SELECT COUNT(*) FROM student_profiles")
+        result = cursor.fetchone()
+        return result[0] if result else 0
+        
+    except Exception as e:
+        print(f"Error getting student count: {e}")
+        return 0
+    finally:
+        conn.close()
+
 def show_report():
     # Apply global CSS to ensure consistency - only runs once per session
     apply_global_css()
@@ -769,7 +835,9 @@ def show_report():
                 # Create a nice metric row
                 metric_cols = st.columns(3)
                 with metric_cols[0]:
-                    st.metric("Total Students", monthly_trends['active_students'].max() if not monthly_trends.empty else 0)
+                    # MODIFIED: Use the new function to get accurate student count
+                    student_count = get_student_count_for_subjects(teacher_subjects)
+                    st.metric("Total Students", student_count)
                 with metric_cols[1]:
                     st.metric("Classes Attended", f"{total_attended}/{total_classes}")
                 with metric_cols[2]:
