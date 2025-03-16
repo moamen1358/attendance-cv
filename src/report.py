@@ -704,6 +704,57 @@ def get_student_count_for_subjects(teacher_subjects=None):
     finally:
         conn.close()
 
+# Modified function to get teacher's subjects more reliably
+def get_teacher_subjects_secure(username):
+    """Get subjects taught by a teacher, with proper error handling"""
+    conn = get_db_connection()
+    
+    try:
+        # Check if the teacher_subjects table exists
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='teacher_subjects'")
+        table_exists = cursor.fetchone()
+        
+        if table_exists:
+            # Get subjects from teacher_subjects table
+            query = """
+            SELECT s.subject_name 
+            FROM teacher_subjects ts
+            JOIN subjects s ON ts.subject_id = s.subject_id
+            WHERE ts.teacher_username = ?
+            """
+            df = pd.read_sql_query(query, conn, params=(username,))
+        else:
+            # Fallback: Check if there's a professor_subjects table
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_subjects'")
+            prof_table_exists = cursor.fetchone()
+            
+            if prof_table_exists:
+                query = "SELECT subject FROM professor_subjects WHERE professor_username = ?"
+                df = pd.read_sql_query(query, conn, params=(username,))
+            else:
+                # Fallback #2: Get from class_schedules with professor assignment
+                query = "SELECT DISTINCT subject FROM class_schedules WHERE assigned_professor = ?"
+                df = pd.read_sql_query(query, conn, params=(username,))
+        
+        conn.close()
+        
+        # Add "All Subjects" option
+        if not df.empty:
+            # Convert to list depending on column name
+            if 'subject_name' in df.columns:
+                return ["All Subjects"] + df['subject_name'].tolist()
+            elif 'subject' in df.columns:
+                return ["All Subjects"] + df['subject'].tolist()
+        
+        # If no subjects found, return empty DataFrame
+        return pd.DataFrame({'subject_name': []})
+        
+    except Exception as e:
+        print(f"Error getting teacher subjects: {e}")
+        conn.close()
+        return pd.DataFrame({'subject_name': []})
+
 def show_report():
     # Apply global CSS to ensure consistency - only runs once per session
     apply_global_css()
@@ -731,14 +782,20 @@ def show_report():
         </style>
         """, unsafe_allow_html=True)
     
-    # Get the current user's username and role
+    # Get the current user's username and role SECURELY
     username = st.session_state.get('username', '')
     user_role = st.session_state.get('user_role', '')
     
-    # Get teacher's subjects
-    teacher_subjects = get_teacher_subjects(username)
+    # Verify the user is authorized to view this page
+    if user_role not in ['admin', 'professor']:
+        st.error("You are not authorized to view this page.")
+        st.stop()
+        return
     
-    # Fix the problematic line by checking .empty property
+    # Get teacher's subjects using the more secure function
+    teacher_subjects = get_teacher_subjects_secure(username)
+    
+    # Fix the problematic line by checking .empty property correctly
     if isinstance(teacher_subjects, pd.DataFrame) and teacher_subjects.empty:  # Was: if not teacher_subjects:
         st.warning("No subjects assigned to you. Please contact an administrator.")
     else:

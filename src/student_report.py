@@ -40,6 +40,11 @@ def get_student_attendance(student_name, date=None, detailed=False):
     Returns:
         pandas.DataFrame: DataFrame containing attendance records
     """
+    # Security check: Only allow the current user to view their own attendance
+    if student_name != st.session_state.get('username') and st.session_state.get('user_role') not in ['admin', 'professor']:
+        st.error("You can only view your own attendance records")
+        return pd.DataFrame()  # Return empty dataframe
+    
     conn = get_db_connection()
     
     if date:
@@ -1325,14 +1330,14 @@ def show_student_report():
         st.query_params["logged_in"] = "True"
         st.query_params["username"] = st.session_state.username
     
-    # Get student name
-    username = st.session_state.username
-    student_name = username  # Simplified for now
+    # Get current student data SECURELY
+    student_data = get_secure_student_data()
+    student_name = student_data['student_name']
+    student_id = student_data['student_id']
+    section = student_data['section']
     
-    # Get student details (ID and section)
-    student_details = get_student_details(student_name)
-    student_id = student_details.get('student_id', 'N/A')
-    section = student_details.get('section', 'N/A')
+    # Use securely retrieved student name for all data queries
+    # Replace any hardcoded st.session_state.username with student_name
     
     # Get current date and time
     today = datetime.now().date()
@@ -1962,6 +1967,104 @@ def get_student_details(student_name):
             'section': result[0] if result[0] else 'Unassigned'
         }
     return {'section': 'Unassigned'}
+
+# Add this function to securely load student data
+def get_secure_student_data():
+    """Get student data for the currently logged-in user only"""
+    current_user = st.session_state.get('username')
+    
+    # If no user is logged in, return empty data
+    if not current_user:
+        st.error("No user logged in")
+        st.stop()
+        return None
+        
+    # Get student details from database
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # First check if the student_profiles table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        if not cursor.fetchone():
+            st.warning("Student profiles table not found. Some features may be limited.")
+            return {
+                'student_name': current_user,
+                'student_id': 'Unknown',
+                'section': 'Unknown'
+            }
+        
+        # Check what columns are available in the student_profiles table
+        cursor.execute("PRAGMA table_info(student_profiles)")
+        columns = [info[1] for info in cursor.fetchall()]
+        
+        # Build a flexible query based on available columns
+        select_cols = []
+        if "name" in columns: select_cols.append("name")
+        if "student_id" in columns: select_cols.append("student_id")
+        if "section" in columns: select_cols.append("section")
+        
+        if not select_cols:
+            st.warning("Required columns missing in student_profiles table.")
+            return {
+                'student_name': current_user,
+                'student_id': 'Unknown',
+                'section': 'Unknown'
+            }
+        
+        # Build WHERE clause based on available columns
+        where_clauses = []
+        params = []
+        
+        if "name" in columns:
+            where_clauses.append("name = ?")
+            params.append(current_user)
+            
+        # Only add username to where clause if it exists
+        if "username" in columns:
+            where_clauses.append("username = ?")
+            params.append(current_user)
+        
+        # If no valid where clause can be constructed, return default
+        if not where_clauses:
+            st.warning("Cannot find any matching column to query student profile.")
+            return {
+                'student_name': current_user,
+                'student_id': 'Unknown',
+                'section': 'Unknown'
+            }
+        
+        # Construct and execute query
+        query = f"SELECT {', '.join(select_cols)} FROM student_profiles WHERE {' OR '.join(where_clauses)}"
+        cursor.execute(query, params)
+        result = cursor.fetchone()
+        
+        if not result:
+            st.warning(f"Cannot find student profile for {current_user}. Please contact your administrator.")
+            return {
+                'student_name': current_user,
+                'student_id': 'Unknown',
+                'section': 'Unknown'
+            }
+        
+        # Build result dictionary based on available columns
+        student_data = {
+            'student_name': result[select_cols.index("name")] if "name" in select_cols else current_user,
+            'student_id': result[select_cols.index("student_id")] if "student_id" in select_cols else 'Unknown',
+            'section': result[select_cols.index("section")] if "section" in select_cols else 'Unknown'
+        }
+        
+        return student_data
+    
+    except Exception as e:
+        st.error(f"Database error: {str(e)}")
+        return {
+            'student_name': current_user,
+            'student_id': 'Unknown',
+            'section': 'Unknown'
+        }
+    finally:
+        conn.close()
 
 if __name__ == "__main__":
     show_student_report()
