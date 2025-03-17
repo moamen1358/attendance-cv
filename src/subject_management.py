@@ -7,6 +7,10 @@ import plotly.express as px
 import json
 import numpy as np
 from custom_table_view import CustomTableView
+import professor_subject_assignment  # Import the module with assignment functionality
+import sync_professor_tables
+import os
+import sys
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -124,35 +128,75 @@ def get_teacher_subjects(teacher):
     cursor = conn.cursor()
     
     try:
-        # First check if the teacher_subjects table has the right schema
-        execute_query("PRAGMA table_info(teacher_subjects)")
-        columns = cursor.fetchall()
-        column_names = [col[1] for col in columns]
-        
-        # Check if the expected column exists
-        if 'teacher_name' not in column_names:
-            # Try to identify what the column might be called
-            teacher_col = None
-            for potential_name in ['teacher', 'username', 'name', 'professor']:
-                if potential_name in column_names:
-                    teacher_col = potential_name
-                    break
-            
-            if teacher_col:
-                # Use the found column name instead
-                query = f"""
+        # First check if professor_subject_assignments table exists - use this first if available
+        try:
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_subject_assignments'")
+            if cursor.fetchone():
+                # Use professor_subject_assignments table which is more reliable
+                query = """
                 SELECT s.* 
                 FROM subjects s
-                JOIN teacher_subjects ts ON s.subject_id = ts.subject_id
-                WHERE ts.{teacher_col} = ?
+                JOIN professor_subject_assignments psa ON s.subject_id = psa.subject_id
+                WHERE psa.professor_username = ?
                 ORDER BY s.subject_name
                 """
                 df = execute_query_df(query, (teacher,))
-            else:
-                # If no suitable column found, return empty DataFrame with warning
-                st.warning(f"Teacher column not found in teacher_subjects table. Available columns: {', '.join(column_names)}. Please run the database initialization again.")
-                df = pd.DataFrame(columns=['subject_id', 'subject_name', 'course_code', 'credit_hours', 'description'])
-        else:
+                
+                # If we found subjects, return them
+                if not df.empty:
+                    return df
+        except Exception as e:
+            st.error(f"Error checking professor_subject_assignments: {e}")
+        
+        # Fall back to teacher_subjects if needed
+        try:
+            cursor.execute("PRAGMA table_info(teacher_subjects)")
+            columns = cursor.fetchall()
+            column_names = [col[1] for col in columns]
+            
+            # Debug information
+            st.write(f"Available columns in teacher_subjects: {', '.join(column_names)}")
+            
+            # Check if the expected column exists
+            if not columns or 'teacher_name' not in column_names:
+                # Direct fix - create the table right here if it's missing or empty
+                st.warning("Teacher column not found. Attempting to rebuild the table...")
+                
+                # Force recreate the table
+                try:
+                    cursor.execute("DROP TABLE IF EXISTS teacher_subjects")
+                    cursor.execute("""
+                    CREATE TABLE teacher_subjects (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        subject_id INTEGER,
+                        teacher_name TEXT
+                    )
+                    """)
+                    conn.commit()
+                    
+                    # Try again with the new table
+                    cursor.execute("PRAGMA table_info(teacher_subjects)")
+                    columns = cursor.fetchall()
+                    column_names = [col[1] for col in columns]
+                    
+                    if 'teacher_name' not in column_names:
+                        html_link = '<a href="/fix_db_tables" target="_blank">Open Database Repair Tool</a>'
+                        st.error(f"Could not recreate teacher_subjects table with proper structure. {html_link}", unsafe_allow_html=True)
+                        # Create a direct link to the fix tool as a button
+                        if st.button("🔧 Open Database Repair Tool", type="primary"):
+                            st.markdown("Opening repair tool in a new tab...")
+                            js_code = f"""
+                            <script>
+                                window.open("/fix_db_tables", "_blank");
+                            </script>
+                            """
+                            st.markdown(js_code, unsafe_allow_html=True)
+                        
+                        return pd.DataFrame(columns=['subject_id', 'subject_name', 'course_code', 'credit_hours', 'description'])
+                except Exception as fix_error:
+                    st.error(f"Error rebuilding table: {fix_error}")
+                    return pd.DataFrame(columns=['subject_id', 'subject_name', 'course_code', 'credit_hours', 'description'])
+            
             # Standard query with expected schema
             query = """
             SELECT s.* 
@@ -162,6 +206,10 @@ def get_teacher_subjects(teacher):
             ORDER BY s.subject_name
             """
             df = execute_query_df(query, (teacher,))
+            
+        except Exception as e:
+            st.error(f"Error with teacher_subjects table: {e}")
+            return pd.DataFrame(columns=['subject_id', 'subject_name', 'course_code', 'credit_hours', 'description'])
         
     except Exception as e:
         st.error(f"Database error in get_teacher_subjects: {e}")
@@ -441,11 +489,12 @@ def show_subject_management():
     """, unsafe_allow_html=True)
     
     # Create tabs for different management sections
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📚 View Subjects", 
         "➕ Add Subject", 
         "🗓️ Manage Schedule", 
-        "📊 Subject Analytics"
+        "📊 Subject Analytics",
+        "👨‍🏫 Professor Assignments"
     ])
     
     # Tab 1: View Subjects
@@ -1061,6 +1110,10 @@ def show_subject_management():
                     st.info("Please check that your database schema is properly set up.")
                     st.stop()
 
+    # Tab 5: Professor Assignments
+    with tab5:
+        professor_subject_assignment.show_professor_assignments()
+
 if __name__ == "__main__":
     show_subject_management()
 
@@ -1142,4 +1195,3 @@ def update_class_schedules_schema():
 
 # Run schema update at module import
 update_class_schedules_schema()
-()

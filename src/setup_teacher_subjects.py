@@ -69,43 +69,59 @@ def create_or_update_schema():
 create_or_update_schema()
 
 def get_teacher_subjects(username):
-    """Get subjects taught by a specific teacher"""
-    conn = sqlite3.connect(DATABASE_PATH)
+    """Get list of subjects taught by a specific teacher"""
+    conn = sqlite3.connect('attendance_system.db')
+    cursor = conn.cursor()
     
     try:
-        # First check the column name for teacher
-        cursor = conn.cursor()
-        execute_query("PRAGMA table_info(teacher_subjects)")
-        columns = [col[1] for col in cursor.fetchall()]
+        # Check if the professor_subject_assignments table exists
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='professor_subject_assignments'
+        """)
         
-        # Determine the teacher column name
-        teacher_column = 'teacher_name'
-        if teacher_column not in columns:
-            if 'teacher_username' in columns:
-                teacher_column = 'teacher_username'
-            elif 'username' in columns:
-                teacher_column = 'username'
-            elif 'teacher' in columns:
-                teacher_column = 'teacher'
-            else:
-                # If we can't find a suitable column, return empty DataFrame
-                return pd.DataFrame(columns=['subject_id', 'subject_name'])
+        if cursor.fetchone():
+            # First try to get subjects from professor_subject_assignments table
+            cursor.execute("""
+                SELECT s.subject_name
+                FROM professor_subject_assignments psa
+                JOIN subjects s ON psa.subject_id = s.subject_id
+                WHERE psa.professor_username = ?
+                ORDER BY s.subject_name
+            """, (username,))
+            
+            subjects = [row[0] for row in cursor.fetchall()]
+            
+            if subjects:
+                return subjects
         
-        # Get subjects using JOIN with subjects table
-        query = f"""
-        SELECT s.subject_id, s.subject_name
-        FROM subjects s
-        JOIN teacher_subjects ts ON s.subject_id = ts.subject_id
-        WHERE ts.{teacher_column} = ?
-        ORDER BY s.subject_name
-        """
-        df = pd.read_sql(query, conn, params=(username,))
-        return df
-    
+        # If no subjects found in primary table, try the teacher_subjects table
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='teacher_subjects'
+        """)
+        
+        if cursor.fetchone():
+            # Try to get subjects from teacher_subjects table
+            cursor.execute("""
+                SELECT s.subject_name
+                FROM teacher_subjects ts
+                JOIN subjects s ON ts.subject_id = s.subject_id
+                WHERE ts.teacher_name = ?
+                ORDER BY s.subject_name
+            """, (username,))
+            
+            subjects = [row[0] for row in cursor.fetchall()]
+            
+            if subjects:
+                return subjects
+        
+        # If we get here, no subjects found in either table
+        return []
+        
     except Exception as e:
-        st.error(f"Error retrieving teacher subjects: {e}")
-        # Return empty DataFrame with expected structure
-        return pd.DataFrame(columns=['subject_id', 'subject_name'])
+        print(f"Error in get_teacher_subjects: {e}")
+        return []
     finally:
         conn.close()
 
