@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import sqlite3
+from database_utils import execute_query, execute_query_df
 
 def create_attendance_sunburst(student_name, start_date=None, end_date=None):
     """
@@ -36,7 +37,7 @@ def create_attendance_sunburst(student_name, start_date=None, end_date=None):
         END as day_name,
         SUM(ca.attended) as attended_count,
         COUNT(*) as total_count
-    FROM class_attendance_records ca
+    FROM class_attendance ca
     WHERE ca.student_name = ?
     """
     
@@ -54,7 +55,7 @@ def create_attendance_sunburst(student_name, start_date=None, end_date=None):
     """
     
     # Execute query
-    df = pd.read_sql_query(query, conn, params=params)
+    df = execute_query_df(query, params)
     conn.close()
     
     if df.empty:
@@ -199,11 +200,11 @@ def create_weekly_heatmap(student_name, weeks=4, start_date=None):
     else:
         # Get the most recent class date for the student
         query = """
-        SELECT MAX(class_date) FROM class_attendance_records
+        SELECT MAX(class_date) FROM class_attendance
         WHERE student_name = ?
         """
         cursor = conn.cursor()
-        cursor.execute(query, (student_name,))
+        execute_query(query, (student_name,))
         max_date = cursor.fetchone()[0]
         
         if max_date:
@@ -222,7 +223,7 @@ def create_weekly_heatmap(student_name, weeks=4, start_date=None):
         strftime('%W', ca.class_date) as week_num,
         SUM(ca.attended) as attended_count,
         COUNT(*) as total_count
-    FROM class_attendance_records ca
+    FROM class_attendance ca
     WHERE ca.student_name = ?
         AND ca.class_date >= ?
         AND ca.class_date <= ?
@@ -230,7 +231,7 @@ def create_weekly_heatmap(student_name, weeks=4, start_date=None):
     ORDER BY ca.class_date
     """
     
-    df = pd.read_sql_query(query, conn, params=(student_name, start.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
+    df = execute_query_df(query, (student_name, start.strftime('%Y-%m-%d'), end_date.strftime('%Y-%m-%d')))
     conn.close()
     
     if df.empty:
@@ -375,7 +376,7 @@ def create_subject_radial_chart(student_name, start_date=None, end_date=None, mi
         ca.subject,
         SUM(ca.attended) as attended_count,
         COUNT(*) as total_count
-    FROM class_attendance_records ca
+    FROM class_attendance ca
     WHERE ca.student_name = ?
     """
     
@@ -395,7 +396,7 @@ def create_subject_radial_chart(student_name, start_date=None, end_date=None, mi
     params.append(min_classes)
     
     # Execute query
-    df = pd.read_sql_query(query, conn, params=params)
+    df = execute_query_df(query, params)
     conn.close()
     
     if df.empty:

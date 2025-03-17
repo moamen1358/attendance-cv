@@ -1,5 +1,6 @@
 import streamlit as st
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import hashlib
 import app
 import os
@@ -16,6 +17,7 @@ def verify_credentials(username, password):
     cursor = conn.cursor()
     
     try:
+<<<<<<< HEAD
         # Check for the unified user_accounts table first (new schema)
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
         if cursor.fetchone():
@@ -53,6 +55,85 @@ def verify_credentials(username, password):
         count = cursor.fetchone()[0]
         
         if count == 0:
+=======
+        # Check for tables that might contain user credentials
+        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('user_accounts', 'student_profiles', 'professor_profiles')")
+        tables = [row[0] for row in cursor.fetchall()]
+        
+        # Check in user_accounts table if it exists
+        if 'user_accounts' in tables:
+            execute_query("PRAGMA table_info(user_accounts)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if 'username' in columns and ('password' in columns or 'hashed_password' in columns):
+                pwd_column = 'hashed_password' if 'hashed_password' in columns else 'password'
+                role_column = 'role' if 'role' in columns else None
+                
+                query = f"SELECT username, {role_column or '\"student\" as role'}, {pwd_column} FROM user_accounts WHERE username = ?"
+                execute_query(query, (username,))
+                user = cursor.fetchone()
+                
+                if user:
+                    stored_hash = user[2]
+                    
+                    # If using bcrypt hashed passwords
+                    if stored_hash and (stored_hash.startswith('$2b$') or stored_hash.startswith('$2a$')):
+                        try:
+                            import bcrypt
+                            if bcrypt.checkpw(password.encode('utf-8'), stored_hash.encode('utf-8')):
+                                return True, user[1]
+                        except ImportError:
+                            # Bcrypt not available, try direct comparison as fallback
+                            if stored_hash == password:
+                                return True, user[1]
+                    # For plain text passwords (not recommended for production)
+                    elif stored_hash == password:
+                        return True, user[1]
+        
+        # Check for student records
+        if 'student_profiles' in tables:
+            # Check columns
+            execute_query("PRAGMA table_info(student_profiles)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if 'password' in columns:
+                # Check if we can query by name or username
+                where_clause = ""
+                if 'name' in columns and 'username' in columns:
+                    where_clause = "WHERE name = ? OR username = ?"
+                    params = (username, username)
+                elif 'name' in columns:
+                    where_clause = "WHERE name = ?"
+                    params = (username,)
+                elif 'username' in columns:
+                    where_clause = "WHERE username = ?"
+                    params = (username,)
+                
+                if where_clause:
+                    query = f"SELECT name, password FROM student_profiles {where_clause}"
+                    execute_query(query, params)
+                    student = cursor.fetchone()
+                    
+                    if student and student[1] == password:
+                        return True, "student"
+            
+        # Check for professor records
+        if 'professor_profiles' in tables:
+            # Check columns
+            execute_query("PRAGMA table_info(professor_profiles)")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if 'username' in columns and 'password' in columns:
+                query = "SELECT username, password FROM professor_profiles WHERE username = ?"
+                execute_query(query, (username,))
+                professor = cursor.fetchone()
+                
+                if professor and professor[1] == password:
+                    return True, "professor"
+        
+        # Default credentials for development if no tables or users found
+        if len(tables) == 0 or execute_query("SELECT COUNT(*) FROM user_accounts").fetchone()[0] == 0:
+>>>>>>> 00510a2
             if username == "admin" and password == "admin":
                 return True, "admin"
             elif username == "teacher" and password == "teacher":
@@ -76,6 +157,7 @@ def get_available_users():
     cursor = conn.cursor()
     
     try:
+<<<<<<< HEAD
         # Use the unified user_accounts table (new schema)
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
         if cursor.fetchone():
@@ -99,6 +181,20 @@ def get_available_users():
             users.extend(cursor.fetchall())
             
         return users
+=======
+        # Check if we're using the old table name or the new one
+        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='users' OR name='user_accounts')")
+        result = cursor.fetchone()
+        
+        if result:
+            table_name = result[0]
+            # Update to fetch both username and role
+            execute_query(f"SELECT username, role FROM {table_name}")
+            user_accounts = cursor.fetchall()  # This will return [(username1, role1), (username2, role2), ...]
+        else:
+            # If no table exists yet
+            user_accounts = []
+>>>>>>> 00510a2
             
     except sqlite3.Error as e:
         st.error(f"Database error: {e}")
@@ -112,6 +208,7 @@ def get_user_section(username):
     conn = create_connection()
     cursor = conn.cursor()
     
+<<<<<<< HEAD
     # First check user_accounts table (new schema)
     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
     if cursor.fetchone():
@@ -123,6 +220,9 @@ def get_user_section(username):
     
     # Fallback to student_profiles (old schema)
     cursor.execute("SELECT section FROM student_profiles WHERE name = ? OR username = ?", (username, username))
+=======
+    execute_query("SELECT section FROM student_profiles WHERE name = ?", (username,))
+>>>>>>> 00510a2
     result = cursor.fetchone()
     conn.close()
     

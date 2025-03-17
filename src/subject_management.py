@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
+from database_utils import execute_query, execute_query_df
 from datetime import datetime, timedelta
 import plotly.express as px
 import json
@@ -17,7 +18,7 @@ def initialize_subjects_tables():
     
     try:
         # First check if the teacher_subjects table exists and has the right schema
-        cursor.execute("PRAGMA table_info(teacher_subjects)")
+        execute_query("PRAGMA table_info(teacher_subjects)")
         columns = cursor.fetchall()
         column_names = [col[1] for col in columns]
         
@@ -105,7 +106,7 @@ def get_all_subjects():
     """Get all subjects from the database"""
     conn = get_db_connection()
     query = "SELECT * FROM subjects ORDER BY subject_name"
-    df = pd.read_sql_query(query, conn)
+    df = execute_query_df(query)
     conn.close()
     return df
 
@@ -113,7 +114,7 @@ def get_teachers():
     """Get all teachers from the database"""
     conn = get_db_connection()
     query = "SELECT username FROM user_accounts WHERE role = 'professor'"
-    df = pd.read_sql_query(query, conn)
+    df = execute_query_df(query)
     conn.close()
     return df['username'].tolist()
 
@@ -124,7 +125,7 @@ def get_teacher_subjects(teacher):
     
     try:
         # First check if the teacher_subjects table has the right schema
-        cursor.execute("PRAGMA table_info(teacher_subjects)")
+        execute_query("PRAGMA table_info(teacher_subjects)")
         columns = cursor.fetchall()
         column_names = [col[1] for col in columns]
         
@@ -146,7 +147,7 @@ def get_teacher_subjects(teacher):
                 WHERE ts.{teacher_col} = ?
                 ORDER BY s.subject_name
                 """
-                df = pd.read_sql_query(query, conn, params=(teacher,))
+                df = execute_query_df(query, (teacher,))
             else:
                 # If no suitable column found, return empty DataFrame with warning
                 st.warning(f"Teacher column not found in teacher_subjects table. Available columns: {', '.join(column_names)}. Please run the database initialization again.")
@@ -160,7 +161,7 @@ def get_teacher_subjects(teacher):
             WHERE ts.teacher_name = ?
             ORDER BY s.subject_name
             """
-            df = pd.read_sql_query(query, conn, params=(teacher,))
+            df = execute_query_df(query, (teacher,))
         
     except Exception as e:
         st.error(f"Database error in get_teacher_subjects: {e}")
@@ -177,7 +178,7 @@ def get_subject_schedules(subject_id=None):
     cursor = conn.cursor()
     
     # Check the actual schema of the class_schedules table
-    cursor.execute("PRAGMA table_info(class_schedules)")
+    execute_query("PRAGMA table_info(class_schedules)")
     columns = [col[1] for col in cursor.fetchall()]
     
     # Determine if we have subject_id column or just subject column
@@ -188,15 +189,15 @@ def get_subject_schedules(subject_id=None):
         if has_subject_id:
             # Use subject_id for filtering if available
             query = "SELECT * FROM class_schedules WHERE subject_id = ? ORDER BY day, start_time"
-            df = pd.read_sql_query(query, conn, params=(subject_id,))
+            df = execute_query_df(query, (subject_id,))
         elif has_subject:
             # Get subject name for filtering by name
-            cursor.execute("SELECT subject_name FROM subjects WHERE subject_id = ?", (subject_id,))
+            execute_query("SELECT subject_name FROM subjects WHERE subject_id = ?", (subject_id,))
             result = cursor.fetchone()
             if result:
                 subject_name = result[0]
                 query = "SELECT * FROM class_schedules WHERE subject = ? ORDER BY day, start_time"
-                df = pd.read_sql_query(query, conn, params=(subject_name,))
+                df = execute_query_df(query, (subject_name,))
             else:
                 df = pd.DataFrame()  # Empty DataFrame if subject not found
         else:
@@ -222,7 +223,7 @@ def get_subject_schedules(subject_id=None):
             SELECT * FROM class_schedules 
             ORDER BY day, start_time
             """
-        df = pd.read_sql_query(query, conn)
+        df = execute_query_df(query)
     
     conn.close()
     return df
@@ -262,7 +263,7 @@ def add_class_schedule(schedule_data):
     
     try:
         # Check the actual schema of the class_schedules table
-        cursor.execute("PRAGMA table_info(class_schedules)")
+        execute_query("PRAGMA table_info(class_schedules)")
         columns = [col[1] for col in cursor.fetchall()]
         
         # Determine columns to use based on schema
@@ -274,7 +275,7 @@ def add_class_schedule(schedule_data):
             subject_id = schedule_data['subject_id']
             
             # Get subject name from ID
-            cursor.execute("SELECT subject_name FROM subjects WHERE subject_id = ?", (subject_id,))
+            execute_query("SELECT subject_name FROM subjects WHERE subject_id = ?", (subject_id,))
             result = cursor.fetchone()
             subject_name = result[0] if result else "Unknown"
             
@@ -304,7 +305,7 @@ def add_class_schedule(schedule_data):
             )
         elif has_subject:
             # Get subject name from ID
-            cursor.execute("SELECT subject_name FROM subjects WHERE subject_id = ?", (schedule_data['subject_id'],))
+            execute_query("SELECT subject_name FROM subjects WHERE subject_id = ?", (schedule_data['subject_id'],))
             result = cursor.fetchone()
             subject_name = result[0] if result else "Unknown"
             
@@ -485,7 +486,7 @@ def show_subject_management():
                         SELECT teacher_name FROM teacher_subjects 
                         WHERE subject_id = ?
                         """
-                        teachers_df = pd.read_sql_query(teachers_query, conn, params=(subject['subject_id'],))
+                        teachers_df = execute_query_df(teachers_query, (subject['subject_id'],))
                         conn.close()
                         
                         st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -978,10 +979,10 @@ def show_subject_management():
                         SELECT s.subject_name, COUNT(DISTINCT a.id) as attendance_count
                         FROM subjects s
                         JOIN class_schedules cs ON s.subject_id = cs.subject_id
-                        JOIN class_attendance_records a ON cs.subject = a.subject
+                        JOIN class_attendance a ON cs.subject = a.subject
                         GROUP BY s.subject_name
                         """
-                        attendance_df = pd.read_sql_query(attendance_query, conn)
+                        attendance_df = execute_query_df(attendance_query)
                         conn.close()
                         
                         # Create visualizations
@@ -1070,12 +1071,12 @@ def update_class_schedules_schema():
     
     try:
         # Check if table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='class_schedules'")
+        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='class_schedules'")
         table_exists = cursor.fetchone() is not None
         
         if table_exists:
             # Check current columns
-            cursor.execute("PRAGMA table_info(class_schedules)")
+            execute_query("PRAGMA table_info(class_schedules)")
             columns = [col[1] for col in cursor.fetchall()]
             
             # Check if we need to add subject_id column

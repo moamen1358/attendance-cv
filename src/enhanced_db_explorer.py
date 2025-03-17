@@ -1,5 +1,6 @@
 import streamlit as st
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import pandas as pd
 import re
 from datetime import datetime
@@ -175,13 +176,13 @@ def show_db_explorer():
                 
                 # Execute search query
                 conn = sqlite3.connect('attendance_system.db')
-                df = pd.read_sql_query(search_query, conn, params=search_params)
+                df = execute_query_df(search_query, search_params)
                 conn.close()
             else:
                 # Simple query without pagination
                 query = f"SELECT * FROM {table};"
                 conn = sqlite3.connect('attendance_system.db')
-                df = pd.read_sql_query(query, conn)
+                df = execute_query_df(query)
                 conn.close()
         
             # Show record count with filter info
@@ -298,7 +299,7 @@ def show_db_explorer():
                         # Preview what will be deleted
                         preview_query = f"SELECT * FROM {table} WHERE {where_clause} LIMIT 10"
                         conn = sqlite3.connect('attendance_system.db')
-                        preview_df = pd.read_sql_query(preview_query, conn)
+                        preview_df = execute_query_df(preview_query)
                         conn.close()
                         
                         # Get count of all records that will be deleted
@@ -334,7 +335,7 @@ def show_db_explorer():
                     elif query.strip().upper().startswith("SELECT"):
                         try:
                             conn = sqlite3.connect('attendance_system.db')
-                            result_df = pd.read_sql_query(query, conn)
+                            result_df = execute_query_df(query)
                             conn.close()
                             
                             st.success("Query executed successfully!")
@@ -481,7 +482,7 @@ def get_foreign_key_values(table_name, column_name):
     cursor = conn.cursor()
     
     # Get foreign key info
-    cursor.execute(f"PRAGMA foreign_key_list({table_name})")
+    execute_query(f"PRAGMA foreign_key_list({table_name})")
     fk_data = cursor.fetchall()
     
     # Check if this column is a foreign key
@@ -500,16 +501,16 @@ def get_foreign_key_values(table_name, column_name):
     # Get values from the referenced table
     try:
         # First check if the table has a "name" column for better display
-        cursor.execute(f"PRAGMA table_info({ref_table})")
+        execute_query(f"PRAGMA table_info({ref_table})")
         columns = [col[1] for col in cursor.fetchall()]
         
         if 'name' in columns:
             # Include both ID and name for better display
-            cursor.execute(f"SELECT {ref_col}, name FROM {ref_table} ORDER BY name")
+            execute_query(f"SELECT {ref_col}, name FROM {ref_table} ORDER BY name")
             values = [(str(row[0]), f"{row[0]} - {row[1]}") for row in cursor.fetchall()]
         else:
             # Just use the referenced column value
-            cursor.execute(f"SELECT {ref_col} FROM {ref_table} ORDER BY {ref_col}")
+            execute_query(f"SELECT {ref_col} FROM {ref_table} ORDER BY {ref_col}")
             values = [(str(row[0]), str(row[0])) for row in cursor.fetchall()]
         
         return values
@@ -707,7 +708,7 @@ class CustomTableView:
             # Try to find date/time column for sorting
             for time_col in ['timestamp', 'class_date', 'date', 'created_at', 'time']:
                 cursor = conn.cursor()
-                cursor.execute(f"PRAGMA table_info({self.table_name})")
+                execute_query(f"PRAGMA table_info({self.table_name})")
                 columns = [col[1] for col in cursor.fetchall()]
                 if time_col in columns:
                     order_by = f"{time_col} DESC"
@@ -721,14 +722,14 @@ class CustomTableView:
             
         query += f" LIMIT {limit} OFFSET {offset}"
         
-        df = pd.read_sql_query(query, conn)
+        df = execute_query_df(query)
         
         # Get total row count
         count_query = f"SELECT COUNT(*) FROM {self.table_name}"
         if where_clause:
             count_query += f" WHERE {where_clause}"
         
-        total_rows = pd.read_sql_query(count_query, conn).iloc[0, 0]
+        total_rows = execute_query_df(count_query).iloc[0, 0]
         
         conn.close()
         return df, total_rows
