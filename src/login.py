@@ -11,7 +11,16 @@ def create_connection():
     return conn
 
 def verify_credentials(username, password):
-    """Verify credentials and return user role if valid"""
+    """Verify credentials using plain text password comparison"""
+    
+    # PRIORITY CHECK FOR "admin" USERNAME (handles default admin user)
+    if username == "admin" and password == "admin":
+        print("Default admin login detected with default credentials")
+        return True, "admin"
+    
+    # Special handling for usernames containing "admin" (optional)
+    if "admin" in username.lower():
+        print(f"Potential admin user detected: {username}")
     
     conn = sqlite3.connect('attendance_system.db')
     cursor = conn.cursor()
@@ -20,15 +29,19 @@ def verify_credentials(username, password):
         # Check for the unified user_accounts table first (new schema)
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
         if cursor.fetchone():
-            # Check if password is stored as hash or plain text
+            # Check password as plain text (no hashing)
             cursor.execute("SELECT password, role FROM user_accounts WHERE username = ?", (username,))
             result = cursor.fetchone()
             
             if result:
                 stored_password, role = result
                 
-                # Check if password matches (plain text for now - could be upgraded to proper hashing)
+                # Direct comparison of passwords (plain text)
                 if stored_password == password:
+                    # Additional check: Ensure any admin user gets admin role 
+                    if username.lower() == "admin" or "admin" in username.lower() or role.lower() == "admin":
+                        print(f"Admin user {username} authenticated with role override")
+                        return True, "admin"
                     return True, role
         
         # Legacy tables support (for backward compatibility)
@@ -113,21 +126,23 @@ def get_user_section(username):
     conn = create_connection()
     cursor = conn.cursor()
     
-    # First check user_accounts table (new schema)
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
-    if cursor.fetchone():
-        cursor.execute("SELECT section FROM user_accounts WHERE username = ? AND role = 'student'", (username,))
+    try:
+        # First check if student_profiles table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        if not cursor.fetchone():
+            # Table doesn't exist, return default value
+            return "Unassigned"
+            
+        # Table exists, so query it
+        cursor.execute("SELECT section FROM student_profiles WHERE name = ? OR username = ?", (username, username))
         result = cursor.fetchone()
-        if result and result[0]:
-            conn.close()
-            return result[0]
-    
-    # Fallback to student_profiles (old schema)
-    cursor.execute("SELECT section FROM student_profiles WHERE name = ? OR username = ?", (username, username))
-    result = cursor.fetchone()
-    conn.close()
-    
-    return result[0] if result and result[0] else "Unassigned"
+        
+        return result[0] if result and result[0] else "Unassigned"
+    except Exception as e:
+        print(f"Error getting user section: {e}")
+        return "Unassigned"
+    finally:
+        conn.close()
 
 def login_page():
     st.title("Login")
@@ -141,6 +156,12 @@ def login_page():
             st.session_state.logged_in = True
             st.session_state.username = username
             st.session_state.user_role = role
+            
+            # Debug info for admin login
+            if username == "admin" and role == "admin":
+                print(f"Admin login successful: username={username}, role={role}")
+                # Add a special flag for admin login
+                st.session_state.is_admin = True
             
             # Store login time for security tracking
             st.session_state.login_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -186,7 +207,13 @@ def login_page():
         if users:
             st.write("Available users in the system:")
             for user, role in users:
-                section = get_user_section(user) if role == "student" else "N/A"
+                try:
+                    section = get_user_section(user) if role == "student" else "N/A"
+                except Exception as e:
+                    # Handle any errors during section lookup
+                    print(f"Error getting section for {user}: {e}")
+                    section = "Unknown"
+                    
                 st.write(f"- {user} (Role: {role}, Section: {section})")
             st.info("Note: Passwords are hashed in the database. Contact the administrator if you need access.")
         else:

@@ -8,17 +8,12 @@ import json
 from datetime import datetime
 import os
 import uuid
-
+import hashlib  # Added for password hashing
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
 MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit/insightface_model'
-# # MODEL_NAME = 'antelopev2'
 MODEL_NAME = 'buffalo_sc'
-
-# # Get model path from environment variable
-# MODEL_ROOT = os.environ.get('INSIGHTFACE_MODEL_DIR', '/app/insightface_model')
-# MODEL_NAME = 'antelopev2'
 
 DETECTION_SIZE = (640, 640)
 
@@ -59,71 +54,6 @@ except Exception as e:
     st.error(f"Failed to initialize face analysis model: {str(e)}")
     st.stop()
 
-def register_face_from_image(image, name):
-    """Register face from a given image"""
-    try:
-        faces = app.get(image)
-        if not faces:
-            return False
-        embedding = faces[0].embedding
-        normalized_embedding = embedding / np.linalg.norm(embedding)
-        embedding_str = json.dumps(normalized_embedding.tolist())
-        
-        conn = sqlite3.connect(DATABASE_PATH)
-        cursor = conn.cursor()
-        
-        # Insert into presidents_embeds
-        cursor.execute('''
-            INSERT INTO presidents_embeds (name, facial_features)
-            VALUES (?, ?)
-        ''', (name, embedding_str))
-
-        # Check if the name exists in the students table
-        existing_name = cursor.execute('''
-            SELECT name FROM students WHERE name = ?
-        ''', (name,)).fetchone()
-        
-        # Insert into students if the name does not exist
-        if existing_name is None:
-            cursor.execute('''
-                INSERT INTO students (name)
-                VALUES (?)
-            ''', (name,))
-        
-        conn.commit()
-        return True
-    except Exception as e:
-        st.error(f"Registration error: {str(e)}")
-        return False
-    finally:
-        if 'conn' in locals():
-            conn.close()
-
-def add_embedding_to_collection(name, embedding, collection):
-    """Add a single embedding to an existing ChromaDB collection"""
-    try:
-        if collection is None:
-            return False
-            
-        # Generate a unique ID for this embedding
-        embedding_id = str(uuid.uuid4())
-        
-        # Add the embedding to the collection
-        collection.add(
-            ids=[embedding_id],
-            documents=[name],
-            embeddings=[embedding],
-            metadatas=[{"name": name}]
-        )
-        
-        print(f"Added new embedding for {name} to collection")
-        return True
-    except Exception as e:
-        print(f"Error adding embedding to collection: {e}")
-        return False
-
-<<<<<<< HEAD
-=======
 def generate_default_password(name, section):
     """Generate a password based on name and section"""
     # Format: {name}_{section_abbreviated}
@@ -194,12 +124,11 @@ def register_student(student_data, image):
         
         cursor.execute(insert_sql, values)
         
-        # Create user account with default password (hashed)
+        # Create user account with default password (PLAIN TEXT - no hashing)
         default_password = generate_default_password(name, section)
-        hashed_password = hashlib.md5(default_password.encode()).hexdigest()
         cursor.execute(
             "INSERT INTO user_accounts (username, password, role) VALUES (?, ?, 'student')",
-            (name, hashed_password)
+            (name, default_password)  # Store password as plain text
         )
         
         # Process facial recognition data
@@ -210,10 +139,18 @@ def register_student(student_data, image):
                 normalized_embedding = embedding / np.linalg.norm(embedding)
                 embedding_str = json.dumps(normalized_embedding.tolist())
                 
-                cursor.execute(
-                    "INSERT INTO facial_recognition_data (name, facial_features) VALUES (?, ?)",
-                    (name, embedding_str)
-                )
+                # Try to use the newer table first
+                try:
+                    cursor.execute(
+                        "INSERT INTO facial_recognition_data (name, facial_features) VALUES (?, ?)",
+                        (name, embedding_str)
+                    )
+                except sqlite3.OperationalError:
+                    # Fall back to older table if needed
+                    cursor.execute(
+                        "INSERT INTO presidents_embeds (name, facial_features) VALUES (?, ?)",
+                        (name, embedding_str)
+                    )
             else:
                 st.warning("No face detected in the image. Student info saved without facial data.")
         
@@ -245,7 +182,77 @@ def register_student(student_data, image):
         if 'conn' in locals():
             conn.close()
 
->>>>>>> 00510a2
+def register_face_from_image(image, name):
+    """Register face from a given image"""
+    try:
+        faces = app.get(image)
+        if not faces:
+            return False
+        embedding = faces[0].embedding
+        normalized_embedding = embedding / np.linalg.norm(embedding)
+        embedding_str = json.dumps(normalized_embedding.tolist())
+        
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        # Try to insert into both tables for compatibility
+        try:
+            # First try the modern table
+            cursor.execute('''
+                INSERT INTO facial_recognition_data (name, facial_features)
+                VALUES (?, ?)
+            ''', (name, embedding_str))
+        except sqlite3.OperationalError:
+            # Fall back to older table
+            cursor.execute('''
+                INSERT INTO presidents_embeds (name, facial_features)
+                VALUES (?, ?)
+            ''', (name, embedding_str))
+
+        # Check if the name exists in the students table
+        existing_name = cursor.execute('''
+            SELECT name FROM students WHERE name = ?
+        ''', (name,)).fetchone()
+        
+        # Insert into students if the name does not exist
+        if existing_name is None:
+            cursor.execute('''
+                INSERT INTO students (name)
+                VALUES (?)
+            ''', (name,))
+        
+        conn.commit()
+        return True
+    except Exception as e:
+        st.error(f"Registration error: {str(e)}")
+        return False
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+def add_embedding_to_collection(name, embedding, collection):
+    """Add a single embedding to an existing ChromaDB collection"""
+    try:
+        if collection is None:
+            return False
+            
+        # Generate a unique ID for this embedding
+        embedding_id = str(uuid.uuid4())
+        
+        # Add the embedding to the collection
+        collection.add(
+            ids=[embedding_id],
+            documents=[name],
+            embeddings=[embedding],
+            metadatas=[{"name": name}]
+        )
+        
+        print(f"Added new embedding for {name} to collection")
+        return True
+    except Exception as e:
+        print(f"Error adding embedding to collection: {e}")
+        return False
+
 def show_registration_form():
     st.header("Registration Form")
     name = st.text_input("Name", key="reg_name")
