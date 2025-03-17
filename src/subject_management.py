@@ -1141,3 +1141,4 @@ def update_class_schedules_schema():
 
 # Run schema update at module import
 update_class_schedules_schema()
+()
