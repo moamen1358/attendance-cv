@@ -62,7 +62,7 @@ def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
         # Retrieve data from the SQLite database
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT name, facial_features FROM facial_recognition_data")
+        cursor.execute("SELECT name, facial_features FROM presidents_embeds")
         rows = cursor.fetchall()
         conn.close()
 
@@ -95,7 +95,7 @@ def log_attendance(name, confidence, device_id=None):
         
         # Insert attendance record
         cursor.execute('''
-            INSERT INTO attendance_records (name, timestamp, confidence, device_id)
+            INSERT INTO attendance_log (name, timestamp, confidence, device_id)
             VALUES (?, ?, ?, ?)
         ''', (name, timestamp, confidence, device_id or 'default'))
         
