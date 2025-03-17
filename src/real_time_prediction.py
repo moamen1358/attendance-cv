@@ -15,12 +15,6 @@ import time
 MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit/insightface_model'
 MODEL_NAME = 'buffalo_sc'
 
-
-
-
-
-
-
 DETECTION_SIZE = (640, 640)
 RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/101"
 CHROMA_STORE_PATH = "./store"
@@ -63,12 +57,16 @@ def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
         # Retrieve data from the SQLite database
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-<<<<<<< HEAD
-        cursor.execute("SELECT name, facial_features FROM presidents_embeds")
-=======
-        execute_query("SELECT name, facial_features FROM facial_recognition_data")
->>>>>>> 00510a2
-        rows = cursor.fetchall()
+        
+        # First try the newer schema
+        try:
+            cursor.execute("SELECT name, facial_features FROM facial_recognition_data")
+            rows = cursor.fetchall()
+        except sqlite3.OperationalError:
+            # Fall back to older schema if needed
+            cursor.execute("SELECT name, facial_features FROM presidents_embeds")
+            rows = cursor.fetchall()
+            
         conn.close()
 
         # Add data to the collection

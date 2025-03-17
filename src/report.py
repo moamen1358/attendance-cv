@@ -13,6 +13,7 @@ from student_visualization import create_attendance_sunburst, create_attendance_
 from student_visualization import create_subject_radial_chart, create_weekly_heatmap
 from setup_teacher_subjects import get_teacher_subjects
 from global_css_handler import apply_global_css, enforce_fixed_padding
+from global_css_handler import ensure_consistent_padding
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -682,6 +683,9 @@ def create_trend_chart(df):
 # Change professor page heading colors from red to purple
 
 def show_report():
+    # Apply consistent padding immediately
+    ensure_consistent_padding()
+    
     st.title("Teacher Dashboard")
     
     # Get current user details

@@ -11,6 +11,7 @@ import math
 from streamlit.components.v1 import html
 from time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
 from global_css_handler import apply_global_css  # Only import what we need
+from global_css_handler import ensure_consistent_padding
 
 # Page configuration
 st.set_page_config(
@@ -1317,6 +1318,40 @@ def create_subject_bar_chart(history_df):
 # Restore dashboard title while maintaining zero spacing
 
 def show_student_report():
+    # CRITICAL ADMIN SAFETY CHECK - immediately redirect admin users
+    if st.session_state.get('user_role', '').lower() == 'admin' or 'admin' in st.session_state.get('username', '').lower():
+        st.warning("Admin users should not use the student dashboard. Redirecting to admin dashboard...")
+        
+        # Show redirect message and button
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.info("Please use the admin dashboard to manage the system.")
+        with col2:
+            if st.button("Go to Admin Dashboard", type="primary"):
+                # Force admin role
+                st.session_state.user_role = "admin"
+                st.session_state.current_page = "Admin Dashboard"
+                # Rerun app.py to redirect
+                from app import show_app
+                show_app()
+                st.rerun()
+        
+        # Create a more reliable redirect mechanism
+        st.markdown("""
+        <script>
+            // Wait a moment then redirect
+            setTimeout(function() {
+                window.location.href = "?";  // Redirect to home
+            }, 2000);
+        </script>
+        """, unsafe_allow_html=True)
+        
+        # Stop execution of student dashboard for admin users
+        return
+    
+    # Ensure consistent padding at the beginning of the function
+    ensure_consistent_padding()
+    
     # Apply global CSS - will only inject once per session
     apply_global_css()
     
