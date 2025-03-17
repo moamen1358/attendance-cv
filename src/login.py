@@ -155,20 +155,38 @@ def login_page():
             # Set session state variables
             st.session_state.logged_in = True
             st.session_state.username = username
+            
+            # ENHANCED ROLE DETECTION
+            # Force admin role for any username containing "admin"
+            is_admin = (username.lower() == "admin" or "admin" in username.lower() or role.lower() == "admin")
+            is_professor = role.lower() == "professor"
+            
+            if is_admin:
+                role = "admin"
+                st.session_state.is_admin = True
+                print(f"Enforcing admin role for {username}")
+            elif is_professor:
+                st.session_state.is_professor = True
+                print(f"Setting professor role for {username}")
+                
             st.session_state.user_role = role
             
-            # Debug info for admin login
-            if username == "admin" and role == "admin":
-                print(f"Admin login successful: username={username}, role={role}")
-                # Add a special flag for admin login
-                st.session_state.is_admin = True
+            # Debug info for role login
+            print(f"User login successful: username={username}, role={role}")
             
             # Store login time for security tracking
             st.session_state.login_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
-            # Update query parameters to maintain login state
+            # Update query parameters to maintain login state - INCLUDE ROLE FOR ALL USERS
             st.query_params["logged_in"] = "True"
             st.query_params["username"] = username
+            st.query_params["user_role"] = role  # Add role to query params
+            
+            # For admin users, add a flag to URL to ensure persistence
+            if is_admin:
+                st.query_params["is_admin"] = "true"
+            elif is_professor:
+                st.query_params["is_professor"] = "true"
             
             # Log successful login
             try:

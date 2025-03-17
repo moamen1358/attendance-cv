@@ -1,16 +1,27 @@
-# ...existing code...
+# ...existing imports...
+from admin_validator import enforce_admin_role
 
 def show_admin_dashboard():
     """
     Display the admin dashboard with key management functions
     """
+    # First ensure this user has admin rights
+    enforce_admin_role()
+    
     # Debug statement to confirm we reached the admin dashboard
     print("Admin dashboard function called")
     
-    # No need to check if user is admin - this is handled in app.py
-    
     # Ensure consistent padding
     ensure_consistent_padding()
+    
+    # Extra safety check
+    if st.session_state.get('user_role', '') != "admin":
+        st.error("Access denied: This page requires administrator privileges")
+        if st.button("Return to Login"):
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.rerun()
+        st.stop()
     
     st.title("Admin Dashboard")
     

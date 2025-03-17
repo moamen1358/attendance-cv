@@ -16,6 +16,14 @@ def show_app():
     # Debug user role to help diagnose issues
     print(f"User role detected: {st.session_state.get('user_role', 'None')}")
     print(f"Username: {st.session_state.get('username', 'None')}")
+    print(f"Is admin flag: {st.session_state.get('is_admin', False)}")
+    print(f"Is professor flag: {st.session_state.get('is_professor', False)}")
+    
+    # Import persistence manager to ensure data is maintained
+    from persistent_session_manager import PersistentSessionManager
+    session_manager = PersistentSessionManager()
+    session_manager.ensure_session_persistence()
+    session_manager.inject_session_js()
     
     # Apply consistent padding immediately at app start
     from global_css_handler import ensure_consistent_padding
@@ -26,10 +34,24 @@ def show_app():
     user_role = st.session_state.get('user_role', 'Unknown')
     
     # FORCE ADMIN ROLE for any admin username for fallback protection
-    if username.lower() == "admin" or "admin" in username.lower() or user_role.lower() == "admin":
+    if username.lower() == "admin" or "admin" in username.lower() or user_role.lower() == "admin" or st.session_state.get('is_admin', False):
         user_role = "admin"
         st.session_state.user_role = "admin"
-        print(f"Forcing admin role for user {username}")
+        st.session_state.is_admin = True
+        
+        # IMPORTANT: Also set query param to preserve role on refresh
+        st.query_params["user_role"] = "admin" 
+        print(f"Setting admin role in session and query params for user {username}")
+    
+    # FORCE PROFESSOR ROLE for any professor username for fallback protection
+    elif user_role.lower() == "professor" or st.session_state.get('is_professor', False):
+        user_role = "professor"
+        st.session_state.user_role = "professor"
+        st.session_state.is_professor = True
+        
+        # IMPORTANT: Also set query param to preserve role on refresh  
+        st.query_params["user_role"] = "professor"
+        print(f"Setting professor role in session and query params for user {username}")
     
     # Debug info for admin login issues
     if username == "admin" and user_role != "admin":
@@ -169,8 +191,8 @@ def show_app():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Full-width logout button
-                if st.button("🚪 Logout", key="sidebar_logout", use_container_width=True):
+                # Full-width logout button - CHANGED KEY TO sidebar_logout_primary
+                if st.button("🚪 Logout", key="sidebar_logout_primary", use_container_width=True):
                     logout_user()
                 
                 # Add a subtle divider
@@ -201,11 +223,15 @@ def show_app():
             # Call the selected page function - use all_pages to include Admin Dashboard
             all_pages[st.session_state.current_page]()
             
+            # Important - Return here so we don't hit the fallback code below
+            return
+            
         except (ImportError, AttributeError) as e:
             # Fallback admin dashboard if there's an issue with the modules
             st.error(f"Error loading admin modules: {str(e)}")
             # Continue with the fallback admin dashboard below
             
+        # This is the fallback code that runs if the primary admin view fails
         try:
             # Try to import required admin modules - if they fail, we'll handle it
             import subject_management
@@ -233,8 +259,8 @@ def show_app():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Full-width logout button
-                if st.button("🚪 Logout", key="sidebar_logout", use_container_width=True):
+                # Full-width logout button - CHANGED KEY TO sidebar_logout_fallback
+                if st.button("🚪 Logout", key="sidebar_logout_fallback", use_container_width=True):
                     logout_user()
                 
                 # Add a subtle divider
@@ -440,6 +466,34 @@ def logout_user():
 if __name__ == "__main__":
     # This block only runs when app.py is executed directly
     st.set_page_config(layout="wide")
+    
+    # CRITICAL: Import and run persistent session manager FIRST
+    from persistent_session_manager import PersistentSessionManager
+    session_manager = PersistentSessionManager()
+    session_manager.ensure_session_persistence()
+    
+    # Continue with existing code...
+    # CRITICAL: Import role_session_persistence as the very first step
+    import role_session_persistence
+    role_session_persistence.ensure_role_persistence()
+    
+    # CRITICAL: Restore roles from query params if present
+    if "user_role" in st.query_params:
+        role = st.query_params["user_role"]
+        st.session_state.user_role = role
+        
+        if role == "admin":
+            st.session_state.is_admin = True
+            print("Restored admin role from query parameters")
+        elif role == "professor":
+            st.session_state.is_professor = True
+            print("Restored professor role from query parameters")
+    
+    # Also restore admin role if username contains 'admin'
+    if "username" in st.query_params and "admin" in st.query_params["username"].lower():
+        st.session_state.user_role = "admin"
+        st.session_state.is_admin = True
+        print(f"Set admin role based on username: {st.query_params['username']}")
     
     # Setup admin tables to ensure they exist
     try:

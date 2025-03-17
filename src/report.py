@@ -683,6 +683,25 @@ def create_trend_chart(df):
 # Change professor page heading colors from red to purple
 
 def show_report():
+    """Show attendance report for professors"""
+    # Get username and ensure we have a valid value
+    username = st.session_state.get('username', 'Unknown')
+    
+    # Guard against "Unknown" username by redirecting to login
+    if username == 'Unknown':
+        st.error("Your session has expired or is invalid. Please login again.")
+        
+        # Add a login button
+        if st.button("Return to Login"):
+            # Clear session state
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            # Clear query params
+            st.query_params.clear()
+            st.rerun()
+            
+        return
+    
     # Apply consistent padding immediately
     ensure_consistent_padding()
     
