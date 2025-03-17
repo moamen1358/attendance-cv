@@ -1,4 +1,5 @@
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import os
 import time
 from datetime import datetime
@@ -54,7 +55,7 @@ def enhance_database():
         cursor = conn.cursor()
         
         # Check existing tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        execute_query("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
         print(f"📋 Found {len(tables)} tables: {', '.join(tables)}")
         
@@ -81,10 +82,10 @@ def enhance_database():
         # 2. Enhance attendance records table
         enhance_attendance_records(cursor)
         
-        # 3. Enhance class_attendance_records table
+        # 3. Enhance class_attendance table
         enhance_class_attendance_records(cursor)
         
-        # 4. Update class_attendance_records time format to AM/PM
+        # 4. Update class_attendance time format to AM/PM
         update_class_attendance_time_format(cursor)
         
         # 5. Enhance schedule table with AM/PM time format
@@ -126,7 +127,7 @@ def rename_table(cursor, old_name, new_name):
     cursor.execute(f"CREATE TABLE {new_name} AS SELECT * FROM {old_name}")
     
     # Get indexes from the old table
-    cursor.execute(f"PRAGMA index_list({old_name})")
+    execute_query(f"PRAGMA index_list({old_name})")
     indexes = cursor.fetchall()
     
     # Recreate indexes on the new table
@@ -135,7 +136,7 @@ def rename_table(cursor, old_name, new_name):
         is_unique = index_info[2]
         
         # Get index columns
-        cursor.execute(f"PRAGMA index_info({index_name})")
+        execute_query(f"PRAGMA index_info({index_name})")
         columns = cursor.fetchall()
         column_names = [col[2] for col in columns]
         
@@ -155,7 +156,7 @@ def enhance_attendance_records(cursor):
     print("\n🔧 Enhancing attendance_records table...")
     
     # Find the correct table name
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='attendance_records' OR name='attendance_log')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='attendance_records' OR name='attendance_log')")
     result = cursor.fetchone()
     if not result:
         print("❌ Attendance records table not found")
@@ -164,7 +165,7 @@ def enhance_attendance_records(cursor):
     table_name = result[0]
     
     # Check if column exists
-    cursor.execute(f"PRAGMA table_info({table_name})")
+    execute_query(f"PRAGMA table_info({table_name})")
     columns = {info[1] for info in cursor.fetchall()}
     
     # Add new columns without default values (to avoid "non-constant default" error)
@@ -195,17 +196,17 @@ def enhance_attendance_records(cursor):
     print(f"✅ {table_name} table enhanced with new columns and indices")
 
 def enhance_class_attendance_records(cursor):
-    """Enhance the class_attendance_records table"""
+    """Enhance the class_attendance table"""
     print("\n🔧 Enhancing class attendance records table...")
     
     # Find the correct table name
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_attendance_records' OR name='class_attendance')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_attendance_records' OR name='class_attendance')")
     result = cursor.fetchone()
     if not result:
         # Create the table if it doesn't exist
         print("⚠️ Class attendance table not found, creating it...")
         cursor.execute("""
-        CREATE TABLE class_attendance_records (
+        CREATE TABLE class_attendance (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             student_name TEXT NOT NULL,
             class_date DATE NOT NULL,
@@ -224,7 +225,7 @@ def enhance_class_attendance_records(cursor):
     table_name = result[0]
     
     # Check if columns exist
-    cursor.execute(f"PRAGMA table_info({table_name})")
+    execute_query(f"PRAGMA table_info({table_name})")
     columns = {info[1] for info in cursor.fetchall()}
     
     if 'attendance_time' not in columns:
@@ -253,7 +254,7 @@ def enhance_schedule_table(cursor):
     print("\n🔧 Enhancing schedule table...")
     
     # Find the correct table name
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_schedules' OR name='control_4')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_schedules' OR name='control_4')")
     result = cursor.fetchone()
     if not result:
         # Create a new schedule table
@@ -278,7 +279,7 @@ def enhance_schedule_table(cursor):
     table_name = result[0]
     
     # Get column info
-    cursor.execute(f"PRAGMA table_info({table_name})")
+    execute_query(f"PRAGMA table_info({table_name})")
     columns = {info[1] for info in cursor.fetchall()}
     
     # Add columns if they don't exist
@@ -306,7 +307,7 @@ def enhance_schedule_table(cursor):
     
     # Convert time columns to AM/PM format
     print("🔄 Converting time formats to AM/PM...")
-    cursor.execute(f"SELECT id, start_time, end_time FROM {table_name}")
+    execute_query(f"SELECT id, start_time, end_time FROM {table_name}")
     rows = cursor.fetchall()
     
     for row_id, start_time, end_time in rows:
@@ -331,7 +332,7 @@ def enhance_user_accounts_table(cursor):
     print("\n🔧 Enhancing user accounts table...")
     
     # Find the correct table name
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='user_accounts' OR name='users')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='user_accounts' OR name='users')")
     result = cursor.fetchone()
     if not result:
         # Create new user_accounts table
@@ -354,7 +355,7 @@ def enhance_user_accounts_table(cursor):
     table_name = result[0]
     
     # Get column info
-    cursor.execute(f"PRAGMA table_info({table_name})")
+    execute_query(f"PRAGMA table_info({table_name})")
     columns = {info[1] for info in cursor.fetchall()}
     
     # Add needed columns
@@ -391,11 +392,11 @@ def enhance_user_accounts_table(cursor):
     print(f"✅ Enhanced {table_name} table with additional columns and indices")
 
 def update_class_attendance_time_format(cursor):
-    """Update class_attendance_records time format to AM/PM"""
+    """Update class_attendance time format to AM/PM"""
     print("\n🔧 Updating time formats in class attendance records...")
     
     # Find the correct table name
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_attendance_records' OR name='class_attendance')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_attendance_records' OR name='class_attendance')")
     result = cursor.fetchone()
     if not result:
         print("⚠️ Class attendance table not found, skipping time format update")
@@ -405,7 +406,7 @@ def update_class_attendance_time_format(cursor):
     
     try:
         # Fetch records with time values
-        cursor.execute(f"SELECT id, start_time, end_time FROM {table_name}")
+        execute_query(f"SELECT id, start_time, end_time FROM {table_name}")
         rows = cursor.fetchall()
         
         updated_count = 0
@@ -482,11 +483,11 @@ def create_attendance_summary_table(cursor):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_summary_date ON attendance_summary(date)")
     
     # Find attendance record table name
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='attendance_records' OR name='attendance_log')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='attendance_records' OR name='attendance_log')")
     attendance_table = cursor.fetchone()[0] if cursor.fetchone() else None
     
     # Find class attendance table name
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_attendance_records' OR name='class_attendance')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_attendance_records' OR name='class_attendance')")
     class_table = cursor.fetchone()[0] if cursor.fetchone() else None
     
     if attendance_table and class_table:
@@ -525,15 +526,15 @@ def create_triggers(cursor):
     print("\n🔧 Creating database triggers...")
     
     # Find table names
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='attendance_records' OR name='attendance_log')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='attendance_records' OR name='attendance_log')")
     attendance_table = cursor.fetchone()
     attendance_table = attendance_table[0] if attendance_table else None
     
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_attendance_records' OR name='class_attendance')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='class_attendance_records' OR name='class_attendance')")
     class_table = cursor.fetchone()
     class_table = class_table[0] if class_table else None
     
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='user_accounts' OR name='users')")
+    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='user_accounts' OR name='users')")
     user_table = cursor.fetchone()
     user_table = user_table[0] if user_table else None
     
@@ -644,10 +645,10 @@ def update_views(cursor):
     # Check which tables exist (old or new names)
     table_exists = {}
     for old_name, new_name in TABLE_MAPPINGS.items():
-        cursor.execute(f"SELECT 1 FROM sqlite_master WHERE type='table' AND name='{old_name}'")
+        execute_query(f"SELECT 1 FROM sqlite_master WHERE type='table' AND name='{old_name}'")
         old_exists = bool(cursor.fetchone())
         
-        cursor.execute(f"SELECT 1 FROM sqlite_master WHERE type='table' AND name='{new_name}'")
+        execute_query(f"SELECT 1 FROM sqlite_master WHERE type='table' AND name='{new_name}'")
         new_exists = bool(cursor.fetchone())
         
         # Determine which name to use (prefer new name)

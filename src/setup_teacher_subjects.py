@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
+from database_utils import execute_query, execute_query_df
 
 DATABASE_PATH = 'attendance_system.db'
 
@@ -11,7 +12,7 @@ def create_or_update_schema():
     
     try:
         # Check if table exists and what columns it has
-        cursor.execute("PRAGMA table_info(teacher_subjects)")
+        execute_query("PRAGMA table_info(teacher_subjects)")
         columns = cursor.fetchall()
         column_names = [col[1] for col in columns]
         
@@ -74,7 +75,7 @@ def get_teacher_subjects(username):
     try:
         # First check the column name for teacher
         cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(teacher_subjects)")
+        execute_query("PRAGMA table_info(teacher_subjects)")
         columns = [col[1] for col in cursor.fetchall()]
         
         # Determine the teacher column name
@@ -131,7 +132,7 @@ def assign_subject_to_teacher(teacher_username, subject_id):
         teacher_column = 'teacher_name'
         
         # Check column name first
-        cursor.execute("PRAGMA table_info(teacher_subjects)")
+        execute_query("PRAGMA table_info(teacher_subjects)")
         columns = [col[1] for col in cursor.fetchall()]
         if teacher_column not in columns:
             if 'teacher_username' in columns:

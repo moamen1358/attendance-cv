@@ -4,6 +4,7 @@ import plotly.graph_objects as go
 from datetime import datetime
 import json
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import re
 import io
 from plotly import express as px
@@ -31,7 +32,7 @@ class CustomTableView:
         conn = self._get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(f"PRAGMA table_info({self.table_name})")
+        execute_query(f"PRAGMA table_info({self.table_name})")
         columns = cursor.fetchall()
         
         # Column info format: (cid, name, type, notnull, dflt_value, pk)
@@ -59,7 +60,7 @@ class CustomTableView:
         conn = self._get_db_connection()
         cursor = conn.cursor()
         
-        cursor.execute(f"PRAGMA foreign_key_list({self.table_name})")
+        execute_query(f"PRAGMA foreign_key_list({self.table_name})")
         fk_data = cursor.fetchall()
         conn.close()
         
@@ -91,14 +92,14 @@ class CustomTableView:
             
         query += f" LIMIT {limit} OFFSET {offset}"
         
-        df = pd.read_sql_query(query, conn)
+        df = execute_query_df(query)
         
         # Get total row count
         count_query = f"SELECT COUNT(*) FROM {self.table_name}"
         if where_clause:
             count_query += f" WHERE {where_clause}"
         
-        total_rows = pd.read_sql_query(count_query, conn).iloc[0, 0]
+        total_rows = execute_query_df(count_query).iloc[0, 0]
         
         conn.close()
         return df, total_rows
@@ -114,7 +115,7 @@ class CustomTableView:
         ref_column = fk_info['ref_column']
         
         query = f"SELECT {ref_column}, * FROM {ref_table} LIMIT 1000"
-        df = pd.read_sql_query(query, conn)
+        df = execute_query_df(query)
         conn.close()
         
         # If there's a 'name' column, use it for display with the ID
@@ -160,7 +161,7 @@ class CustomTableView:
                     # Get unique values for column (limited for performance)
                     conn = self._get_db_connection()
                     cursor = conn.cursor()
-                    cursor.execute(f"SELECT DISTINCT {filter_col} FROM {self.table_name} LIMIT 50")
+                    execute_query(f"SELECT DISTINCT {filter_col} FROM {self.table_name} LIMIT 50")
                     unique_vals = [row[0] for row in cursor.fetchall() if row[0] is not None]
                     conn.close()
                     
@@ -286,7 +287,7 @@ class CustomTableView:
                         placeholders = ', '.join(['?' for _ in range(len(df[fk_col].dropna().unique()))])
                         query = f"SELECT DISTINCT {ref_col}, name FROM {ref_table} WHERE {ref_col} IN ({placeholders})"
                         cursor = conn.cursor()
-                        cursor.execute(query, df[fk_col].dropna().unique().tolist())
+                        execute_query(query, df[fk_col].dropna().unique().tolist())
                         fk_results = cursor.fetchall()
                         
                         if fk_results:

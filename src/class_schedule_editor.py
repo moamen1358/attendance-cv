@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import numpy as np
 from datetime import datetime, time
 import plotly.figure_factory as ff
@@ -59,7 +60,7 @@ def load_class_schedules():
     ORDER BY day, start_time, subject
     """
     
-    df = pd.read_sql_query(query, conn)
+    df = execute_query_df(query)
     conn.close()
     
     return df
@@ -74,7 +75,7 @@ def load_subjects():
     ORDER BY subject
     """
     
-    df = pd.read_sql_query(query, conn)
+    df = execute_query_df(query)
     conn.close()
     
     return df['subject'].tolist()
@@ -89,7 +90,7 @@ def load_teachers():
     ORDER BY teacher
     """
     
-    df = pd.read_sql_query(query, conn)
+    df = execute_query_df(query)
     conn.close()
     
     return df['teacher'].tolist()

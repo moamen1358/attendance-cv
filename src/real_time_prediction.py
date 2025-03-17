@@ -5,6 +5,7 @@ from insightface.app import FaceAnalysis
 import onnxruntime as ort
 import chromadb
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import json
 import uuid
 import os
@@ -62,7 +63,7 @@ def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
         # Retrieve data from the SQLite database
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        cursor.execute("SELECT name, facial_features FROM facial_recognition_data")
+        execute_query("SELECT name, facial_features FROM facial_recognition_data")
         rows = cursor.fetchall()
         conn.close()
 

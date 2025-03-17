@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 from insightface.app import FaceAnalysis
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import json
 from datetime import datetime
 import os
@@ -149,13 +150,13 @@ def register_student(student_data, image):
         section = student_data.get('section', '')
         
         # Check if student name already exists
-        cursor.execute("SELECT name FROM student_profiles WHERE name = ?", (name,))
+        execute_query("SELECT name FROM student_profiles WHERE name = ?", (name,))
         if cursor.fetchone():
             st.error(f"Student '{name}' already exists.")
             return False
         
         # First, check if the student_profiles table has the columns we need
-        cursor.execute("PRAGMA table_info(student_profiles)")
+        execute_query("PRAGMA table_info(student_profiles)")
         columns = [col[1] for col in cursor.fetchall()]
         
         # Determine which columns to insert based on what exists in the table

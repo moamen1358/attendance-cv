@@ -1,4 +1,5 @@
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import pandas as pd
 import random
 from datetime import datetime, timedelta
@@ -18,7 +19,7 @@ def ensure_user_exists(username="moamen", role="student"):
     cursor = conn.cursor()
     
     # Check if user exists in user_accounts table
-    cursor.execute("SELECT username FROM user_accounts WHERE username = ?", (username,))
+    execute_query("SELECT username FROM user_accounts WHERE username = ?", (username,))
     if not cursor.fetchone():
         print(f"Creating user '{username}'...")
         # Create user
@@ -29,7 +30,7 @@ def ensure_user_exists(username="moamen", role="student"):
         print(f"User '{username}' created with password 'password123'")
     
     # Check if user exists in student_profiles table
-    cursor.execute("SELECT name FROM student_profiles WHERE name = ?", (username,))
+    execute_query("SELECT name FROM student_profiles WHERE name = ?", (username,))
     if not cursor.fetchone():
         print(f"Adding '{username}' to student_profiles table...")
         cursor.execute(
@@ -65,7 +66,7 @@ def get_schedule_for_range(start_date, end_date):
         """
         
         cursor = conn.cursor()
-        cursor.execute(query, (day_name,))
+        execute_query(query, (day_name,))
         classes = cursor.fetchall()
         
         # Add each class with its date
@@ -118,7 +119,7 @@ def generate_attendance_logs(username, classes, attendance_rate=0.8):
         if attended:
             attended_count += 1
             
-            # Record in class_attendance_records table
+            # Record in class_attendance table
             cursor.execute("""
                 INSERT OR REPLACE INTO class_attendance 
                     (student_name, class_date, subject, start_time, end_time, attended)
@@ -221,7 +222,7 @@ def main():
     
     print(f"Clearing existing attendance data for user '{username}'...")
     cursor.execute("DELETE FROM attendance_records WHERE name = ?", (username,))
-    cursor.execute("DELETE FROM class_attendance_records WHERE student_name = ?", (username,))
+    cursor.execute("DELETE FROM class_attendance WHERE student_name = ?", (username,))
     conn.commit()
     conn.close()
     

@@ -1,5 +1,6 @@
 import streamlit as st
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import hashlib
 import app
 import os
@@ -17,12 +18,12 @@ def verify_credentials(username, password):
     
     try:
         # Check for tables that might contain user credentials
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('user_accounts', 'student_profiles', 'professor_profiles')")
+        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('user_accounts', 'student_profiles', 'professor_profiles')")
         tables = [row[0] for row in cursor.fetchall()]
         
         # Check in user_accounts table if it exists
         if 'user_accounts' in tables:
-            cursor.execute("PRAGMA table_info(user_accounts)")
+            execute_query("PRAGMA table_info(user_accounts)")
             columns = [col[1] for col in cursor.fetchall()]
             
             if 'username' in columns and ('password' in columns or 'hashed_password' in columns):
@@ -30,7 +31,7 @@ def verify_credentials(username, password):
                 role_column = 'role' if 'role' in columns else None
                 
                 query = f"SELECT username, {role_column or '\"student\" as role'}, {pwd_column} FROM user_accounts WHERE username = ?"
-                cursor.execute(query, (username,))
+                execute_query(query, (username,))
                 user = cursor.fetchone()
                 
                 if user:
@@ -53,7 +54,7 @@ def verify_credentials(username, password):
         # Check for student records
         if 'student_profiles' in tables:
             # Check columns
-            cursor.execute("PRAGMA table_info(student_profiles)")
+            execute_query("PRAGMA table_info(student_profiles)")
             columns = [col[1] for col in cursor.fetchall()]
             
             if 'password' in columns:
@@ -71,7 +72,7 @@ def verify_credentials(username, password):
                 
                 if where_clause:
                     query = f"SELECT name, password FROM student_profiles {where_clause}"
-                    cursor.execute(query, params)
+                    execute_query(query, params)
                     student = cursor.fetchone()
                     
                     if student and student[1] == password:
@@ -80,19 +81,19 @@ def verify_credentials(username, password):
         # Check for professor records
         if 'professor_profiles' in tables:
             # Check columns
-            cursor.execute("PRAGMA table_info(professor_profiles)")
+            execute_query("PRAGMA table_info(professor_profiles)")
             columns = [col[1] for col in cursor.fetchall()]
             
             if 'username' in columns and 'password' in columns:
                 query = "SELECT username, password FROM professor_profiles WHERE username = ?"
-                cursor.execute(query, (username,))
+                execute_query(query, (username,))
                 professor = cursor.fetchone()
                 
                 if professor and professor[1] == password:
                     return True, "professor"
         
         # Default credentials for development if no tables or users found
-        if len(tables) == 0 or cursor.execute("SELECT COUNT(*) FROM user_accounts").fetchone()[0] == 0:
+        if len(tables) == 0 or execute_query("SELECT COUNT(*) FROM user_accounts").fetchone()[0] == 0:
             if username == "admin" and password == "admin":
                 return True, "admin"
             elif username == "teacher" and password == "teacher":
@@ -117,13 +118,13 @@ def get_available_users():
     
     try:
         # Check if we're using the old table name or the new one
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='users' OR name='user_accounts')")
+        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND (name='users' OR name='user_accounts')")
         result = cursor.fetchone()
         
         if result:
             table_name = result[0]
             # Update to fetch both username and role
-            cursor.execute(f"SELECT username, role FROM {table_name}")
+            execute_query(f"SELECT username, role FROM {table_name}")
             user_accounts = cursor.fetchall()  # This will return [(username1, role1), (username2, role2), ...]
         else:
             # If no table exists yet
@@ -143,7 +144,7 @@ def get_user_section(username):
     conn = create_connection()
     cursor = conn.cursor()
     
-    cursor.execute("SELECT section FROM student_profiles WHERE name = ?", (username,))
+    execute_query("SELECT section FROM student_profiles WHERE name = ?", (username,))
     result = cursor.fetchone()
     conn.close()
     

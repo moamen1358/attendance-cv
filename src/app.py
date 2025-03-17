@@ -7,6 +7,7 @@ import student_report
 import registration_form
 import subject_management
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import time
 from global_css_handler import apply_global_css, enforce_fixed_padding
 import enhanced_db_explorer
@@ -113,12 +114,12 @@ def show_app():
         
         if user_role == 'student':
             # First check if student_profiles table exists
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+            execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
             if not cursor.fetchone():
                 st.warning("Student profiles table not found. Some features may be limited.")
             else:
                 # Check if the columns exist
-                cursor.execute("PRAGMA table_info(student_profiles)")
+                execute_query("PRAGMA table_info(student_profiles)")
                 columns = [info[1] for info in cursor.fetchall()]
                 
                 # Construct a query based on available columns
@@ -149,7 +150,7 @@ def show_app():
                         # Add parameters for each where condition
                         params = [username] * len(where_parts)
                         
-                        cursor.execute(query, params)
+                        execute_query(query, params)
                         student_data = cursor.fetchone()
                         
                         if student_data:
@@ -166,10 +167,10 @@ def show_app():
         
         elif user_role == 'professor':
             # First check if professor_profiles table exists
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_profiles'")
+            execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_profiles'")
             if cursor.fetchone():
                 # Check if the table has the username column
-                cursor.execute("PRAGMA table_info(professor_profiles)")
+                execute_query("PRAGMA table_info(professor_profiles)")
                 columns = [info[1] for info in cursor.fetchall()]
                 
                 if "username" in columns and "department" in columns:

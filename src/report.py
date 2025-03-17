@@ -5,6 +5,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import sqlite3
+from database_utils import execute_query, execute_query_df
 import io
 from real_time_prediction import create_or_add_to_collection
 from time_format_utils import normalize_time_format
@@ -323,7 +324,7 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
     WHERE 1=1 {date_condition} {search_condition} {subject_condition} {section_condition}
     """
     
-    count_df = pd.read_sql_query(count_query, conn, params=params)
+    count_df = execute_query_df(count_query, params)
     total_count = count_df['total_count'][0] if not count_df.empty else 0
     
     # Main query with sorting and pagination
@@ -350,7 +351,7 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
     params.append(offset)
     
     # Execute query
-    df = pd.read_sql_query(query, conn, params=params)
+    df = execute_query_df(query, params)
     conn.close()
     
     # Format the results
@@ -412,7 +413,7 @@ def get_subject_attendance_summary(start_date=None, end_date=None, search_term=N
     """
     
     # Execute query
-    df = pd.read_sql_query(query, conn, params=params)
+    df = execute_query_df(query, params)
     conn.close()
     
     # Format the results
@@ -468,7 +469,7 @@ def get_monthly_attendance_trends(start_date=None, end_date=None, teacher_subjec
     """
     
     # Execute query
-    df = pd.read_sql_query(query, conn, params=params)
+    df = execute_query_df(query, params)
     conn.close()
     
     # Format results
@@ -549,8 +550,8 @@ def get_attendance_outliers(start_date=None, end_date=None, limit=5, teacher_sub
     """
     
     # Execute queries
-    top_df = pd.read_sql_query(top_query, conn, params=params)
-    bottom_df = pd.read_sql_query(bottom_query, conn, params=list(params))  # Copy params list
+    top_df = execute_query_df(top_query, params)
+    bottom_df = execute_query_df(bottom_query, list(params))  # Copy params list
     
     conn.close()
     
@@ -663,7 +664,7 @@ def get_student_count_for_subjects(teacher_subjects=None):
             if subjects_list:
                 # First try student_subjects table if it exists
                 cursor = conn.cursor()
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_subjects'")
+                execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='student_subjects'")
                 if cursor.fetchone():
                     # Get unique students from student_subjects table
                     placeholders = ', '.join(['?' for _ in subjects_list])
@@ -673,20 +674,20 @@ def get_student_count_for_subjects(teacher_subjects=None):
                     JOIN subjects s ON ss.subject_id = s.subject_id
                     WHERE s.subject_name IN ({placeholders})
                     """
-                    cursor.execute(query, subjects_list)
+                    execute_query(query, subjects_list)
                     count = cursor.fetchone()[0]
                     
                     if count > 0:
                         return count
                 
-                # If no students found in student_subjects, try class_attendance_records
+                # If no students found in student_subjects, try class_attendance
                 placeholders = ', '.join(['?' for _ in subjects_list])
                 query = f"""
                 SELECT COUNT(DISTINCT student_name) 
-                FROM class_attendance_records
+                FROM class_attendance
                 WHERE subject IN ({placeholders})
                 """
-                cursor.execute(query, subjects_list)
+                execute_query(query, subjects_list)
                 count = cursor.fetchone()[0]
                 
                 if count > 0:
@@ -694,7 +695,7 @@ def get_student_count_for_subjects(teacher_subjects=None):
         
         # Fallback: Get total student count from student_profiles
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM student_profiles")
+        execute_query("SELECT COUNT(*) FROM student_profiles")
         result = cursor.fetchone()
         return result[0] if result else 0
         
@@ -712,7 +713,7 @@ def get_teacher_subjects_secure(username):
     try:
         # Check if the teacher_subjects table exists
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='teacher_subjects'")
+        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='teacher_subjects'")
         table_exists = cursor.fetchone()
         
         if table_exists:
@@ -723,19 +724,19 @@ def get_teacher_subjects_secure(username):
             JOIN subjects s ON ts.subject_id = s.subject_id
             WHERE ts.teacher_username = ?
             """
-            df = pd.read_sql_query(query, conn, params=(username,))
+            df = execute_query_df(query, (username,))
         else:
             # Fallback: Check if there's a professor_subjects table
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_subjects'")
+            execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_subjects'")
             prof_table_exists = cursor.fetchone()
             
             if prof_table_exists:
                 query = "SELECT subject FROM professor_subjects WHERE professor_username = ?"
-                df = pd.read_sql_query(query, conn, params=(username,))
+                df = execute_query_df(query, (username,))
             else:
                 # Fallback #2: Get from class_schedules with professor assignment
                 query = "SELECT DISTINCT subject FROM class_schedules WHERE assigned_professor = ?"
-                df = pd.read_sql_query(query, conn, params=(username,))
+                df = execute_query_df(query, (username,))
         
         conn.close()
         
@@ -801,7 +802,7 @@ def show_report():
     else:
         # Date filters - moved out of sidebar for professor view
         if user_role == 'professor':
-            # Show date filters directly in the main content area for professors
+            # Show date filters directly in the main content area for user_accounts
             st.header("Filter Options")
             
             # Create 3-column layout for filters
