@@ -6,14 +6,18 @@ import plotly.graph_objects as go
 from datetime import datetime, timedelta
 import sqlite3
 import io
-from database_utils import execute_query, execute_query_df  # Add this import
-from real_time_prediction import create_or_add_to_collection
-from time_format_utils import normalize_time_format
-from student_visualization import create_attendance_sunburst, create_attendance_gauge
-from student_visualization import create_subject_radial_chart, create_weekly_heatmap
-from setup_teacher_subjects import get_teacher_subjects
-from global_css_handler import apply_global_css, enforce_fixed_padding
-from global_css_handler import ensure_consistent_padding
+import sys
+
+# Add utils directory to path
+sys.path.append('/home/invisa/Desktop/my_grad_streamlit')
+
+# Update imports to use utils directory
+from src.database_utils import execute_query, execute_query_df
+from src.time_format_utils import normalize_time_format
+from src.student_visualization import create_attendance_sunburst, create_attendance_gauge
+from src.student_visualization import create_subject_radial_chart, create_weekly_heatmap
+from src.setup_teacher_subjects import get_teacher_subjects
+from src.global_css_handler import apply_global_css, enforce_fixed_padding, ensure_consistent_padding
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -1283,7 +1287,7 @@ def show_report():
             st.dataframe(display_df, hide_index=True, use_container_width=True)
             
             # Export to Excel button
-            buffer = io.BytesIO()
+            buffer = io.Bytes.IO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 display_df.to_excel(writer, sheet_name='Attendance Logs', index=False)
             st.download_button(
