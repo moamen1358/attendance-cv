@@ -1,10 +1,16 @@
 import streamlit as st
 import sqlite3
-from database_utils import execute_query, execute_query_df
-import hashlib
 import app
 import os
 from datetime import datetime
+import sys
+
+# Add utils directory to path
+sys.path.append('/home/invisa/Desktop/my_grad_streamlit')
+
+# Update imports to use utils directory
+from src.database_utils import execute_query, execute_query_df
+import hashlib
 
 def create_connection():
     conn = sqlite3.connect('attendance_system.db')
