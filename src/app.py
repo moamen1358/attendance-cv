@@ -13,6 +13,12 @@ import enhanced_db_explorer
 import admin_dashboard
 
 def show_app():
+    # Ensure database is initialized at application start
+    if 'database_initialized' not in st.session_state:
+        from src.login import initialize_database
+        print("Initializing database from app.py")
+        st.session_state.database_initialized = initialize_database()
+    
     # Debug user role to help diagnose issues
     print(f"User role detected: {st.session_state.get('user_role', 'None')}")
     print(f"Username: {st.session_state.get('username', 'None')}")

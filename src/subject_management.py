@@ -107,12 +107,73 @@ def get_db_connection():
     return sqlite3.connect(DATABASE_PATH)
 
 def get_all_subjects():
-    """Get all subjects from the database"""
+    """
+    Retrieve all subjects from the database with schema validation and column mapping.
+    """
+    # Check the actual schema to understand what columns are available
     conn = get_db_connection()
-    query = "SELECT * FROM subjects ORDER BY subject_name"
-    df = execute_query_df(query)
-    conn.close()
-    return df
+    cursor = conn.cursor()
+    try:
+        cursor.execute("PRAGMA table_info(subjects)")
+        columns = [col[1] for col in cursor.fetchall()]
+        print(f"Available columns in subjects table: {columns}")
+    except Exception as e:
+        print(f"Error checking schema: {e}")
+    finally:
+        conn.close()
+    
+    # Determine the correct column names based on the actual schema
+    id_column = 'subject_id' if 'subject_id' in columns else 'id'
+    name_column = 'name' if 'name' in columns else 'subject_name'
+    
+    # Build a query using the detected column names
+    query = f"SELECT * FROM subjects ORDER BY {name_column}"
+    
+    try:
+        df = execute_query_df(query)
+        
+        # Standardize column names for consistent access throughout the app
+        # This maps different column names to standard names
+        column_mapping = {}
+        
+        # Map ID column
+        if 'subject_id' not in df.columns and 'id' in df.columns:
+            column_mapping['id'] = 'subject_id'
+        
+        # Map name column
+        if 'name' not in df.columns and 'subject_name' in df.columns:
+            column_mapping['subject_name'] = 'name'
+        
+        # Apply column renaming if needed
+        if column_mapping:
+            df = df.rename(columns=column_mapping)
+            print(f"Renamed columns: {column_mapping}")
+        
+        # Add missing columns with default values
+        if 'subject_id' not in df.columns:
+            df['subject_id'] = range(1, len(df) + 1)  # Add sequential IDs
+            print("Added missing subject_id column with sequential values")
+            
+        if 'name' not in df.columns:
+            df['name'] = 'Unnamed Subject'
+            print("Added missing name column with default values")
+            
+        if 'course_code' not in df.columns:
+            df['course_code'] = 'N/A'
+            print("Added missing course_code column with default values")
+            
+        if 'credit_hours' not in df.columns:
+            df['credit_hours'] = 3  # Default value
+            print("Added missing credit_hours column with default values")
+            
+        # Ensure all expected columns exist
+        print(f"Final DataFrame columns: {df.columns.tolist()}")
+        
+        return df
+    except Exception as e:
+        print(f"Error retrieving subjects: {e}")
+        # Return empty DataFrame with expected columns to prevent further errors
+        return pd.DataFrame(columns=['subject_id', 'name', 'course_code', 'credit_hours', 'description'])
 
 def get_teachers():
     """Get all teachers from the database"""
@@ -282,11 +343,38 @@ def add_new_subject(subject_data):
     cursor = conn.cursor()
     
     try:
+        # Check what columns are available in the subjects table
+        cursor.execute("PRAGMA table_info(subjects)")
+        columns = {info[1] for info in cursor.fetchall()}
+        
+        # Check if course_code and credit_hours columns exist
+        has_course_code = 'course_code' in columns
+        has_credit_hours = 'credit_hours' in columns
+        has_subject_name = 'subject_name' in columns
+        has_name = 'name' in columns
+        
+        # Determine which column to use for subject name
+        subject_name_col = 'subject_name' if has_subject_name else 'name'
+        
+        # Prepare query parts
+        insert_cols = [subject_name_col, 'description']
+        insert_vals = [subject_data['name'], subject_data['description']]
+        
+        # Add course_code if column exists
+        if has_course_code:
+            insert_cols.append('course_code')
+            insert_vals.append(subject_data['code'])
+        
+        # Add credit_hours if column exists
+        if has_credit_hours:
+            insert_cols.append('credit_hours')
+            insert_vals.append(subject_data['credits'])
+        
+        # Build the query
+        query = f"INSERT INTO subjects ({', '.join(insert_cols)}) VALUES ({', '.join(['?'] * len(insert_cols))})"
+        
         # Insert the subject
-        cursor.execute(
-            "INSERT INTO subjects (subject_name, course_code, credit_hours, description) VALUES (?, ?, ?, ?)",
-            (subject_data['name'], subject_data['code'], subject_data['credits'], subject_data['description'])
-        )
+        cursor.execute(query, insert_vals)
         subject_id = cursor.lastrowid
         
         # Associate with teachers
@@ -520,22 +608,39 @@ def show_subject_management():
                     col1, col2, col3 = st.columns([3, 1, 1])
                     
                     with col1:
+                        # Safely access columns with fallback values
+                        subject_name = subject['name'] if 'name' in subject else subject.get('subject_name', 'Unnamed Subject')
+                        course_code = subject.get('course_code', 'N/A')
+                        credit_hours = subject.get('credit_hours', 3)
+                        
                         st.markdown(f"""
                         <div class='card'>
-                            <h3>{subject['subject_name']}</h3>
-                            <p><strong>Course Code:</strong> {subject['course_code']}</p>
-                            <p><strong>Credit Hours:</strong> {subject['credit_hours']}</p>
+                            <h3>{subject_name}</h3>
+                            <p><strong>Course Code:</strong> {course_code}</p>
+                            <p><strong>Credit Hours:</strong> {credit_hours}</p>
                         </div>
                         """, unsafe_allow_html=True)
                     
                     with col2:
-                        # Get teachers for this subject
+                        # Get teachers for this subject - Handle potential missing subject_id gracefully
                         conn = get_db_connection()
                         teachers_query = """
                         SELECT teacher_name FROM teacher_subjects 
                         WHERE subject_id = ?
                         """
-                        teachers_df = execute_query_df(teachers_query, (subject['subject_id'],))
+                        
+                        # Safely get subject_id, with fallback
+                        if 'subject_id' in subject:
+                            subject_id = subject['subject_id']
+                        else:
+                            # Try alternative column names
+                            subject_id = subject.get('id', None)
+                            if subject_id is None:
+                                # Last resort: generate a placeholder ID
+                                st.warning(f"Could not find subject ID for {subject.get('name', 'Unknown Subject')}")
+                                subject_id = -1  # Invalid ID to avoid matching anything
+                        
+                        teachers_df = execute_query_df(teachers_query, (subject_id,))
                         conn.close()
                         
                         st.markdown("<div class='card'>", unsafe_allow_html=True)
@@ -552,7 +657,7 @@ def show_subject_management():
                         # View schedules button
                         if st.button("View Schedule", key=f"view_{subject['subject_id']}"):
                             st.session_state.view_schedule_id = subject['subject_id']
-                            st.session_state.view_schedule_name = subject['subject_name']
+                            st.session_state.view_schedule_name = subject['name']
                             
                         # Delete subject button
                         if st.button("Delete Subject", key=f"delete_{subject['subject_id']}", type="primary"):
@@ -562,26 +667,29 @@ def show_subject_management():
                                 st.session_state.confirm_delete = subject['subject_id']
                         st.markdown("</div>", unsafe_allow_html=True)
                 
-                # Show confirmation dialog for deletion
-                if 'confirm_delete' in st.session_state and st.session_state.confirm_delete == subject['subject_id']:
-                    st.warning(f"Are you sure you want to delete {subject['subject_name']}? This will delete all schedules.")
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.button("Yes, Delete", key=f"confirm_{subject['subject_id']}"):
-                            success, error = delete_subject(subject['subject_id'])
-                            if success:
-                                st.success(f"Subject {subject['subject_name']} deleted successfully!")
+                # Show confirmation dialog for deletion - with safe subject_id access
+                if 'confirm_delete' in st.session_state:
+                    subject_id = subject.get('subject_id', subject.get('id', None))
+                    if subject_id is not None and st.session_state.confirm_delete == subject_id:
+                        st.warning(f"Are you sure you want to delete {subject['name']}? This will delete all schedules.")
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            if st.button("Yes, Delete", key=f"confirm_{subject['subject_id']}"):
+                                success, error = delete_subject(subject['subject_id'])
+                                if success:
+                                    st.success(f"Subject {subject['name']} deleted successfully!")
+                                    del st.session_state.confirm_delete
+                                    st.rerun()
+                                else:
+                                    st.error(f"Error deleting subject: {error}")
+                        with col2:
+                            if st.button("Cancel", key=f"cancel_{subject['subject_id']}"):
                                 del st.session_state.confirm_delete
                                 st.rerun()
-                            else:
-                                st.error(f"Error deleting subject: {error}")
-                    with col2:
-                        if st.button("Cancel", key=f"cancel_{subject['subject_id']}"):
-                            del st.session_state.confirm_delete
-                            st.rerun()
                 
-                # Show schedule if view button was clicked
-                if 'view_schedule_id' in st.session_state and st.session_state.view_schedule_id == subject['subject_id']:
+                # Show schedule if view button was clicked - with safe subject_id access
+                subject_id = subject.get('subject_id', subject.get('id', None))
+                if 'view_schedule_id' in st.session_state and subject_id is not None and st.session_state.view_schedule_id == subject_id:
                     schedules = get_subject_schedules(subject['subject_id'])
                     
                     st.markdown(f"### Schedule for {st.session_state.view_schedule_name}")
@@ -841,7 +949,7 @@ def show_subject_management():
         
         # Get all subjects for dropdown
         subjects_df = get_all_subjects()
-        subject_options = [(row['subject_id'], row['subject_name']) for _, row in subjects_df.iterrows()]
+        subject_options = [(row['subject_id'], row['name']) for _, row in subjects_df.iterrows()]
         
         # Check if we're coming from adding a new subject
         default_index = 0
@@ -1007,7 +1115,7 @@ def show_subject_management():
                         # Now perform the merge
                         merged_df = pd.merge(
                             schedules_df,
-                            subjects_df[['subject_id', 'subject_name']],
+                            subjects_df[['subject_id', 'name']],
                             on='subject_id',
                             how='left'
                         )
@@ -1073,12 +1181,12 @@ def show_subject_management():
                         
                         # 3. Subject with most classes
                         st.subheader("Subjects by Number of Classes")
-                        subject_classes = merged_df.groupby('subject_name').size().reset_index(name='class_count')
+                        subject_classes = merged_df.groupby('name').size().reset_index(name='class_count')
                         subject_classes = subject_classes.sort_values('class_count', ascending=False)
                         
                         fig3 = px.bar(
                             subject_classes.head(10), 
-                            x='subject_name', 
+                            x='name', 
                             y='class_count',
                             title="Top 10 Subjects by Number of Classes",
                             color='class_count',

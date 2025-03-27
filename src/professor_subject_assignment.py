@@ -1,7 +1,7 @@
 import streamlit as st
 import sqlite3
 import pandas as pd
-from database_utils import execute_query, execute_query_df
+from database_utils import execute_query, execute_query_df, get_professors_list
 
 def show_professor_assignments():
     # Remove the title since it will be displayed as a tab
@@ -16,17 +16,58 @@ def show_professor_assignments():
     with assignment_tabs[1]:
         show_current_assignments()
 
+def get_subjects_with_schema_detection():
+    """Get subjects with schema detection to handle different column names"""
+    conn = sqlite3.connect('attendance_system.db')
+    cursor = conn.cursor()
+    
+    try:
+        # Check if subjects table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
+        if not cursor.fetchone():
+            st.error("Subjects table does not exist")
+            return pd.DataFrame()
+            
+        # Check the actual schema of the subjects table
+        cursor.execute("PRAGMA table_info(subjects)")
+        columns = {col[1] for col in cursor.fetchall()}
+        
+        # Determine id and name column names based on schema
+        id_col = 'subject_id' if 'subject_id' in columns else 'id'
+        name_col = 'subject_name' if 'subject_name' in columns else 'name'
+        
+        # Verify both columns exist
+        if id_col not in columns or name_col not in columns:
+            st.error(f"Required columns not found in subjects table. Available columns: {', '.join(columns)}")
+            return pd.DataFrame()
+            
+        # Query with the correct column names
+        query = f"SELECT {id_col} as subject_id, {name_col} as subject_name FROM subjects"
+        df = pd.read_sql_query(query, conn)
+        return df
+    except Exception as e:
+        st.error(f"Error getting subjects: {e}")
+        return pd.DataFrame()
+    finally:
+        conn.close()
+
 def show_assignment_form():
+    """Show form for assigning subjects to professors"""
     st.subheader("Assign Subjects to Professors")
     
-    # Get list of professors
-    professors_df = execute_query_df("SELECT username, name FROM user_accounts WHERE role = 'professor'")
+    # Get list of professors using the utility function from database_utils
+    try:
+        professors_df = get_professors_list()
+    except Exception as e:
+        st.error(f"Error loading professors: {e}")
+        professors_df = pd.DataFrame(columns=['username', 'name'])
+    
     if professors_df.empty:
         st.warning("No professors found in the system")
         return
     
-    # Get list of subjects
-    subjects_df = execute_query_df("SELECT subject_id, subject_name FROM subjects")
+    # Get list of subjects with schema detection
+    subjects_df = get_subjects_with_schema_detection()
     if subjects_df.empty:
         st.warning("No subjects found in the system")
         return
@@ -112,6 +153,7 @@ def show_assignment_form():
                 conn.close()
 
 def show_current_assignments():
+    """Show current assignments with schema detection"""
     st.subheader("Current Subject Assignments")
     
     # Check if the assignments table exists
@@ -121,23 +163,58 @@ def show_current_assignments():
         st.info("No assignments have been made yet.")
         return
     
-    # Get all assignments with professor and subject names - improved query
-    assignments_df = execute_query_df("""
-        SELECT 
-            pa.professor_username, 
-            ua.name AS professor_name, 
-            pa.subject_id, 
-            s.subject_name,
-            pa.assigned_date
-        FROM 
-            professor_subject_assignments pa
-        JOIN 
-            user_accounts ua ON pa.professor_username = ua.username
-        JOIN 
-            subjects s ON pa.subject_id = s.subject_id
-        ORDER BY 
-            ua.name, s.subject_name
-    """)
+    try:
+        # Get column information for the subjects table
+        conn = sqlite3.connect('attendance_system.db')
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(subjects)")
+        columns = {col[1] for col in cursor.fetchall()}
+        
+        # Determine column names to use
+        id_col = 'subject_id' if 'subject_id' in columns else 'id'
+        name_col = 'subject_name' if 'subject_name' in columns else 'name'
+        
+        # Get all assignments with professor and subject names - updated query
+        query = f"""
+            SELECT 
+                pa.professor_username, 
+                COALESCE(pp.name, pa.professor_username) AS professor_name,
+                pa.subject_id, 
+                s.{name_col} AS subject_name,
+                pa.assigned_date
+            FROM 
+                professor_subject_assignments pa
+            LEFT JOIN 
+                professor_profiles pp ON pa.professor_username = pp.username
+            JOIN 
+                subjects s ON pa.subject_id = s.{id_col}
+            ORDER BY 
+                pa.professor_username, s.{name_col}
+        """
+        
+        assignments_df = pd.read_sql_query(query, conn)
+        conn.close()
+    except Exception as e:
+        st.error(f"Error getting assignments: {e}")
+        st.info("Trying alternative query method...")
+        
+        # Fallback approach with more basic query
+        try:
+            assignments_df = execute_query_df("""
+                SELECT 
+                    pa.professor_username, 
+                    pa.professor_username AS professor_name,
+                    pa.subject_id,
+                    pa.subject_id AS subject_name,
+                    pa.assigned_date
+                FROM 
+                    professor_subject_assignments pa
+                ORDER BY 
+                    pa.professor_username, pa.subject_id
+            """)
+        except Exception as e2:
+            st.error(f"Error with fallback query: {e2}")
+            return
     
     if assignments_df.empty:
         st.info("No subject assignments found.")
