@@ -92,6 +92,10 @@ def show_assignment_form():
         submit_button = st.form_submit_button("Assign Subjects")
         
         if submit_button and selected_professor and selected_subjects:
+            # Sync tables before making changes
+            from src.database_utils import sync_teacher_subject_assignments
+            sync_teacher_subject_assignments()
+            
             # Ensure both tables exist with the right structure
             execute_query("""
                 CREATE TABLE IF NOT EXISTS professor_subject_assignments (

@@ -132,32 +132,23 @@ def get_all_subjects():
     try:
         df = execute_query_df(query)
         
-        # Standardize column names for consistent access throughout the app
-        # This maps different column names to standard names
-        column_mapping = {}
-        
-        # Map ID column
+        # Ensure 'subject_id' column exists - most important fix!
         if 'subject_id' not in df.columns and 'id' in df.columns:
-            column_mapping['id'] = 'subject_id'
-        
-        # Map name column
-        if 'name' not in df.columns and 'subject_name' in df.columns:
-            column_mapping['subject_name'] = 'name'
-        
-        # Apply column renaming if needed
-        if column_mapping:
-            df = df.rename(columns=column_mapping)
-            print(f"Renamed columns: {column_mapping}")
-        
-        # Add missing columns with default values
-        if 'subject_id' not in df.columns:
+            df['subject_id'] = df['id']
+            print("Added subject_id column mapped from id column")
+        elif 'subject_id' not in df.columns:
             df['subject_id'] = range(1, len(df) + 1)  # Add sequential IDs
             print("Added missing subject_id column with sequential values")
             
-        if 'name' not in df.columns:
+        # Ensure 'name' column exists
+        if 'name' not in df.columns and 'subject_name' in df.columns:
+            df['name'] = df['subject_name']
+            print("Added name column mapped from subject_name")
+        elif 'name' not in df.columns:
             df['name'] = 'Unnamed Subject'
             print("Added missing name column with default values")
             
+        # Add other missing columns with default values
         if 'course_code' not in df.columns:
             df['course_code'] = 'N/A'
             print("Added missing course_code column with default values")
@@ -193,13 +184,21 @@ def get_teacher_subjects(teacher):
         try:
             cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_subject_assignments'")
             if cursor.fetchone():
-                # Use professor_subject_assignments table which is more reliable
-                query = """
+                # Check subjects table schema
+                cursor.execute("PRAGMA table_info(subjects)")
+                columns = [col[1] for col in cursor.fetchall()]
+                
+                # Determine which ID column to use
+                id_column = 'subject_id' if 'subject_id' in columns else 'id'
+                name_column = 'subject_name' if 'subject_name' in columns else 'name'
+                
+                # Use professor_subject_assignments table with corrected column names
+                query = f"""
                 SELECT s.* 
                 FROM subjects s
-                JOIN professor_subject_assignments psa ON s.subject_id = psa.subject_id
+                JOIN professor_subject_assignments psa ON s.{id_column} = psa.subject_id
                 WHERE psa.professor_username = ?
-                ORDER BY s.subject_name
+                ORDER BY s.{name_column}
                 """
                 df = execute_query_df(query, (teacher,))
                 
@@ -258,13 +257,21 @@ def get_teacher_subjects(teacher):
                     st.error(f"Error rebuilding table: {fix_error}")
                     return pd.DataFrame(columns=['subject_id', 'subject_name', 'course_code', 'credit_hours', 'description'])
             
-            # Standard query with expected schema
-            query = """
+            # Check subjects table schema
+            cursor.execute("PRAGMA table_info(subjects)")
+            subject_columns = [col[1] for col in cursor.fetchall()]
+            
+            # Determine which ID column to use in subjects table
+            id_column = 'subject_id' if 'subject_id' in subject_columns else 'id'
+            name_column = 'subject_name' if 'subject_name' in subject_columns else 'name'
+            
+            # Standard query with expected schema and dynamic column names
+            query = f"""
             SELECT s.* 
             FROM subjects s
-            JOIN teacher_subjects ts ON s.subject_id = ts.subject_id
+            JOIN teacher_subjects ts ON s.{id_column} = ts.subject_id
             WHERE ts.teacher_name = ?
-            ORDER BY s.subject_name
+            ORDER BY s.{name_column}
             """
             df = execute_query_df(query, (teacher,))
             
@@ -654,42 +661,46 @@ def show_subject_management():
                         st.markdown("<div class='card'>", unsafe_allow_html=True)
                         st.markdown("#### Actions")
                         
-                        # View schedules button
-                        if st.button("View Schedule", key=f"view_{subject['subject_id']}"):
-                            st.session_state.view_schedule_id = subject['subject_id']
-                            st.session_state.view_schedule_name = subject['name']
+                        # Safely get subject_id with fallback to avoid KeyError
+                        subject_id = subject.get('subject_id', subject.get('id', 0))
+                        
+                        # View schedules button with safe subject_id access
+                        if st.button("View Schedule", key=f"view_{subject_id}"):
+                            st.session_state.view_schedule_id = subject_id
+                            st.session_state.view_schedule_name = subject.get('name', subject.get('subject_name', 'Unknown Subject'))
                             
-                        # Delete subject button
-                        if st.button("Delete Subject", key=f"delete_{subject['subject_id']}", type="primary"):
+                        # Delete subject button with safe subject_id access
+                        if st.button("Delete Subject", key=f"delete_{subject_id}", type="primary"):
                             if 'confirm_delete' not in st.session_state:
-                                st.session_state.confirm_delete = subject['subject_id']
+                                st.session_state.confirm_delete = subject_id
                             else:
-                                st.session_state.confirm_delete = subject['subject_id']
+                                st.session_state.confirm_delete = subject_id
                         st.markdown("</div>", unsafe_allow_html=True)
                 
                 # Show confirmation dialog for deletion - with safe subject_id access
                 if 'confirm_delete' in st.session_state:
-                    subject_id = subject.get('subject_id', subject.get('id', None))
-                    if subject_id is not None and st.session_state.confirm_delete == subject_id:
-                        st.warning(f"Are you sure you want to delete {subject['name']}? This will delete all schedules.")
+                    # Get subject_id safely with fallback
+                    subject_id = subject.get('subject_id', subject.get('id', 0))
+                    if subject_id and st.session_state.confirm_delete == subject_id:
+                        st.warning(f"Are you sure you want to delete {subject.get('name', 'this subject')}? This will delete all schedules.")
                         col1, col2 = st.columns(2)
                         with col1:
-                            if st.button("Yes, Delete", key=f"confirm_{subject['subject_id']}"):
-                                success, error = delete_subject(subject['subject_id'])
+                            if st.button("Yes, Delete", key=f"confirm_{subject_id}"):
+                                success, error = delete_subject(subject_id)
                                 if success:
-                                    st.success(f"Subject {subject['name']} deleted successfully!")
+                                    st.success(f"Subject {subject.get('name', 'this subject')} deleted successfully!")
                                     del st.session_state.confirm_delete
                                     st.rerun()
                                 else:
                                     st.error(f"Error deleting subject: {error}")
                         with col2:
-                            if st.button("Cancel", key=f"cancel_{subject['subject_id']}"):
+                            if st.button("Cancel", key=f"cancel_{subject_id}"):
                                 del st.session_state.confirm_delete
                                 st.rerun()
                 
                 # Show schedule if view button was clicked - with safe subject_id access
-                subject_id = subject.get('subject_id', subject.get('id', None))
-                if 'view_schedule_id' in st.session_state and subject_id is not None and st.session_state.view_schedule_id == subject_id:
+                subject_id = subject.get('subject_id', subject.get('id', 0))
+                if 'view_schedule_id' in st.session_state and subject_id and st.session_state.view_schedule_id == subject_id:
                     schedules = get_subject_schedules(subject['subject_id'])
                     
                     st.markdown(f"### Schedule for {st.session_state.view_schedule_name}")

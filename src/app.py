@@ -11,6 +11,7 @@ import time
 from global_css_handler import apply_global_css, enforce_fixed_padding
 import enhanced_db_explorer
 import admin_dashboard
+import importlib  # Add this import
 
 def show_app():
     # Ensure database is initialized at application start
@@ -34,6 +35,14 @@ def show_app():
     # Apply consistent padding immediately at app start
     from global_css_handler import ensure_consistent_padding
     ensure_consistent_padding()
+    
+    # Force reload the database_utils module to ensure we get the latest version
+    import src.database_utils
+    importlib.reload(src.database_utils)
+    
+    # Now import the function after reloading the module
+    from src.database_utils import ensure_student_profiles_compatibility
+    ensure_student_profiles_compatibility()
     
     # Get user info from session state
     username = st.session_state.get('username', 'Unknown')
@@ -77,13 +86,18 @@ def show_app():
         cursor = conn.cursor()
         
         if user_role == 'student':
-            # First check if student_profiles table exists
-            execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
-            if not cursor.fetchone():
+            # First check if student profiles exist as a table or a view
+            execute_query("SELECT name FROM sqlite_master WHERE (type='table' OR type='view') AND (name='student_profiles' OR name='student_profiles_view')")
+            result = cursor.fetchone()
+            
+            if not result:
                 st.warning("Student profiles table not found. Some features may be limited.")
             else:
+                # Use the found table or view name
+                table_name = result[0]
+                
                 # Check if the columns exist
-                execute_query("PRAGMA table_info(student_profiles)")
+                execute_query(f"PRAGMA table_info({table_name})")
                 columns = [info[1] for info in cursor.fetchall()]
                 
                 # Construct a query based on available columns
@@ -97,7 +111,7 @@ def show_app():
                     st.warning("Student profile columns are missing. Some features may be limited.")
                 else:
                     query_parts.append(", ".join(select_cols))
-                    query_parts.append("FROM student_profiles WHERE")
+                    query_parts.append(f"FROM {table_name} WHERE")
                     
                     where_parts = []
                     if "name" in columns: where_parts.append("name = ?")
