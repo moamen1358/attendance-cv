@@ -686,6 +686,134 @@ def create_trend_chart(df):
 
 # Change professor page heading colors from red to purple
 
+def show_subject_attendance(subject_id, subject_name):
+    """
+    Display attendance data for a specific subject
+    
+    Args:
+        subject_id: ID of the subject to display
+        subject_name: Name of the subject to display
+    """
+    st.markdown(f"## {subject_name} Attendance")
+    
+    # Get date range for filtering
+    start_date = st.session_state.get('start_date', datetime.now().date() - timedelta(days=90))
+    end_date = st.session_state.get('end_date', datetime.now().date())
+    
+    # Format dates for query
+    start_date_str = start_date.strftime('%Y-%m-%d') if isinstance(start_date, datetime.date) else start_date
+    end_date_str = end_date.strftime('%Y-%m-%d') if isinstance(end_date, datetime.date) else end_date
+    
+    # Query attendance data for this subject
+    conn = get_db_connection()
+    try:
+        # Get attendance summary
+        query = """
+        SELECT 
+            ca.student_name, 
+            COUNT(ca.id) as total_classes,
+            SUM(ca.attended) as attended_classes,
+            SUM(ca.attended) * 100.0 / COUNT(ca.id) as attendance_rate
+        FROM 
+            class_attendance ca
+        WHERE 
+            ca.subject = ? AND
+            ca.class_date BETWEEN ? AND ?
+        GROUP BY 
+            ca.student_name
+        ORDER BY 
+            attendance_rate DESC
+        """
+        
+        attendance_df = pd.read_sql_query(query, conn, params=(subject_name, start_date_str, end_date_str))
+        
+        if attendance_df.empty:
+            st.info(f"No attendance records found for {subject_name} between {start_date_str} and {end_date_str}.")
+        else:
+            # Calculate overall stats
+            total_students = len(attendance_df)
+            avg_attendance = attendance_df['attendance_rate'].mean()
+            perfect_attendance = len(attendance_df[attendance_df['attendance_rate'] >= 99.9])
+            low_attendance = len(attendance_df[attendance_df['attendance_rate'] < 75])
+            
+            # Display metrics
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Students", total_students)
+            with col2:
+                st.metric("Average Attendance", f"{avg_attendance:.1f}%")
+            with col3:
+                st.metric("Perfect Attendance", perfect_attendance)
+            with col4:
+                st.metric("Low Attendance (<75%)", low_attendance)
+            
+            # Show attendance distribution
+            st.subheader("Attendance Distribution")
+            
+            # Create attendance ranges
+            bins = [0, 50, 75, 90, 100]
+            labels = ['< 50%', '50-75%', '75-90%', '> 90%']
+            attendance_df['range'] = pd.cut(attendance_df['attendance_rate'], bins=bins, labels=labels)
+            
+            # Count students in each range
+            range_counts = attendance_df['range'].value_counts().reindex(labels, fill_value=0)
+            
+            # Create bar chart
+            fig = px.bar(
+                x=range_counts.index, 
+                y=range_counts.values,
+                labels={'x': 'Attendance Range', 'y': 'Number of Students'},
+                color=range_counts.values,
+                color_continuous_scale=['#f44336', '#ff9800', '#4caf50', '#2196f3'],
+                text=range_counts.values
+            )
+            fig.update_traces(textposition='outside')
+            fig.update_layout(coloraxis_showscale=False)
+            st.plotly_chart(fig, use_container_width=True)
+            
+            # Show student attendance table
+            st.subheader("Student Attendance Records")
+            
+            # Format the DataFrame for display
+            display_df = attendance_df.copy()
+            display_df['attendance_rate'] = display_df['attendance_rate'].round(1).astype(str) + '%'
+            display_df['attendance'] = display_df['attended_classes'].astype(str) + '/' + display_df['total_classes'].astype(str)
+            
+            # Create a styled dataframe
+            st.dataframe(
+                display_df[['student_name', 'attendance', 'attendance_rate']],
+                column_config={
+                    'student_name': st.column_config.TextColumn('Student'),
+                    'attendance': st.column_config.TextColumn('Classes Attended'),
+                    'attendance_rate': st.column_config.TextColumn('Attendance Rate')
+                },
+                hide_index=True,
+                use_container_width=True
+            )
+            
+            # Add download button
+            buffer = io.BytesIO()
+            with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
+                attendance_df.to_excel(writer, sheet_name=f'{subject_name} Attendance', index=False)
+                
+            st.download_button(
+                label="📊 Download Attendance Data",
+                data=buffer,
+                file_name=f"{subject_name}_attendance.xlsx",
+                mime="application/vnd.ms-excel"
+            )
+            
+    except Exception as e:
+        st.error(f"Error retrieving attendance data: {e}")
+    finally:
+        conn.close()
+    
+    # Add close button
+    if st.button("↩️ Back to Subjects", key="back_from_subject"):
+        del st.session_state['selected_subject_id']
+        del st.session_state['selected_subject_name']
+        st.rerun()
+
 def show_report():
     """Show attendance report for professors"""
     # Get username and ensure we have a valid value
@@ -711,66 +839,154 @@ def show_report():
     
     st.title("Teacher Dashboard")
     
-    # Get current user details
-    username = st.session_state.get('username', 'Unknown')
+    # NEW: Ensure assignments are synced
+    from src.database_utils import sync_teacher_subject_assignments
+    sync_teacher_subject_assignments()
     
-    # IMPROVED QUERY: First check direct professor assignment table (more reliable)
-    assigned_subjects = execute_query_df("""
-        SELECT 
-            s.subject_id,
-            s.subject_name,
-            s.course_code,
-            s.credit_hours,
-            s.description,
-            (SELECT GROUP_CONCAT(cs.day || ' ' || cs.start_time || '-' || cs.end_time)
-             FROM class_schedules cs 
-             WHERE cs.subject_id = s.subject_id) as schedule,
-            (SELECT GROUP_CONCAT(DISTINCT cs.room)
-             FROM class_schedules cs 
-             WHERE cs.subject_id = s.subject_id) as room
-        FROM 
-            subjects s
-        JOIN 
-            professor_subject_assignments psa ON s.subject_id = psa.subject_id
-        WHERE 
-            psa.professor_username = ?
-        ORDER BY 
-            s.subject_name
-    """, (username,))
+    # Get teacher's subjects with improved schema detection
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    assigned_subjects = None
     
-    # If no subjects found in primary table, try the alternative table
-    if assigned_subjects.empty:
-        assigned_subjects = execute_query_df("""
-            SELECT 
-                s.subject_id,
-                s.subject_name,
-                s.course_code,
-                s.credit_hours,
-                s.description,
-                (SELECT GROUP_CONCAT(cs.day || ' ' || cs.start_time || '-' || cs.end_time)
-                 FROM class_schedules cs 
-                 WHERE cs.subject_id = s.subject_id) as schedule,
-                (SELECT GROUP_CONCAT(DISTINCT cs.room)
-                 FROM class_schedules cs 
-                 WHERE cs.subject_id = s.subject_id) as room
-            FROM 
-                subjects s
-            JOIN 
-                teacher_subjects ts ON s.subject_id = ts.subject_id
-            WHERE 
-                ts.teacher_name = ?
-            ORDER BY 
-                s.subject_name
-        """, (username,))
+    try:
+        # Check which columns actually exist in the subjects table
+        cursor.execute("PRAGMA table_info(subjects)")
+        available_columns = {col[1].lower(): col[1] for col in cursor.fetchall()}
+        print(f"Available columns in subjects table: {available_columns}")
+        
+        # Get subject table schema info - only include columns that actually exist
+        id_col = available_columns.get('subject_id', available_columns.get('id', 'id'))
+        name_col = available_columns.get('subject_name', available_columns.get('name', 'name'))
+        
+        # Build SELECT part dynamically, only including columns that exist
+        select_columns = [f"s.{id_col} as subject_id", f"s.{name_col} as subject_name"]
+        
+        # Only add optional columns if they exist
+        if 'course_code' in available_columns:
+            select_columns.append("s.course_code")
+        else:
+            select_columns.append("'N/A' as course_code")  # Default value if column missing
+            
+        if 'credit_hours' in available_columns:
+            select_columns.append("s.credit_hours")
+        else:
+            select_columns.append("3 as credit_hours")  # Default value if column missing
+            
+        if 'description' in available_columns:
+            select_columns.append("s.description")
+        else:
+            select_columns.append("'' as description")  # Default value if column missing
+        
+        # Add schedule and room placeholders
+        select_columns.append("NULL as schedule")
+        select_columns.append("NULL as room")
+        
+        # First try professor_subject_assignments table with dynamic column selection
+        query = f"""
+        SELECT {', '.join(select_columns)}
+        FROM subjects s
+        JOIN professor_subject_assignments psa ON s.{id_col} = psa.subject_id
+        WHERE psa.professor_username = ?
+        ORDER BY s.{name_col}
+        """
+        
+        print(f"Executing query: {query}")
+        assigned_subjects = pd.read_sql_query(query, conn, params=(username,))
+        
+        # If no results, try teacher_subjects table with the same dynamic columns
+        if assigned_subjects.empty:
+            query = f"""
+            SELECT {', '.join(select_columns)}
+            FROM subjects s
+            JOIN teacher_subjects ts ON s.{id_col} = ts.subject_id
+            WHERE ts.teacher_name = ?
+            ORDER BY s.{name_col}
+            """
+            print(f"Executing fallback query: {query}")
+            assigned_subjects = pd.read_sql_query(query, conn, params=(username,))
+    except Exception as e:
+        st.error(f"Error querying subjects: {e}")
+    finally:
+        conn.close()
     
-    # Still no subjects found, show warning
-    if assigned_subjects.empty:
+    # Auto-assign a subject if none found
+    if assigned_subjects is None or assigned_subjects.empty:
         st.warning("No subjects assigned to you. Please contact an administrator.")
         
-        # Add a refresh button
-        if st.button("🔄 Refresh", key="refresh_no_subjects"):
-            st.rerun()
-        return
+        # Add auto-assign button
+        if st.button("🔄 Assign Default Subject", key="auto_assign"):
+            try:
+                conn = sqlite3.connect(DATABASE_PATH)
+                cursor = conn.cursor()
+                
+                # First check if subjects table exists and has data
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
+                if cursor.fetchone():
+                    # Get first available subject
+                    cursor.execute("SELECT * FROM subjects LIMIT 1")
+                    subject = cursor.fetchone()
+                    
+                    if subject:
+                        # Get the column index for ID
+                        cursor.execute("PRAGMA table_info(subjects)")
+                        columns = {col[1].lower(): idx for idx, col in enumerate(cursor.fetchall())}
+                        id_idx = columns.get('subject_id', columns.get('id', 0))
+                        subject_id = subject[id_idx]
+                        
+                        # Create assignment tables if they don't exist
+                        cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS professor_subject_assignments (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            professor_username TEXT NOT NULL,
+                            subject_id INTEGER NOT NULL,
+                            assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                            UNIQUE(professor_username, subject_id)
+                        )
+                        """)
+                        
+                        cursor.execute("""
+                        CREATE TABLE IF NOT EXISTS teacher_subjects (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            subject_id INTEGER,
+                            teacher_name TEXT,
+                            UNIQUE(subject_id, teacher_name)
+                        )
+                        """)
+                        
+                        # Assign this subject to the current professor
+                        cursor.execute("""
+                        INSERT OR IGNORE INTO professor_subject_assignments 
+                        (professor_username, subject_id) VALUES (?, ?)
+                        """, (username, subject_id))
+                        
+                        cursor.execute("""
+                        INSERT OR IGNORE INTO teacher_subjects
+                        (teacher_name, subject_id) VALUES (?, ?)
+                        """, (username, subject_id))
+                        
+                        conn.commit()
+                        st.success("Default subject assigned successfully! Refreshing...")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("No subjects found in database. Please create subjects first.")
+                else:
+                    st.error("Subjects table does not exist. Database may need repair.")
+            except Exception as e:
+                st.error(f"Error auto-assigning subject: {e}")
+            finally:
+                if 'conn' in locals():
+                    conn.close()
+        
+        # Also show repair tool link
+        st.markdown("If issues persist, use the database repair tool: ")
+        if st.button("🔧 Repair Database Schema"):
+            from src.schema_repair import show_schema_repair_tool
+            show_schema_repair_tool()
+        
+        return  # Exit function early
+    
+    # Rest of the function continues with assigned subjects displayed...
     
     # Display assigned subjects in a nice format
     st.subheader("Your Assigned Subjects")
@@ -818,7 +1034,7 @@ def show_report():
     .main .block-container,
     div.block-container,
     [data-testid="stAppViewBlockContainer"] div.block-container,
-    #root > div:nth-child(1) > div > div > div > section > div > div > div > div > div.block-container {
+    #root > div:nth-child(1) > div > div > div > div > div > section > div > div > div > div > div.block-container {
         padding-top: 1rem !important;
         padding-bottom: 1rem !important;
         padding-left: 80px !important;
@@ -1007,9 +1223,11 @@ def show_report():
             </div>
             """, unsafe_allow_html=True)
         
-        # Column 2: Add a beautiful gauge chart
+        # Column 2: Create and display the attendance gauge chart
         with col2:
             if total_classes > 0:
+                # Create the gauge chart - THIS WAS MISSING
+                gauge_chart = create_attendance_gauge(overall_rate)
                 st.plotly_chart(gauge_chart, use_container_width=True)
         
         # Create a divider
