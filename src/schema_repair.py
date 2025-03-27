@@ -232,7 +232,7 @@ def fix_database_schema():
         
         results.append("Synchronized professor_subject_assignments and teacher_subjects tables")
         
-        # Fix student profiles table issues
+        # Fix student profiles table issues - IMPROVED VERSION
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='student_profiles' OR name='students')")
         student_table = cursor.fetchone()
         
@@ -250,11 +250,31 @@ def fix_database_schema():
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
             """)
-            results.append("Created student_profiles table")
+            
+            # Add a default record for better compatibility
+            try:
+                import streamlit as st
+                username = st.session_state.get('username', 'default_user')
+            except:
+                username = 'default_user'
+                
+            cursor.execute("""
+            INSERT OR IGNORE INTO student_profiles (username, name) VALUES (?, ?)
+            """, (username, username))
+            
+            results.append("Created student_profiles table with default user")
         else:
             student_table_name = student_table[0]
             
-            # If table name is 'students', create a view for compatibility
+            # ALWAYS create the view for maximum compatibility
+            cursor.execute("DROP VIEW IF EXISTS student_profiles_view")
+            cursor.execute(f"""
+            CREATE VIEW student_profiles_view AS
+            SELECT * FROM {student_table_name}
+            """)
+            results.append(f"Created student_profiles_view mapping to {student_table_name}")
+            
+            # If table name is 'students', also create a view named student_profiles
             if student_table_name != 'student_profiles':
                 cursor.execute("DROP VIEW IF EXISTS student_profiles")
                 cursor.execute(f"""
