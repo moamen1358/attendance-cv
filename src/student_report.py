@@ -172,7 +172,7 @@ def check_attendance(student_name, date, start_time, end_time):
     
     try:
         # Check if class_attendance table exists - if so, use it
-        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='class_attendance'")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='class_attendance'")
         if cursor.fetchone():
             # Use the class_attendance table if it exists
             query = """
@@ -183,7 +183,7 @@ def check_attendance(student_name, date, start_time, end_time):
               AND start_time = ?
               AND end_time = ?
             """
-            execute_query(query, (student_name, date, start_time, end_time))
+            cursor.execute(query, (student_name, date, start_time, end_time))
             result = cursor.fetchone()
             
             if result is not None:
@@ -200,7 +200,7 @@ def check_attendance(student_name, date, start_time, end_time):
         query = """
         SELECT COUNT(*) as count 
         FROM attendance_records 
-        WHERE name = ? 
+        WHERE (name = ? OR student_username = ?)
           AND date(timestamp) = ? 
           AND (
               time(timestamp) BETWEEN time(?) AND time(?)
@@ -211,11 +211,17 @@ def check_attendance(student_name, date, start_time, end_time):
         time_start = date + " " + start_time
         time_end = date + " " + end_time
         
-        execute_query(query, (student_name, date_start, time_start, time_end))
+        cursor.execute(query, (student_name, student_name, date_start, time_start, time_end))
         result = cursor.fetchone()
-        attended = result[0] > 0
         
-        return attended
+        # Make sure result exists before using it
+        if result is not None:
+            attended = result[0] > 0
+            return attended
+        else:
+            print(f"No attendance data found for {student_name} on {date}")
+            return False
+            
     except Exception as e:
         print(f"Error checking attendance: {e}")
         return False
@@ -2154,6 +2160,41 @@ def get_secure_student_data():
         }
     finally:
         conn.close()
+
+def ensure_student_profiles_table():
+    """Ensure the student_profiles table exists in the database."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    try:
+        # Check if the student_profiles table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        if not cursor.fetchone():
+            print("student_profiles table not found. Creating it now...")
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS student_profiles (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT UNIQUE NOT NULL,
+                    name TEXT NOT NULL,
+                    student_id TEXT UNIQUE,
+                    password TEXT NOT NULL,
+                    section TEXT,
+                    email TEXT,
+                    phone TEXT,
+                    last_login TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            ''')
+            conn.commit()
+            print("student_profiles table created successfully.")
+        else:
+            print("student_profiles table exists.")
+    except Exception as e:
+        print(f"Error ensuring student_profiles table: {e}")
+    finally:
+        conn.close()
+
+# Call this function at the start of the student report
+ensure_student_profiles_table()
 
 if __name__ == "__main__":
     show_student_report()

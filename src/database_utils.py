@@ -87,30 +87,108 @@ def execute_query(query, params=None):
 
 def execute_query_df(query, params=None):
     """
-    Execute a query and return results as a pandas DataFrame
-    with table name auto-correction
-    
-    Args:
-        query (str): SQL query string
-        params (tuple, optional): Parameters for the query
+    Execute a SQL query and return the result as a pandas DataFrame.
+    """
+    conn = sqlite3.connect(DATABASE_PATH)
+    try:
+        fixed_query = query.strip()
+        print(f"Executing query: {fixed_query}")  # Added debug log
+        df = pd.read_sql_query(fixed_query, conn, params=params)
+        print(f"Query result columns: {df.columns.tolist()}")  # Log the columns of the result
+        return df
+    except Exception as e:
+        print(f"Error executing query: {query}, Error: {e}")
+        raise
+    finally:
+        conn.close()
+
+def get_professors_list():
+    """
+    Get a list of professors with their usernames and names.
+    Handles the case when professor_profiles table doesn't exist.
     
     Returns:
-        pandas.DataFrame: DataFrame containing query results
+        DataFrame with 'username' and 'name' columns
     """
-    # Fix table names in the query
-    fixed_query = fix_query_tables(query)
-    
-    # If the query was modified, show info message
-    if fixed_query != query:
-        print(f"Query modified for compatibility: {fixed_query}")
-    
-    # Execute the query
-    conn = get_db_connection()
+    conn = sqlite3.connect(DATABASE_PATH)
     try:
-        if params:
-            df = pd.read_sql_query(fixed_query, conn, params=params)
+        # Check if professor_profiles table exists
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_profiles'")
+        has_profiles_table = cursor.fetchone() is not None
+        
+        if has_profiles_table:
+            # Join user_accounts and professor_profiles
+            query = """
+                SELECT u.username, COALESCE(p.name, u.username) as name
+                FROM user_accounts u
+                LEFT JOIN professor_profiles p ON u.username = p.username
+                WHERE u.role = 'professor'
+                ORDER BY name
+            """
         else:
-            df = pd.read_sql_query(fixed_query, conn)
+            # Just get usernames and use them as names
+            query = """
+                SELECT username, username as name
+                FROM user_accounts
+                WHERE role = 'professor'
+                ORDER BY username
+            """
+        
+        df = pd.read_sql_query(query, conn)
+        print(f"Found {len(df)} professors")
         return df
+    except Exception as e:
+        print(f"Error getting professors list: {e}")
+        # Return empty DataFrame with expected columns
+        return pd.DataFrame(columns=['username', 'name'])
+    finally:
+        conn.close()
+
+def get_subjects_list(with_id=True):
+    """
+    Get a list of subjects with schema detection for different column names
+    
+    Args:
+        with_id (bool): If True, include ID column in results
+    
+    Returns:
+        DataFrame with subject information
+    """
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        # Check if subjects table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
+        if not cursor.fetchone():
+            print("Subjects table does not exist")
+            return pd.DataFrame()
+        
+        # Get schema information
+        cursor.execute("PRAGMA table_info(subjects)")
+        columns = {col[1]: col[0] for col in cursor.fetchall()}
+        
+        # Determine column names to use
+        id_col = 'subject_id' if 'subject_id' in columns else 'id' if 'id' in columns else None
+        name_col = 'subject_name' if 'subject_name' in columns else 'name' if 'name' in columns else None
+        
+        if not name_col:
+            print("Could not find name column in subjects table")
+            return pd.DataFrame()
+        
+        # Create query based on available columns
+        if with_id and id_col:
+            query = f"SELECT {id_col} AS subject_id, {name_col} AS subject_name FROM subjects ORDER BY {name_col}"
+        else:
+            query = f"SELECT {name_col} AS subject_name FROM subjects ORDER BY {name_col}"
+        
+        df = pd.read_sql_query(query, conn)
+        print(f"Found {len(df)} subjects")
+        return df
+    
+    except Exception as e:
+        print(f"Error getting subjects list: {e}")
+        return pd.DataFrame()
     finally:
         conn.close()
