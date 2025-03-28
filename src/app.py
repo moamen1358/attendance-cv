@@ -6,14 +6,15 @@ import student_report
 import registration_form
 import subject_management
 import sqlite3
-from database_utils import execute_query, execute_query_df
+from src.database_utils import execute_query, execute_query_df  # Use explicit src. prefix
 import time
-from global_css_handler import apply_global_css, enforce_fixed_padding
+from src.global_css_handler import apply_global_css, enforce_fixed_padding
 import enhanced_db_explorer
 import admin_dashboard
 import importlib  # Add this import
 import pandas as pd  # Add missing import
 import os
+import sys  # Make sure sys is imported
 
 # Apply display patches first thing
 from src.display_patch import patch_display_functions
@@ -166,7 +167,14 @@ except Exception as e:
 from src.bootstrap_tables import bootstrap_essential_tables
 bootstrap_essential_tables()  # Run table creation at import time
 
+# Add import for database sync
+from src.database_sync import sync_user_tables
+
 def show_app():
+    """Main application entry point"""
+    # Ensure database consistency at startup
+    sync_user_tables()
+    
     # Ensure database is initialized at application start
     if 'database_initialized' not in st.session_state:
         from src.login import initialize_database
@@ -186,10 +194,10 @@ def show_app():
     session_manager.inject_session_js()
     
     # Apply consistent padding immediately at app start
-    from global_css_handler import ensure_consistent_padding
+    from src.global_css_handler import ensure_consistent_padding
     ensure_consistent_padding()
     
-    # Force reload the database_utils module to ensure we get the latest version
+    # FIX: Properly import and reload database_utils with correct path
     import src.database_utils
     importlib.reload(src.database_utils)
     

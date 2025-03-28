@@ -5,6 +5,9 @@ import pandas as pd
 # Constants
 DATABASE_PATH = 'attendance_system.db'
 
+# Add import for database sync
+from src.database_sync import sync_user_tables
+
 def get_db_connection():
     """Get a connection to the database"""
     return sqlite3.connect(DATABASE_PATH)
@@ -253,47 +256,54 @@ def execute_query_df(query, params=None):
         conn.close()
 
 def get_professors_list():
-    """
-    Get a list of professors with their usernames and names.
-    Handles the case when professor_profiles table doesn't exist.
+    """Get list of professors with proper synchronization"""
+    # First sync tables to ensure consistency
+    sync_user_tables()
     
-    Returns:
-        DataFrame with 'username' and 'name' columns
+    conn = sqlite3.connect('attendance_system.db')
+    query = """
+    SELECT username, COALESCE(name, username) as name
+    FROM user_accounts ua
+    LEFT JOIN professor_profiles pp ON ua.username = pp.username
+    WHERE ua.role = 'professor'
+    ORDER BY name
     """
-    conn = sqlite3.connect(DATABASE_PATH)
+    
     try:
-        # Check if professor_profiles table exists
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_profiles'")
-        has_profiles_table = cursor.fetchone() is not None
-        
-        if has_profiles_table:
-            # Join user_accounts and professor_profiles
-            query = """
-                SELECT u.username, COALESCE(p.name, u.username) as name
-                FROM user_accounts u
-                LEFT JOIN professor_profiles p ON u.username = p.username
-                WHERE u.role = 'professor'
-                ORDER BY name
-            """
-        else:
-            # Just get usernames and use them as names
-            query = """
-                SELECT username, username as name
-                FROM user_accounts
-                WHERE role = 'professor'
-                ORDER BY username
-            """
-        
-        df = pd.read_sql_query(query, conn)
-        print(f"Found {len(df)} professors")
-        return df
-    except Exception as e:
-        print(f"Error getting professors list: {e}")
-        # Return empty DataFrame with expected columns
-        return pd.DataFrame(columns=['username', 'name'])
+        df = pd.read_sql(query, conn)
+    except:
+        # Fallback query if join fails
+        query = "SELECT username, username as name FROM user_accounts WHERE role = 'professor'"
+        df = pd.read_sql(query, conn)
     finally:
         conn.close()
+    
+    return df
+
+def get_students_list():
+    """Get list of students with proper synchronization"""
+    # First sync tables to ensure consistency
+    sync_user_tables()
+    
+    conn = sqlite3.connect('attendance_system.db')
+    query = """
+    SELECT username, COALESCE(name, username) as name, section
+    FROM user_accounts ua
+    LEFT JOIN student_profiles sp ON ua.username = sp.username
+    WHERE ua.role = 'student'
+    ORDER BY name
+    """
+    
+    try:
+        df = pd.read_sql(query, conn)
+    except:
+        # Fallback query if join fails
+        query = "SELECT username, username as name, '' as section FROM user_accounts WHERE role = 'student'"
+        df = pd.read_sql(query, conn)
+    finally:
+        conn.close()
+    
+    return df
 
 def get_subjects_list(with_id=True):
     """
@@ -344,65 +354,47 @@ def get_subjects_list(with_id=True):
         conn.close()
 
 def sync_teacher_subject_assignments():
-    """
-    Sync assignments between professor_subject_assignments and teacher_subjects tables
-    to ensure professors can see their assigned subjects regardless of which table is used.
-    """
-    conn = sqlite3.connect(DATABASE_PATH)
+    """Sync professor/teacher subject assignments across tables"""
+    conn = sqlite3.connect('attendance_system.db')
     cursor = conn.cursor()
     
     try:
-        # First ensure subjects table has all required columns
-        ensure_subjects_table_schema()
-        
-        # Then ensure both assignment tables exist
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_subject_assignments'")
-        if not cursor.fetchone():
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS professor_subject_assignments (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                professor_username TEXT NOT NULL,
-                subject_id INTEGER NOT NULL,
-                assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(professor_username, subject_id)
-            )
-            """)
-            print("Created professor_subject_assignments table")
-        
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='teacher_subjects'")
-        if not cursor.fetchone():
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS teacher_subjects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject_id INTEGER,
-                teacher_name TEXT,
-                UNIQUE(subject_id, teacher_name)
-            )
-            """)
-            print("Created teacher_subjects table")
-        
-        # Then sync data from professor_subject_assignments to teacher_subjects
+        # Make sure tables exist
         cursor.execute("""
-        INSERT OR IGNORE INTO teacher_subjects (subject_id, teacher_name)
-        SELECT subject_id, professor_username 
-        FROM professor_subject_assignments
-        WHERE subject_id IS NOT NULL AND professor_username IS NOT NULL
+        CREATE TABLE IF NOT EXISTS professor_subject_assignments (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            professor_username TEXT NOT NULL,
+            subject_id INTEGER NOT NULL,
+            assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(professor_username, subject_id)
+        )
         """)
         
-        # And sync data from teacher_subjects to professor_subject_assignments
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS teacher_subjects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            subject_id INTEGER,
+            teacher_name TEXT,
+            UNIQUE(subject_id, teacher_name)
+        )
+        """)
+        
+        # Sync from teacher_subjects to professor_subject_assignments
         cursor.execute("""
         INSERT OR IGNORE INTO professor_subject_assignments (professor_username, subject_id)
-        SELECT teacher_name, subject_id 
-        FROM teacher_subjects
-        WHERE subject_id IS NOT NULL AND teacher_name IS NOT NULL
+        SELECT teacher_name, subject_id FROM teacher_subjects
+        """)
+        
+        # Sync from professor_subject_assignments to teacher_subjects
+        cursor.execute("""
+        INSERT OR IGNORE INTO teacher_subjects (teacher_name, subject_id)
+        SELECT professor_username, subject_id FROM professor_subject_assignments
         """)
         
         conn.commit()
-        return True
     except Exception as e:
-        print(f"Error syncing teacher subject assignments: {e}")
+        print(f"Error syncing subject assignments: {e}")
         conn.rollback()
-        return False
     finally:
         conn.close()
 

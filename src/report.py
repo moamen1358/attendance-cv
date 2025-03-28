@@ -184,13 +184,34 @@ def get_class_attendance_data(start_date=None, end_date=None, student_name=None,
     
     return df
 
-# Function to get list of registered students from the database
+# Modified function to get list of registered students from the database
+# Now also includes students who have attendance records but might not be in the students table
 def get_registered_students():
     conn = get_db_connection()
-    query = "SELECT name FROM students ORDER BY name"
-    df = pd.read_sql(query, conn)
+    
+    # First get students from the students table
+    query1 = "SELECT name FROM students ORDER BY name"
+    df1 = pd.read_sql(query1, conn)
+    students_list = df1['name'].tolist() if not df1.empty else []
+    
+    # Then get all student names from attendance records
+    query2 = "SELECT DISTINCT student_name as name FROM class_attendance ORDER BY student_name"
+    df2 = pd.read_sql(query2, conn)
+    attendance_students = df2['name'].tolist() if not df2.empty else []
+    
+    # Also get students from attendance logs for completeness
+    query3 = "SELECT DISTINCT name FROM attendance_log ORDER BY name"
+    df3 = pd.read_sql(query3, conn)
+    log_students = df3['name'].tolist() if not df3.empty else []
+    
+    # Combine all lists and remove duplicates
+    all_students = list(set(students_list + attendance_students + log_students))
+    
+    # Sort alphabetically
+    all_students.sort()
+    
     conn.close()
-    return df['name'].tolist()
+    return all_students
 
 # Modified function to get list of subjects filtered by teacher - now with robust table checking
 def get_subjects(username=None):
@@ -1094,27 +1115,6 @@ def show_report():
     h3, .main h3 {
         font-size: 1.3rem !important;
     }
-    
-    h4, .main h4 {
-        font-size: 1.1rem !important;
-    }
-    
-    /* Apply styling to Streamlit's native header elements */
-    .css-10trblm, .css-16idsys p {
-        color: #008080 !important; /* Teal color for professor view */
-        font-weight: bold !important;
-    }
-    
-    /* Style subheader specifically */
-    .css-10trblm.e16nr0p33 {
-        font-size: 1.3rem !important;
-        color: #008080 !important; /* Teal color for professor view */
-        font-weight: bold !important;
-        margin-top: 1rem !important;
-    }
-    
-    /* Consistent spacing between sections */
-    .main .block-container > div > div[data-testid="stVerticalBlock"] > div[data-stale="false"] {
         margin-top: 1rem !important;
     }
     
