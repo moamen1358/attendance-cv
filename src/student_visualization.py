@@ -205,7 +205,12 @@ def create_weekly_heatmap(student_name, weeks=4, start_date=None):
         """
         cursor = conn.cursor()
         execute_query(query, (student_name,))
-        max_date = cursor.fetchone()[0]
+        result = cursor.fetchone()
+        if result is not None and result[0] is not None:
+            max_date = result[0]
+        else:
+            max_date = datetime.now().date().strftime('%Y-%m-%d')
+            print(f"No attendance records found for {student_name}, using current date")
         
         if max_date:
             start = datetime.strptime(max_date, '%Y-%m-%d').date()
