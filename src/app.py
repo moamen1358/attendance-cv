@@ -135,6 +135,33 @@ def ensure_critical_tables():
 # Run this immediately on import
 ensure_critical_tables()
 
+# Run attendance table repair early in startup
+try:
+    # First fix schema detection
+    from src.database_utils import get_attendance_records_schema
+    print("Pre-initializing attendance records schema...")
+    schema_mapping = get_attendance_records_schema()
+    print(f"Attendance schema mapping: {schema_mapping}")
+    
+    # Fix duplicate student records if any exist
+    try:
+        from scripts.fix_duplicate_records import fix_duplicate_student_records
+        fix_duplicate_student_records()
+        print("Fixed any duplicate student records")
+    except Exception as e:
+        print(f"Error fixing duplicate student records: {e}")
+    
+    # Then run the more comprehensive repair if needed
+    if 'scripts.repair_attendance_tables' not in sys.modules:
+        try:
+            from scripts.repair_attendance_tables import repair_attendance_tables
+            repair_attendance_tables()
+            print("Attendance tables repair completed at startup")
+        except Exception as e:
+            print(f"Non-critical error during attendance table repair: {e}")
+except Exception as e:
+    print(f"Error fixing attendance schema: {e}")
+
 # Now import bootstrap tables after ensuring critical tables exist
 from src.bootstrap_tables import bootstrap_essential_tables
 bootstrap_essential_tables()  # Run table creation at import time

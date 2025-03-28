@@ -605,3 +605,164 @@ def ensure_student_profiles_compatibility():
         return False
     finally:
         conn.close()
+
+def get_attendance_records_schema():
+    """
+    Get the actual column names in the attendance_records table
+    to handle different naming conventions.
+    
+    Returns:
+        dict: Mapping of standard column names to actual column names
+    """
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        # Check which tables exist - try all known attendance table names
+        tables_to_check = ['attendance_records', 'attendance_log', 'attendance', 'student_attendance']
+        table_name = None
+        
+        for check_table in tables_to_check:
+            cursor.execute(f"SELECT name FROM sqlite_master WHERE type='table' AND name='{check_table}'")
+            if cursor.fetchone():
+                table_name = check_table
+                print(f"Found attendance table: {table_name}")
+                break
+        
+        if not table_name:
+            # No attendance table found, create it with standard schema
+            print("No attendance records table found. Creating standard table...")
+            cursor.execute("""
+            CREATE TABLE attendance_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,  -- Changed primary column to username
+                name TEXT,               -- Keep name as secondary column 
+                student_name TEXT,       -- Keep student_name for compatibility
+                timestamp TIMESTAMP NOT NULL,
+                confidence REAL DEFAULT 1.0,
+                device_id TEXT,
+                day_of_week TEXT
+            )
+            """)
+            conn.commit()
+            table_name = 'attendance_records'
+        
+        # Get column info
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        columns = [col[1].lower() for col in cursor.fetchall()]
+        print(f"Found columns in {table_name}: {columns}")
+        
+        # Create mapping for standard column names to actual column names
+        mapping = {}
+        
+        # Map student name column - MODIFIED: prioritize username over other columns
+        # First check for username explicitly, then check other name columns
+        student_name_options = ['username', 'student_username', 'user', 'student_name', 'name', 'student']
+        found_name_col = False
+        
+        for option in student_name_options:
+            if option in columns:
+                mapping['student_name'] = option
+                found_name_col = True
+                print(f"Mapped student_name to '{option}' column")
+                break
+        
+        if not found_name_col:
+            # No suitable column found - add username column
+            print("No username or name column found in attendance table. Adding columns...")
+            try:
+                # Add username column as primary
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN username TEXT")
+                
+                # Also add name columns for compatibility
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN name TEXT")
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN student_name TEXT")
+                conn.commit()
+                
+                # Try to extract name from first text column
+                cursor.execute(f"PRAGMA table_info({table_name})")
+                all_columns = cursor.fetchall()
+                text_columns = [col[1] for col in all_columns 
+                               if col[2].upper() in ('TEXT', 'VARCHAR', 'CHAR') 
+                               and col[1].lower() not in ('id', 'timestamp', 'device_id')]
+                
+                if text_columns:
+                    first_text_col = text_columns[0]
+                    cursor.execute(f"UPDATE {table_name} SET username = {first_text_col}")
+                    cursor.execute(f"UPDATE {table_name} SET name = username")
+                    cursor.execute(f"UPDATE {table_name} SET student_name = username")
+                    conn.commit()
+                    print(f"Populated username columns from {first_text_col}")
+                else:
+                    # Default to 'Unknown User'
+                    cursor.execute(f"UPDATE {table_name} SET username = 'Unknown User'")
+                    cursor.execute(f"UPDATE {table_name} SET name = username")
+                    cursor.execute(f"UPDATE {table_name} SET student_name = username")
+                    conn.commit() 
+                    print("Set default username values")
+                
+                # Use username column for mapping
+                mapping['student_name'] = 'username'
+                
+                # Create indexes for the new columns
+                cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table_name}_username ON {table_name}(username)")
+                conn.commit()
+                
+            except sqlite3.OperationalError as e:
+                print(f"Could not add columns: {e}")
+                # Create a view with required columns
+                try:
+                    view_name = f"{table_name}_username_view"
+                    cursor.execute(f"DROP VIEW IF EXISTS {view_name}")
+                    
+                    # Use first non-id column as name source
+                    name_col = columns[1] if len(columns) > 1 else columns[0]
+                    cursor.execute(f"""
+                    CREATE VIEW {view_name} AS
+                    SELECT 
+                        id,
+                        {name_col} AS username,
+                        {name_col} AS name,
+                        {name_col} AS student_name,
+                        *
+                    FROM {table_name}
+                    """)
+                    conn.commit()
+                    print(f"Created view {view_name} with username mapping")
+                    mapping['student_name'] = 'username'  # The view has the username column
+                except Exception as view_error:
+                    print(f"Error creating username view: {view_error}")
+                    mapping['student_name'] = columns[0]  # Use first column as last resort
+        
+        # Map timestamp column - check all possible variations
+        time_options = ['timestamp', 'date_time', 'datetime', 'time', 'created_at', 'date']
+        found_time_col = False
+        
+        for option in time_options:
+            if option in columns:
+                mapping['timestamp'] = option
+                found_time_col = True
+                print(f"Mapped timestamp to '{option}' column")
+                break
+        
+        if not found_time_col:
+            print("No timestamp column found. Adding timestamp column...")
+            try:
+                cursor.execute(f"ALTER TABLE {table_name} ADD COLUMN timestamp TIMESTAMP")
+                cursor.execute(f"UPDATE {table_name} SET timestamp = CURRENT_TIMESTAMP")
+                conn.commit()
+                mapping['timestamp'] = 'timestamp'
+                print(f"Added timestamp column to {table_name}")
+            except Exception as e:
+                print(f"Error adding timestamp: {e}")
+                mapping['timestamp'] = 'timestamp'  # Default fallback
+        
+        print(f"Final mapping: {mapping}")
+        return mapping
+        
+    except Exception as e:
+        print(f"Error getting attendance schema: {e}")
+        # Return default mappings if anything fails - MODIFIED to use username
+        return {'student_name': 'username', 'timestamp': 'timestamp'}
+    finally:
+        conn.close()
