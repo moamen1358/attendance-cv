@@ -12,6 +12,9 @@ sys.path.append('/home/invisa/Desktop/my_grad_streamlit')
 from src.database_utils import execute_query, execute_query_df
 import hashlib
 
+# Add import for database synchronization
+from src.database_sync import sync_user_tables, register_user
+
 def create_connection():
     """Create a connection to the database with absolute path"""
     db_path = os.path.abspath('attendance_system.db')
@@ -185,78 +188,41 @@ def check_required_tables():
         
     return tables
 
+# Replace the existing register_student function with this improved version
 def register_student(username, password, name, section):
     """
-    Register a new student in the system
+    Register a new student in the system using the unified registration function
     Adds the student to both user_accounts and student_profiles tables
     """
-    conn = create_connection()
-    cursor = conn.cursor()
-    success = False
-    message = ""
+    profile_data = {
+        'name': name,
+        'student_id': username,  # Using username as student ID by default
+        'section': section
+    }
     
-    try:
-        # Check if tables exist, create them if not
-        tables = check_required_tables()
-        
-        # Create user_accounts table if it doesn't exist
-        if not tables.get('user_accounts'):
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS user_accounts (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE,
-                    password TEXT,
-                    role TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-        
-        # Create student_profiles table if it doesn't exist
-        if not tables.get('student_profiles'):
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS student_profiles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE,
-                    name TEXT,
-                    password TEXT,
-                    section TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-        
-        # Begin transaction
-        cursor.execute("BEGIN TRANSACTION")
-        
-        # Add to user_accounts
-        cursor.execute(
-            "INSERT INTO user_accounts (username, password, role) VALUES (?, ?, ?)",
-            (username, password, "student")
-        )
-        
-        # Add to student_profiles
-        cursor.execute(
-            "INSERT INTO student_profiles (username, name, password, section) VALUES (?, ?, ?, ?)",
-            (username, name, password, section)
-        )
-        
-        # Commit changes
-        conn.commit()
-        success = True
-        message = f"Student {name} registered successfully"
-        
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        message = f"Username {username} already exists"
-    except Exception as e:
-        conn.rollback()
-        message = f"Error registering student: {e}"
-    finally:
-        conn.close()
+    success = register_user(username, password, 'student', profile_data)
+    message = "Student registered successfully!" if success else "Failed to register student"
     
     return success, message
 
+# Add function to ensure all tables are in sync at login
+def ensure_database_consistency():
+    """Ensure database tables are in sync before login"""
+    try:
+        changes = sync_user_tables()
+        if changes > 0:
+            print(f"Database synchronized. {changes} changes made.")
+        return True
+    except Exception as e:
+        print(f"Error ensuring database consistency: {e}")
+        return False
+
+# Modify login_page function to call the sync first
 def login_page():
     st.title("Login")
+    
+    # Sync tables before proceeding
+    ensure_database_consistency()
     
     # Check database tables and add debug info
     tables = check_required_tables()
