@@ -12,7 +12,7 @@ import sys
 sys.path.append('/home/invisa/Desktop/my_grad_streamlit')
 
 # Update imports to use utils directory
-from src.database_utils import execute_query, execute_query_df
+from src.database_utils import execute_query, execute_query_df, get_attendance_records_schema
 from src.time_format_utils import normalize_time_format
 from src.student_visualization import create_attendance_sunburst, create_attendance_gauge
 from src.student_visualization import create_subject_radial_chart, create_weekly_heatmap
@@ -27,7 +27,7 @@ CHROMA_STORE_PATH = "./store"
 def get_db_connection():
     return sqlite3.connect(DATABASE_PATH)
 
-# Function to get attendance data with filtering options - now with schema validation
+# Function to get attendance data with filtering options - now with improved schema validation
 def get_attendance_data(start_date=None, end_date=None, student_name=None, limit=1000):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -45,13 +45,18 @@ def get_attendance_data(start_date=None, end_date=None, student_name=None, limit
                 return pd.DataFrame(columns=['name', 'timestamp', 'date', 'time'])
         else:
             table_name = 'attendance_log'
+        
+        # Get schema mapping to handle column name differences
+        schema = get_attendance_records_schema()
+        student_col = schema['student_name']
+        timestamp_col = schema['timestamp']
             
         # Check what columns actually exist in the table
         cursor.execute(f"PRAGMA table_info({table_name})")
         columns = [col[1] for col in cursor.fetchall()]
         
         # Build a SELECT clause based on available columns
-        select_cols = ['name', 'timestamp']  # These are required
+        select_cols = [student_col, timestamp_col]  # These are required
         
         # Add optional columns if they exist
         if 'confidence' in columns:
@@ -67,22 +72,22 @@ def get_attendance_data(start_date=None, end_date=None, student_name=None, limit
         where_clauses = []
         
         if start_date:
-            where_clauses.append("DATE(timestamp) >= ?")
+            where_clauses.append(f"DATE({timestamp_col}) >= ?")
             params.append(start_date)
         
         if end_date:
-            where_clauses.append("DATE(timestamp) <= ?")
+            where_clauses.append(f"DATE({timestamp_col}) <= ?")
             params.append(end_date)
         
         if student_name and student_name != "All Students":
-            where_clauses.append("name = ?")
+            where_clauses.append(f"{student_col} = ?")
             params.append(student_name)
         
         if where_clauses:
             query_parts.append("WHERE " + " AND ".join(where_clauses))
         
         # Add order by and limit
-        query_parts.append("ORDER BY timestamp DESC")
+        query_parts.append(f"ORDER BY {timestamp_col} DESC")
         query_parts.append(f"LIMIT {limit}")
         
         # Combine query parts
@@ -90,6 +95,10 @@ def get_attendance_data(start_date=None, end_date=None, student_name=None, limit
         
         # Execute query
         df = pd.read_sql(query, conn, params=params)
+        
+        # Rename columns to standardized names for downstream processing
+        column_mapping = {student_col: 'name', timestamp_col: 'timestamp'}
+        df = df.rename(columns=column_mapping)
         
         # Add missing columns with default values so downstream code doesn't break
         if 'confidence' not in df.columns:
@@ -112,15 +121,6 @@ def get_attendance_data(start_date=None, end_date=None, student_name=None, limit
         conn.close()
 
 # Function to get class attendance data
-def get_class_attendance_data(start_date=None, end_date=None, student_name=None, subject=None, teacher_subjects=None):
-    conn = get_db_connection()
-    
-    query_parts = ["SELECT student_name, class_date, subject, start_time, end_time, attended FROM class_attendance"]
-    params = []
-    
-    # Build WHERE clause based on filters
-    where_clauses = []
-    
     if start_date:
         where_clauses.append("class_date >= ?")
         params.append(start_date)

@@ -21,13 +21,13 @@ def bootstrap_essential_tables():
         for attempt in range(3):  # Try up to 3 times with different methods
             try:
                 if attempt == 0:
-                    # Standard approach
+                    # Standard approach - MODIFIED to include UNIQUE constraints
                     cursor.execute("""
                     CREATE TABLE IF NOT EXISTS student_profiles (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        username TEXT UNIQUE,
+                        username TEXT UNIQUE,  -- Added UNIQUE constraint
                         name TEXT,
-                        student_id TEXT,
+                        student_id TEXT UNIQUE,  -- Added UNIQUE constraint
                         section TEXT,
                         email TEXT,
                         phone TEXT,
@@ -35,14 +35,14 @@ def bootstrap_essential_tables():
                     )
                     """)
                 elif attempt == 1:
-                    # Alternative approach with DROP first
+                    # Alternative approach with DROP first - MODIFIED to include UNIQUE constraints
                     cursor.execute("DROP TABLE IF EXISTS student_profiles_temp")
                     cursor.execute("""
                     CREATE TABLE student_profiles_temp (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        username TEXT UNIQUE,
+                        username TEXT UNIQUE,  -- Added UNIQUE constraint
                         name TEXT,
-                        student_id TEXT,
+                        student_id TEXT UNIQUE,  -- Added UNIQUE constraint
                         section TEXT,
                         email TEXT,
                         phone TEXT,
@@ -52,7 +52,7 @@ def bootstrap_essential_tables():
                     try:
                         # Try to copy data if original exists
                         cursor.execute("""
-                        INSERT INTO student_profiles_temp SELECT * FROM student_profiles
+                        INSERT OR IGNORE INTO student_profiles_temp SELECT * FROM student_profiles
                         """)
                         # If successful, replace original with temp
                         cursor.execute("DROP TABLE IF EXISTS student_profiles")
@@ -62,14 +62,14 @@ def bootstrap_essential_tables():
                         cursor.execute("DROP TABLE IF EXISTS student_profiles")
                         cursor.execute("ALTER TABLE student_profiles_temp RENAME TO student_profiles")
                 else:
-                    # Emergency direct creation
+                    # Emergency direct creation - MODIFIED to include UNIQUE constraints
                     cursor.execute("DROP TABLE IF EXISTS student_profiles")
                     cursor.execute("""
                     CREATE TABLE student_profiles (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        username TEXT UNIQUE,
+                        username TEXT UNIQUE,  -- Added UNIQUE constraint
                         name TEXT, 
-                        student_id TEXT,
+                        student_id TEXT UNIQUE,  -- Added UNIQUE constraint
                         section TEXT,
                         email TEXT,
                         phone TEXT,
@@ -91,13 +91,13 @@ def bootstrap_essential_tables():
         if not table_created:
             print("CRITICAL FAILURE: Could not create student_profiles table after multiple attempts")
         
-        # Always add a default record regardless of creation method
+        # Always add a default record regardless of creation method - MODIFIED to use INSERT OR IGNORE
         try:
             # First check if table exists as a last resort
-            cursor.execute("CREATE TABLE IF NOT EXISTS student_profiles (id INTEGER PRIMARY KEY, username TEXT, name TEXT, student_id TEXT, section TEXT)")
+            cursor.execute("CREATE TABLE IF NOT EXISTS student_profiles (id INTEGER PRIMARY KEY, username TEXT UNIQUE, name TEXT, student_id TEXT UNIQUE, section TEXT)")
             conn.commit()
             
-            # Add default user data
+            # Add default user data - USING INSERT OR IGNORE to prevent duplicates
             cursor.execute("""
             INSERT OR IGNORE INTO student_profiles (username, name, student_id, section) 
             VALUES (?, ?, ?, ?)
@@ -169,6 +169,58 @@ def bootstrap_essential_tables():
         )
         """)
         
+        # Enhance attendance_records table creation with improved schema and indices
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS attendance_records (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,  -- Standard column name for student
+            timestamp TIMESTAMP NOT NULL,  -- Standard column name for time
+            confidence REAL DEFAULT 1.0,
+            device_id TEXT,
+            day_of_week TEXT
+        )
+        """)
+        
+        # Add indexes for better performance
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_attendance_name ON attendance_records(name)")
+        cursor.execute("CREATE INDEX IF NOT EXISTS idx_attendance_timestamp ON attendance_records(timestamp)")
+        
+        # Create views for compatibility with all common column names
+        cursor.execute("DROP VIEW IF EXISTS attendance_name_view")
+        cursor.execute("""
+        CREATE VIEW attendance_name_view AS
+        SELECT 
+            id,
+            name AS student_name,  -- Map name to student_name
+            name AS student_username, -- Map name to student_username
+            timestamp,
+            confidence,
+            device_id,
+            day_of_week
+        FROM attendance_records
+        """)
+        
+        # Create a compatibility view for attendance_log if it doesn't exist
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='attendance_log'")
+        if not cursor.fetchone():
+            cursor.execute("""
+            CREATE VIEW IF NOT EXISTS attendance_log AS
+            SELECT * FROM attendance_records
+            """)
+            print("Created attendance_log compatibility view")
+        
+        # Create attendance_log table if it doesn't exist - maintain legacy support
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS attendance_log (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,  -- Standard column name
+            timestamp TIMESTAMP NOT NULL,  -- Standard column name
+            confidence REAL DEFAULT 1.0,
+            device_id TEXT,
+            day_of_week TEXT
+        )
+        """)
+        
         # Add views for compatibility
         cursor.execute("DROP VIEW IF EXISTS student_profiles_view")
         cursor.execute("""
@@ -200,7 +252,9 @@ def bootstrap_essential_tables():
             "teacher_subjects",
             "user_accounts",
             "professor_subject_assignments",
-            "class_attendance"
+            "class_attendance",
+            "attendance_records",
+            "attendance_log"
         ]
         
         print("\nFinal table verification:")
