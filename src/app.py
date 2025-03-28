@@ -1,162 +1,69 @@
+"""
+Main Application Entry Point
+
+This module serves as the main entry point for the Attendance Management System.
+It handles user authentication, page routing, and session management.
+
+The app provides different views based on the user's role:
+- Student: Access to attendance records and personal profile
+- Professor: Access to class attendance records and reports
+- Admin: Full system management and configuration
+"""
 import streamlit as st
+import os
+import sys
+import sqlite3
+import time
+import importlib
+import pandas as pd
+from pathlib import Path
+from typing import Dict, Any, Optional
+import logging
+
+# Standard library imports
+from datetime import datetime
+
+# Local imports - direct module imports
 import home
 import real_time_prediction
 import report
 import student_report
 import registration_form
 import subject_management
-import sqlite3
-import time
-import importlib
-import pandas as pd
-import os
-import sys
 
-# Fix: Import both the module and the package correctly
-import src
-import database_utils
-from src.database_utils import execute_query, execute_query_df
+# Use new consolidated database package
+from src.database import execute_query, execute_query_df, get_connection
+from src.database.maintenance import repair_attendance_tables
 from src.global_css_handler import apply_global_css, enforce_fixed_padding
 from src.display_patch import patch_display_functions
 
-# Apply display patches first thing
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+# Apply display patches
 patch_display_functions()
 
-# Define database path globally for consistency
-DATABASE_PATH = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'attendance_system.db')
-print(f"Using database at: {os.path.abspath(DATABASE_PATH)}")
-
-# IMMEDIATE HOTFIX: Create student_profiles table immediately at import time, even before any functions
-print("CRITICAL HOTFIX: Ensuring student_profiles table exists at module import time")
-conn = sqlite3.connect(DATABASE_PATH)
-cursor = conn.cursor()
-try:
-    # Force create the table with minimal dependencies
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS student_profiles (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        username TEXT UNIQUE,
-        name TEXT,
-        student_id TEXT,
-        section TEXT,
-        email TEXT,
-        phone TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )
-    """)
-    # Verify it exists
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
-    if cursor.fetchone():
-        print("SUCCESS: student_profiles table exists!")
-        # Verify it has records
-        cursor.execute("SELECT COUNT(*) FROM student_profiles")
-        count = cursor.fetchone()[0]
-        print(f"Student profiles table has {count} records")
-        if count == 0:
-            # Add a default record
-            cursor.execute("""
-            INSERT INTO student_profiles (username, name, student_id, section)
-            VALUES ('default_user', 'Default User', 'S12345', 'Default Section')
-            """)
-            conn.commit()
-            print("Added default student record")
-    else:
-        print("ERROR: Failed to create student_profiles table despite CREATE TABLE command")
-except Exception as e:
-    print(f"Error in hotfix: {e}")
-finally:
-    conn.commit()
-    conn.close()
-
-# IMMEDIATE FIX: Create student_profiles table right at startup, before any imports
-def ensure_critical_tables():
-    """Create critical tables immediately before anything else runs"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    tables_created = False
-    
-    try:
-        # First check if student_profiles exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
-        if not cursor.fetchone():
-            print("CRITICAL: student_profiles table not found - creating immediately")
-            
-            # Create the table with proper schema
-            cursor.execute("""
-            CREATE TABLE student_profiles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE,
-                name TEXT,
-                student_id TEXT,
-                section TEXT,
-                email TEXT,
-                phone TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
-            
-            # Insert a default record
-            cursor.execute("""
-            INSERT INTO student_profiles (username, name, student_id, section)
-            VALUES (?, ?, ?, ?)
-            """, ('default_user', 'Default User', 'DEFAULT', 'Default Section'))
-            
-            # Create the view that some parts of the code might expect
-            cursor.execute("DROP VIEW IF EXISTS student_profiles_view")
-            cursor.execute("""
-            CREATE VIEW student_profiles_view AS SELECT * FROM student_profiles
-            """)
-            
-            conn.commit()
-            tables_created = True
-            print("SUCCESS: Created student_profiles table and default user")
-        else:
-            print("VERIFIED: student_profiles table already exists")
-            
-        # Verify by counting records
-        cursor.execute("SELECT COUNT(*) FROM student_profiles")
-        count = cursor.fetchone()[0]
-        print(f"Found {count} records in student_profiles table")
-        
-        # If no records, add a default one
-        if count == 0:
-            cursor.execute("""
-            INSERT INTO student_profiles (username, name, student_id, section)
-            VALUES (?, ?, ?, ?)
-            """, ('default_user', 'Default User', 'DEFAULT', 'Default Section'))
-            conn.commit()
-            print("Added default user to empty student_profiles table")
-    
-    except Exception as e:
-        print(f"ERROR in ensure_critical_tables: {e}")
-        return False
-    finally:
-        conn.close()
-    
-    return tables_created
-
-# Run this immediately on import
-ensure_critical_tables()
+# Database path using pathlib for better cross-platform compatibility
+DATABASE_PATH = Path(os.path.dirname(os.path.dirname(__file__))) / 'attendance_system.db'
+logger.info(f"Using database at: {DATABASE_PATH.absolute()}")
 
 # Run attendance table repair early in startup
 try:
     # First fix schema detection
     from src.database_utils import get_attendance_records_schema
-    print("Pre-initializing attendance records schema...")
+    logger.info("Pre-initializing attendance records schema...")
     schema_mapping = get_attendance_records_schema()
-    print(f"Attendance schema mapping: {schema_mapping}")
+    logger.info(f"Attendance schema mapping: {schema_mapping}")
     
     # Fix any database issues using the consolidated maintenance module
-    try:
-        from src.database_maintenance import fix_duplicate_student_records, repair_attendance_tables
-        fix_duplicate_student_records()
-        print("Fixed any duplicate student records")
-        repair_attendance_tables()
-        print("Attendance tables repair completed at startup")
-    except Exception as e:
-        print(f"Non-critical error during database maintenance: {e}")
+    repair_attendance_tables()
+    logger.info("Database maintenance completed at startup")
 except Exception as e:
-    print(f"Error fixing attendance schema: {e}")
+    logger.error(f"Error during database maintenance: {e}")
 
 # Now import bootstrap tables after ensuring critical tables exist
 from src.bootstrap_tables import bootstrap_essential_tables
@@ -174,14 +81,14 @@ def show_app():
     # Ensure database is initialized at application start
     if 'database_initialized' not in st.session_state:
         from src.login import initialize_database
-        print("Initializing database from app.py")
+        logger.info("Initializing database from app.py")
         st.session_state.database_initialized = initialize_database()
     
     # Debug user role to help diagnose issues
-    print(f"User role detected: {st.session_state.get('user_role', 'None')}")
-    print(f"Username: {st.session_state.get('username', 'None')}")
-    print(f"Is admin flag: {st.session_state.get('is_admin', False)}")
-    print(f"Is professor flag: {st.session_state.get('is_professor', False)}")
+    logger.info(f"User role detected: {st.session_state.get('user_role', 'None')}")
+    logger.info(f"Username: {st.session_state.get('username', 'None')}")
+    logger.info(f"Is admin flag: {st.session_state.get('is_admin', False)}")
+    logger.info(f"Is professor flag: {st.session_state.get('is_professor', False)}")
     
     # Import persistence manager to ensure data is maintained
     from persistent_session_manager import PersistentSessionManager
@@ -193,17 +100,24 @@ def show_app():
     from src.global_css_handler import ensure_consistent_padding
     ensure_consistent_padding()
     
-    # Fix: Use the proper approach to reload modules - use the direct module reference
-    importlib.reload(database_utils)  # This works if "database_utils" is imported at the top
+    # Fix: Make module reloading more defensive by using try-except
+    try:
+        # Try to reload the module only if it's available
+        import subject_management
+        importlib.reload(subject_management)
+        logger.info("Successfully reloaded subject_management module")
+    except (ImportError, UnboundLocalError):
+        # Either the module doesn't exist or it's not in scope
+        logger.info("subject_management module not available for reload - will be imported as needed")
     
     # Triple redundancy approach - layer 1: Import and run function
     try:
         from src.database_utils import ensure_student_profiles_compatibility
         success = ensure_student_profiles_compatibility()
-        print(f"Student profiles compatibility setup: {'SUCCESS' if success else 'FAILED'}")
+        logger.info(f"Student profiles compatibility setup: {'SUCCESS' if success else 'FAILED'}")
         
     except Exception as e:
-        print(f"Error loading student profiles compatibility module: {e}")
+        logger.error(f"Error loading student profiles compatibility module: {e}")
     
     # Extra verification - directly check if table exists now
     conn = sqlite3.connect(DATABASE_PATH)
@@ -211,10 +125,10 @@ def show_app():
     try:
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
         table_exists = cursor.fetchone() is not None
-        print(f"FINAL CHECK: student_profiles table {'exists' if table_exists else 'STILL MISSING'}")
+        logger.info(f"FINAL CHECK: student_profiles table {'exists' if table_exists else 'STILL MISSING'}")
         
         if not table_exists:
-            print("EMERGENCY: Creating student_profiles table as last resort")
+            logger.info("EMERGENCY: Creating student_profiles table as last resort")
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS student_profiles (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -226,7 +140,7 @@ def show_app():
             """)
             conn.commit()
     except Exception as e:
-        print(f"Error in final table check: {e}")
+        logger.error(f"Error in final table check: {e}")
     finally:
         conn.close()
     
@@ -242,7 +156,7 @@ def show_app():
         
         # IMPORTANT: Also set query param to preserve role on refresh
         st.query_params["user_role"] = "admin" 
-        print(f"Setting admin role in session and query params for user {username}")
+        logger.info(f"Setting admin role in session and query params for user {username}")
     
     # FORCE PROFESSOR ROLE for any professor username for fallback protection
     elif user_role.lower() == "professor" or st.session_state.get('is_professor', False):
@@ -252,7 +166,7 @@ def show_app():
         
         # IMPORTANT: Also set query param to preserve role on refresh
         st.query_params["user_role"] = "professor"
-        print(f"Setting professor role in session and query params for user {username}")
+        logger.info(f"Setting professor role in session and query params for user {username}")
     
     # Debug info for admin login issues
     if username == "admin" and user_role != "admin":
@@ -293,9 +207,9 @@ def show_app():
                 VALUES (?, ?)
                 """, (username, username))
                 conn.commit()
-                print(f"Created or ensured student_profiles table exists with user {username}")
+                logger.info(f"Created or ensured student_profiles table exists with user {username}")
             except Exception as e:
-                print(f"Initial table creation error: {e}")
+                logger.error(f"Initial table creation error: {e}")
                 
             # Then run our compatibility function
             from src.database_utils import ensure_student_profiles_compatibility
@@ -311,7 +225,7 @@ def show_app():
             
             if not result:
                 # !!! FIX: Create the table here instead of showing warning !!!
-                print("Student profiles table not found in check. Creating it now as last resort.")
+                logger.info("Student profiles table not found in check. Creating it now as last resort.")
                 cursor.execute("""
                 CREATE TABLE student_profiles (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -340,7 +254,7 @@ def show_app():
                 # Check if the columns exist
                 cursor.execute(f"PRAGMA table_info({result[0]})")
                 columns = [info[1].lower() for info in cursor.fetchall()]
-                print(f"Columns in {result[0]}: {columns}")
+                logger.info(f"Columns in {result[0]}: {columns}")
                 
                 # Construct query with safer approach - using a simple direct query
                 try:
@@ -366,7 +280,7 @@ def show_app():
                         st.session_state['current_user']['section'] = 'Unknown'
                         st.session_state['current_user']['full_name'] = username
                 except Exception as e:
-                    print(f"Error retrieving student details: {e}")
+                    logger.error(f"Error retrieving student details: {e}")
                     st.session_state['current_user']['student_id'] = 'Unknown'
                     st.session_state['current_user']['section'] = 'Unknown'
                     st.session_state['current_user']['full_name'] = username
@@ -395,13 +309,13 @@ def show_app():
                         # Missing required columns
                         st.session_state['current_user']['department'] = 'Unknown'
                 except Exception as e:
-                    print(f"Error accessing professor data: {e}")
+                    logger.error(f"Error accessing professor data: {e}")
                     st.session_state['current_user']['department'] = 'Unknown'
             else:
                 # Silently handle missing professor_profiles table
                 st.session_state['current_user']['department'] = 'Unknown'
     except Exception as e:
-        print(f"Error retrieving user details: {str(e)}")
+        logger.error(f"Error retrieving user details: {str(e)}")
         # Don't show warning to the user, just log it
         st.session_state['current_user']['error'] = str(e)
     finally:
@@ -625,7 +539,7 @@ def show_app():
                     container.style.setProperty('padding-left', '80px', 'important');
                     container.style.setProperty('padding-right', '80px', 'important');
                     container.style.setProperty('max-width', 'unset', 'important');
-                });
+                }
             }
             
             // Apply immediately and repeatedly
@@ -692,7 +606,7 @@ def show_app():
                     container.style.setProperty('padding-left', '80px', 'important');
                     container.style.setProperty('padding-right', '80px', 'important');
                     container.style.setProperty('max-width', 'unset', 'important');
-                });
+                }
             }
             
             // Apply immediately and repeatedly
@@ -736,23 +650,23 @@ if __name__ == "__main__":
         
         if role == "admin":
             st.session_state.is_admin = True
-            print("Restored admin role from query parameters")
+            logger.info("Restored admin role from query parameters")
         elif role == "professor":
             st.session_state.is_professor = True
-            print("Restored professor role from query parameters")
+            logger.info("Restored professor role from query parameters")
     
     # Also restore admin role if username contains 'admin'
     if "username" in st.query_params and "admin" in st.query_params["username"].lower():
         st.session_state.user_role = "admin"
         st.session_state.is_admin = True
-        print(f"Set admin role based on username: {st.query_params['username']}")
+        logger.info(f"Set admin role based on username: {st.query_params['username']}")
     
     # Setup admin tables to ensure they exist
     try:
         from setup_admin_tables import setup_admin_tables
         setup_admin_tables()
     except Exception as e:
-        print(f"Warning: Could not set up admin tables: {e}")
+        logger.warning(f"Warning: Could not set up admin tables: {e}")
     
     # Setup student tables to ensure they exist
     try:
@@ -764,11 +678,11 @@ if __name__ == "__main__":
         # Check if student_profiles exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
         if not cursor.fetchone():
-            print("Creating student_profiles table...")
+            logger.info("Creating student_profiles table...")
             setup_student_tables()
         conn.close()
     except Exception as e:
-        print(f"Warning: Could not set up student tables: {e}")
+        logger.warning(f"Warning: Could not set up student tables: {e}")
     
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False

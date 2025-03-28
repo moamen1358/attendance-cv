@@ -1,27 +1,20 @@
 """
-Database Maintenance Module
+Database maintenance and repair functions.
 
-This module provides comprehensive database maintenance functionality including:
-- Fixing duplicate student records
-- Repairing attendance tables schema and data
-- Correcting naming inconsistencies in attendance records
-- Fixing subjects schema issues
-
-All functionality from individual scripts has been consolidated here
-for easier maintenance and improved reliability.
+This module provides tools to fix common database issues:
+- Duplicate student records
+- Schema inconsistencies
+- Table relationships
+- Missing indexes
 """
 import sqlite3
 import logging
-import os
 import pandas as pd
-from typing import List, Dict, Tuple, Optional
+from typing import Dict, List, Tuple, Optional
 from pathlib import Path
 
 # Setup logging
-logging.basicConfig(
-    level=logging.INFO, 
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 # Database path
@@ -350,82 +343,3 @@ def repair_subjects_schema():
         return False
     finally:
         conn.close()
-
-def show_schema_repair_tool():
-    """
-    Display a schema repair tool UI in Streamlit
-    """
-    import streamlit as st
-    
-    st.title("Database Schema Repair Tool")
-    
-    # Create tabs for different repair options
-    repair_tabs = st.tabs(["Attendance Records", "Subjects", "Student Records", "Full Database"])
-    
-    # Tab 1: Attendance Records
-    with repair_tabs[0]:
-        st.header("Repair Attendance Records")
-        
-        col1, col2 = st.columns(2)
-        with col1:
-            if st.button("🛠️ Repair Attendance Tables", use_container_width=True):
-                results = repair_attendance_tables()
-                st.success(f"Repair completed: Created {results['tables_created']} tables, fixed {results['schema_fixed']} schema issues, added {results['indexes_added']} indexes")
-        
-        with col2:
-            if st.button("🔄 Fix Attendance Names", use_container_width=True):
-                fixed = fix_attendance_names()
-                st.success(f"Fixed {fixed} attendance records with name inconsistencies")
-    
-    # Tab 2: Subjects
-    with repair_tabs[1]:
-        st.header("Repair Subjects Schema")
-        
-        if st.button("🛠️ Repair Subjects Schema", use_container_width=True):
-            success = repair_subjects_schema()
-            if success:
-                st.success("Subjects schema repaired successfully")
-            else:
-                st.error("Failed to repair subjects schema")
-    
-    # Tab 3: Student Records
-    with repair_tabs[2]:
-        st.header("Fix Student Records")
-        
-        if st.button("🔍 Fix Duplicate Student Records", use_container_width=True):
-            fixed = fix_duplicate_student_records()
-            if fixed > 0:
-                st.success(f"Fixed {fixed} duplicate student records")
-            else:
-                st.info("No duplicate student records found")
-    
-    # Tab 4: Full Database
-    with repair_tabs[3]:
-        st.header("Full Database Repair")
-        
-        if st.button("🔧 Run All Repairs", use_container_width=True):
-            with st.spinner("Repairing database..."):
-                # Run all repair functions
-                attendance_results = repair_attendance_tables()
-                names_fixed = fix_attendance_names()
-                subjects_fixed = repair_subjects_schema()
-                duplicates_fixed = fix_duplicate_student_records()
-                
-                st.success(f"""
-                Repairs completed:
-                - Created/fixed {attendance_results['tables_created']} attendance tables
-                - Fixed {attendance_results['schema_fixed']} schema issues
-                - Added {attendance_results['indexes_added']} performance indexes
-                - Fixed {names_fixed} attendance name inconsistencies
-                - {'Successfully repaired' if subjects_fixed else 'Failed to repair'} subjects schema
-                - Fixed {duplicates_fixed} duplicate student records
-                """)
-
-# Run repair functions if executed directly
-if __name__ == "__main__":
-    print("Running database maintenance...")
-    repair_attendance_tables()
-    fix_attendance_names()
-    repair_subjects_schema()
-    fix_duplicate_student_records()
-    print("Database maintenance completed")

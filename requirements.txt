@@ -1,11 +1,25 @@
-numpy==2.2.2
-pandas==2.2.3
-scikit-learn==1.6.1
-streamlit-webrtc==0.47.9
-streamlit==1.41.1
-opencv-python-headless==4.11.0.86
-chromadb==0.6.3
-insightface==0.7.3
-xlsxwriter==3.0.9
-onnxruntime-gpu==1.20.1  # CUDA 12.x compatible
+# Core dependencies
+streamlit>=1.18.0
+pandas>=1.5.0
+numpy>=1.22.0
+
+# Data visualization
+plotly>=5.10.0
+matplotlib>=3.6.0
+
+# Database
+sqlalchemy>=1.4.0
+scipy>=1.9.0
+
+# Machine learning and image processing
+opencv-python>=4.6.0
+pillow>=9.2.0
+scikit-learn>=1.1.0
+
+# Security
+cryptography>=38.0.0
+
+# Utilities
+python-dotenv>=0.21.0
+tqdm>=4.64.0
 
