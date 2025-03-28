@@ -1,17 +1,43 @@
+"""
+Database Connection Pool
+
+This module provides a connection pooling implementation for SQLite
+to improve performance and resource utilization by reusing database connections.
+
+Features:
+- Configurable connection pool size
+- Thread-safe connection management
+- Performance-optimized SQLite settings
+- Context manager for automatic connection return
+- Helper functions for common database operations
+"""
 import sqlite3
 import threading
 import logging
 import time
 from contextlib import contextmanager
+from typing import Optional, List, Dict, Any, Generator, Union
+from pathlib import Path
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 class ConnectionPool:
-    """A simple connection pool for SQLite connections"""
+    """
+    A connection pool for SQLite connections that improves performance
+    by reusing database connections instead of creating new ones.
+    """
     
-    def __init__(self, database_path, max_connections=10, timeout=5.0):
+    def __init__(self, database_path: Union[str, Path], max_connections: int = 10, timeout: float = 5.0):
+        """
+        Initialize the connection pool
+        
+        Args:
+            database_path: Path to the SQLite database file
+            max_connections: Maximum number of connections to maintain
+            timeout: Maximum time to wait for a connection
+        """
         self.database_path = database_path
         self.max_connections = max_connections
         self.timeout = timeout
@@ -23,19 +49,19 @@ class ConnectionPool:
         # Initialize with some connections
         self._fill_pool(min(3, max_connections))
     
-    def _fill_pool(self, count):
+    def _fill_pool(self, count: int) -> None:
         """Add new connections to the pool"""
         for _ in range(count):
             if self._connection_count < self.max_connections:
                 conn = self._create_connection()
                 self._available_connections.append(conn)
     
-    def _create_connection(self):
+    def _create_connection(self) -> sqlite3.Connection:
         """Create a new database connection"""
         try:
             # Create connection with extended timeout and WAL mode
             conn = sqlite3.connect(
-                self.database_path, 
+                str(self.database_path), 
                 timeout=30.0,
                 check_same_thread=False
             )
@@ -60,7 +86,7 @@ class ConnectionPool:
             logger.error(f"Error creating database connection: {e}")
             raise
     
-    def get_connection(self):
+    def get_connection(self) -> sqlite3.Connection:
         """Get a connection from the pool or create a new one"""
         start_time = time.time()
         
@@ -84,13 +110,13 @@ class ConnectionPool:
             # Sleep before retrying
             time.sleep(0.1)
     
-    def return_connection(self, conn):
+    def return_connection(self, conn: sqlite3.Connection) -> None:
         """Return a connection to the pool"""
         with self._lock:
             self._in_use_connections.remove(conn)
             self._available_connections.append(conn)
     
-    def close_all(self):
+    def close_all(self) -> None:
         """Close all connections in the pool"""
         with self._lock:
             # Close all available connections
@@ -113,16 +139,16 @@ class ConnectionPool:
             self._connection_count = 0
 
 # Singleton pool instance
-_pool = None
+_pool: Optional[ConnectionPool] = None
 
-def init_pool(database_path='attendance_system.db', max_connections=10):
+def init_pool(database_path: Union[str, Path] = 'attendance_system.db', max_connections: int = 10) -> ConnectionPool:
     """Initialize the connection pool"""
     global _pool
     if _pool is None:
         _pool = ConnectionPool(database_path, max_connections)
     return _pool
 
-def get_db_connection():
+def get_db_connection() -> sqlite3.Connection:
     """Get a connection from the pool"""
     global _pool
     if _pool is None:
@@ -130,7 +156,7 @@ def get_db_connection():
     return _pool.get_connection()
 
 @contextmanager
-def db_connection():
+def db_connection() -> Generator[sqlite3.Connection, None, None]:
     """Context manager for database connections"""
     conn = None
     try:
@@ -140,7 +166,7 @@ def db_connection():
         if conn:
             _pool.return_connection(conn)
 
-def execute_query(query, params=None, commit=True):
+def execute_query(query: str, params: Optional[Union[List[Any], Dict[str, Any]]] = None, commit: bool = True) -> sqlite3.Cursor:
     """Execute a query using a connection from the pool"""
     with db_connection() as conn:
         cursor = conn.cursor()
@@ -161,7 +187,7 @@ def execute_query(query, params=None, commit=True):
             logger.error(f"Params: {params}")
             raise
 
-def execute_query_df(query, params=None):
+def execute_query_df(query: str, params: Optional[Union[List[Any], Dict[str, Any]]] = None) -> Any:
     """Execute a query and return results as a pandas DataFrame"""
     import pandas as pd
     
