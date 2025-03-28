@@ -1015,15 +1015,34 @@ def show_report():
     # Create a better looking display for subjects
     for i, subject in assigned_subjects.iterrows():
         with st.container():
-            # Change to full-width since we're removing the button column
+            # Enhanced card with gradient background, better shadows and styling
             st.markdown(f"""
-            <div style="padding: 15px; border-radius: 5px; margin-bottom: 10px; 
-                      background-color: #f0f8f8; border-left: 5px solid #008080;">
-                <h3 style="margin-top: 0; color: #008080;">{subject['subject_name']}</h3>
-                <p><strong>Course Code:</strong> {subject['course_code']}</p>
-                <p><strong>Credit Hours:</strong> {subject['credit_hours']}</p>
-                <p><strong>Schedule:</strong> {subject['schedule'] if not pd.isna(subject['schedule']) else "No schedule set"}</p>
-                <p><strong>Room:</strong> {subject['room'] if not pd.isna(subject['room']) else "No room assigned"}</p>
+            <div style="padding: 18px; border-radius: 8px; margin-bottom: 15px; 
+                      background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%); 
+                      border-left: 5px solid #3f51b5; box-shadow: 0 3px 10px rgba(0,0,0,0.08);">
+                <h3 style="margin-top: 0; color: #3f51b5; font-weight: 600;">{subject['subject_name']}</h3>
+                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+                    <div>
+                        <p style="color: #555; margin: 4px 0;"><strong style="color: #333;">Course Code:</strong> 
+                            <span style="color: {('#666' if subject['course_code'] == 'N/A' else '#333')};">
+                                {subject['course_code']}
+                            </span>
+                        </p>
+                        <p style="color: #555; margin: 4px 0;"><strong style="color: #333;">Credit Hours:</strong> {subject['credit_hours']}</p>
+                    </div>
+                    <div>
+                        <p style="color: #555; margin: 4px 0;"><strong style="color: #333;">Schedule:</strong> 
+                            <span style="color: #777; font-style: italic;">
+                                {subject['schedule'] if not pd.isna(subject['schedule']) else "No schedule set"}
+                            </span>
+                        </p>
+                        <p style="color: #555; margin: 4px 0;"><strong style="color: #333;">Room:</strong> 
+                            <span style="color: #777; font-style: italic;">
+                                {subject['room'] if not pd.isna(subject['room']) else "No room assigned"}
+                            </span>
+                        </p>
+                    </div>
+                </div>
             </div>
             """, unsafe_allow_html=True)
     
@@ -1249,135 +1268,158 @@ def show_report():
         # Get top performers - filtered by teacher subjects
         top_df, _ = get_attendance_outliers(start_date_str, end_date_str, limit=3, teacher_subjects=teacher_subjects)
         
-        # Display top performers section with reduced height
+        # Display top performers section with a completely different style
         st.subheader("Top Students by Attendance")
         
-        # Custom CSS for cards with improved styling and reduced size
+        # New leaderboard style CSS - completely different approach
         st.markdown("""
         <style>
-        .performer-card {
-            padding: 0.9rem;  /* Reduced padding */
-            border-radius: 8px;  /* Smaller radius */
-            border: none;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);  /* Lighter shadow */
-            transition: transform 0.3s, box-shadow 0.3s;
-            background: linear-gradient(135deg, rgba(255, 255, 255, 0.8), rgba(248, 249, 250, 0.8));  /* More transparent */
-            margin-bottom: 0.75rem;  /* Reduced margin */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+        .leaderboard-container {
+            border-radius: 12px;
+            background: linear-gradient(145deg, #f0f8ff, #ffffff);
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.1);
+            padding: 1.2rem;
+            margin-bottom: 1.5rem;
+        }
+        .leaderboard-title {
+            color: #3f51b5;
+            font-weight: 600;
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
             text-align: center;
-            height: 100%;
         }
-        .performer-card:hover {
-            transform: translateY(-3px);
-            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+        .leaderboard-row {
+            display: flex;
+            align-items: center;
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+            transition: transform 0.2s;
         }
-        .performer-avatar {
-            width: 55px;  /* Smaller avatar */
-            height: 55px;  /* Smaller avatar */
+        .leaderboard-row:hover {
+            background-color: rgba(63, 81, 181, 0.05);
+            transform: translateY(-2px);
+        }
+        .leaderboard-row:last-child {
+            border-bottom: none;
+        }
+        .rank {
+            font-weight: bold;
+            font-size: 1.5rem;
+            min-width: 40px;
+            text-align: center;
+        }
+        .rank-1 { color: gold; }
+        .rank-2 { color: silver; }
+        .rank-3 { color: #cd7f32; } /* Bronze */
+        .student-avatar {
+            width: 50px;
+            height: 50px;
             border-radius: 50%;
-            background-color: #1976D2;
+            margin: 0 15px;
+            background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
             color: white;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 22px;  /* Smaller font */
+            font-size: 1.3rem;
             font-weight: bold;
-            margin-bottom: 0.75rem;
         }
-        .performer-medal {
-            font-size: 1.6rem;  /* Smaller medals */
-            margin-bottom: 0.3rem;  /* Reduced margin */
-            filter: drop-shadow(0 1px 2px rgba(0,0,0,0.2));  /* Lighter shadow */
+        .perfect-avatar {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
         }
-        .progress-outer {
+        .student-info {
+            flex-grow: 1;
+        }
+        .student-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+        .student-stats {
+            font-size: 0.9rem;
+            color: #666;
+        }
+        .attendance-bar {
+            height: 8px;
             width: 100%;
-            height: 8px;  /* Thinner progress bar */
-            background-color: rgba(238, 238, 238, 0.5);  /* More transparent */
-            border-radius: 8px;  /* Smaller radius */
+            background-color: #f0f0f0;
+            border-radius: 4px;
+            margin-top: 5px;
             overflow: hidden;
-            margin-top: 0.4rem;  /* Reduced margin */
         }
-        .progress-inner {
+        .attendance-fill {
             height: 100%;
-            border-radius: 8px;  /* Smaller radius */
+            border-radius: 4px;
         }
-        .progress-perfect {
-            background: linear-gradient(to right, #4CAF50, #8BC34A);
+        .perfect-fill {
+            background: linear-gradient(to right, #11998e, #38ef7d);
         }
-        .progress-high {
-            background: linear-gradient(to right, #1976D2, #64B5F6);
+        .high-fill {
+            background: linear-gradient(to right, #396afc, #2948ff);
         }
-        .attendance-badge {
-            padding: 3px 6px;  /* Smaller padding */
-            border-radius: 16px;  /* Smaller radius */
-            font-size: 0.7rem;  /* Smaller font */
+        .attendance-percent {
+            min-width: 60px;
+            text-align: right;
             font-weight: bold;
-            color: white;
-            display: inline-block;
-            margin-top: 5px;  /* Reduced margin */
+            font-size: 1.2rem;
+            padding-left: 15px;
         }
-        .perfect-badge {
-            background-color: #4CAF50;
+        .perfect-percent {
+            color: #11998e;
         }
-        .high-badge {
-            background-color: #1976D2;
+        .high-percent {
+            color: #396afc;
         }
-        .card-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-gap: 15px;  /* Reduced gap */
+        .medal-icon {
+            font-size: 1.4rem;
+            margin-right: 10px;
         }
         </style>
         """, unsafe_allow_html=True)
         
-        # Display the top performers cards - keeping the existing implementation but with updated CSS
+        # Display top performers in a horizontal leaderboard style
         if not top_df.empty:
-            # Count how many perfect 100% attendance students
-            perfect_students = top_df[top_df['attendance_rate'] == 100.0]
-            has_perfect = len(perfect_students) > 0
+            # Create leaderboard container
+            st.markdown('<div class="leaderboard-container">', unsafe_allow_html=True)
             
-            # Start the grid container
-            st.markdown('<div class="card-grid">', unsafe_allow_html=True)
-            
-            # For each of the top students (limited to 3)
+            # For each of the top students 
             for i, (_, row) in enumerate(top_df.iterrows()):
                 if i < 3:  # Show only up to 3 students
-                    # ... existing card creation code ...
                     is_perfect = row['attendance_rate'] == 100.0
                     
-                    # Determine medal emoji (all 3 get medals now)
-                    medals = ["🥇", "🥈", "🥉"]
-                    medal = f'<div class="performer-medal">{medals[i]}</div>'
+                    # Set classes based on attendance
+                    avatar_class = "student-avatar perfect-avatar" if is_perfect else "student-avatar"
+                    fill_class = "attendance-fill perfect-fill" if is_perfect else "attendance-fill high-fill"
+                    percent_class = "attendance-percent perfect-percent" if is_perfect else "attendance-percent high-percent"
                     
-                    # Set CSS classes based on attendance
-                    avatar_class = "performer-avatar perfect-attendance" if is_perfect else "performer-avatar high-attendance"
-                    progress_class = "progress-inner progress-perfect" if is_perfect else "progress-inner progress-high"
-                    badge_class = "attendance-badge perfect-badge" if is_perfect else "attendance-badge high-badge"
-                    badge_text = "PERFECT" if is_perfect else f"{row['attendance_rate']:.1f}%"
+                    # Rank number
+                    rank_num = i + 1
                     
-                    # Create card with appropriate styling
+                    # Create leaderboard row
                     st.markdown(f"""
-                    <div class="performer-card">
-                        {medal}
+                    <div class="leaderboard-row">
+                        <div class="rank rank-{rank_num}">{rank_num}</div>
                         <div class="{avatar_class}">{row['student_name'][0].upper()}</div>
-                        <div class="performer-name">{row['student_name']}</div>
-                        <div class="performer-stats">
-                            <div>Classes: <strong>{row['attended_classes']}/{row['total_classes']}</strong></div>
-                            <div class="progress-outer">
-                                <div class="{progress_class}" style="width: {row['attendance_rate']}%;"></div>
+                        <div class="student-info">
+                            <div class="student-name">{row['student_name']}</div>
+                            <div class="student-stats">
+                                Attended {row['attended_classes']} of {row['total_classes']} classes
+                                <div class="attendance-bar">
+                                    <div class="{fill_class}" style="width: {row['attendance_rate']}%;"></div>
+                                </div>
                             </div>
-                            <div class="{badge_class}">{badge_text}</div>
                         </div>
+                        <div class="{percent_class}">{row['attendance_rate']:.1f}%</div>
                     </div>
                     """, unsafe_allow_html=True)
             
-            # Close the grid container
+            # Close the leaderboard container
             st.markdown('</div>', unsafe_allow_html=True)
             
             # If there are perfect attendance students, show recognition message
-            if has_perfect:
+            perfect_students = top_df[top_df['attendance_rate'] == 100.0]
+            if not perfect_students.empty:
                 perfect_names = ", ".join(perfect_students['student_name'].tolist())
                 if len(perfect_students) > 1:
                     st.success(f"🌟 {len(perfect_students)} students have perfect attendance: {perfect_names}")
