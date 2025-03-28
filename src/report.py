@@ -121,6 +121,27 @@ def get_attendance_data(start_date=None, end_date=None, student_name=None, limit
         conn.close()
 
 # Function to get class attendance data
+def get_class_attendance_data(start_date=None, end_date=None, student_name=None, subject=None, teacher_subjects=None):
+    """
+    Get class attendance data with various filtering options.
+    
+    Args:
+        start_date (str): Start date in 'YYYY-MM-DD' format
+        end_date (str): End date in 'YYYY-MM-DD' format
+        student_name (str): Name of student to filter by or None for all students
+        subject (str): Subject to filter by or None for all subjects
+        teacher_subjects (list): List of subjects assigned to the teacher
+        
+    Returns:
+        DataFrame: Class attendance records
+    """
+    conn = get_db_connection()
+    
+    # Build query parts
+    query_parts = ["SELECT * FROM class_attendance"]
+    where_clauses = []
+    params = []
+    
     if start_date:
         where_clauses.append("class_date >= ?")
         params.append(start_date)
@@ -994,25 +1015,17 @@ def show_report():
     # Create a better looking display for subjects
     for i, subject in assigned_subjects.iterrows():
         with st.container():
-            col1, col2 = st.columns([2, 1])
-            
-            with col1:
-                st.markdown(f"""
-                <div style="padding: 15px; border-radius: 5px; margin-bottom: 10px; 
-                          background-color: #f0f2f6; border-left: 5px solid #1E88E5;">
-                    <h3 style="margin-top: 0; color: #1E88E5;">{subject['subject_name']}</h3>
-                    <p><strong>Course Code:</strong> {subject['course_code']}</p>
-                    <p><strong>Credit Hours:</strong> {subject['credit_hours']}</p>
-                    <p><strong>Schedule:</strong> {subject['schedule'] if not pd.isna(subject['schedule']) else "No schedule set"}</p>
-                    <p><strong>Room:</strong> {subject['room'] if not pd.isna(subject['room']) else "No room assigned"}</p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with col2:
-                # Add a button to view attendance for this subject
-                if st.button("View Attendance", key=f"view_{subject['subject_id']}"):
-                    st.session_state['selected_subject_id'] = subject['subject_id']
-                    st.session_state['selected_subject_name'] = subject['subject_name']
+            # Change to full-width since we're removing the button column
+            st.markdown(f"""
+            <div style="padding: 15px; border-radius: 5px; margin-bottom: 10px; 
+                      background-color: #f0f8f8; border-left: 5px solid #008080;">
+                <h3 style="margin-top: 0; color: #008080;">{subject['subject_name']}</h3>
+                <p><strong>Course Code:</strong> {subject['course_code']}</p>
+                <p><strong>Credit Hours:</strong> {subject['credit_hours']}</p>
+                <p><strong>Schedule:</strong> {subject['schedule'] if not pd.isna(subject['schedule']) else "No schedule set"}</p>
+                <p><strong>Room:</strong> {subject['room'] if not pd.isna(subject['room']) else "No room assigned"}</p>
+            </div>
+            """, unsafe_allow_html=True)
     
     # If a subject is selected, show its attendance
     if 'selected_subject_id' in st.session_state:
