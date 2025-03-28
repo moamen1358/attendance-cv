@@ -1019,14 +1019,14 @@ def show_report():
             finally:
                 if 'conn' in locals():
                     conn.close()
-        
-        # Also show repair tool link
-        st.markdown("If issues persist, use the database repair tool: ")
-        if st.button("🔧 Repair Database Schema"):
-            from src.schema_repair import show_schema_repair_tool
-            show_schema_repair_tool()
-        
-        return  # Exit function early
+            
+            # Also show repair tool link
+            st.markdown("If issues persist, use the database repair tool: ")
+            if st.button("🔧 Repair Database Schema"):
+                from src.database_maintenance import show_schema_repair_tool
+                show_schema_repair_tool()
+            
+            return  # Exit function early
     
     # Rest of the function continues with assigned subjects displayed...
     
@@ -1449,7 +1449,7 @@ def show_report():
         
         # Export to Excel button
         st.subheader("Download Reports")
-        buffer = io.BytesIO()
+        buffer = io.BytesIO()  # Fix: io.Bytes.IO() -> io.BytesIO()
         with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
             # Export all data
             all_students_df, _ = get_attendance_summary(
@@ -1560,7 +1560,7 @@ def show_report():
             st.dataframe(display_df, hide_index=True, use_container_width=True)
             
             # Export to Excel button
-            buffer = io.Bytes.IO()
+            buffer = io.BytesIO()
             with pd.ExcelWriter(buffer, engine='xlsxwriter') as writer:
                 display_df.to_excel(writer, sheet_name='Attendance Logs', index=False)
             st.download_button(
