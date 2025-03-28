@@ -6,18 +6,20 @@ import student_report
 import registration_form
 import subject_management
 import sqlite3
-from src.database_utils import execute_query, execute_query_df  # Use explicit src. prefix
 import time
-from src.global_css_handler import apply_global_css, enforce_fixed_padding
-import enhanced_db_explorer
-import admin_dashboard
-import importlib  # Add this import
-import pandas as pd  # Add missing import
+import importlib
+import pandas as pd
 import os
-import sys  # Make sure sys is imported
+import sys
+
+# Fix: Import both the module and the package correctly
+import src
+import database_utils
+from src.database_utils import execute_query, execute_query_df
+from src.global_css_handler import apply_global_css, enforce_fixed_padding
+from src.display_patch import patch_display_functions
 
 # Apply display patches first thing
-from src.display_patch import patch_display_functions
 patch_display_functions()
 
 # Define database path globally for consistency
@@ -144,22 +146,15 @@ try:
     schema_mapping = get_attendance_records_schema()
     print(f"Attendance schema mapping: {schema_mapping}")
     
-    # Fix duplicate student records if any exist
+    # Fix any database issues using the consolidated maintenance module
     try:
-        from scripts.fix_duplicate_records import fix_duplicate_student_records
+        from src.database_maintenance import fix_duplicate_student_records, repair_attendance_tables
         fix_duplicate_student_records()
         print("Fixed any duplicate student records")
+        repair_attendance_tables()
+        print("Attendance tables repair completed at startup")
     except Exception as e:
-        print(f"Error fixing duplicate student records: {e}")
-    
-    # Then run the more comprehensive repair if needed
-    if 'scripts.repair_attendance_tables' not in sys.modules:
-        try:
-            from scripts.repair_attendance_tables import repair_attendance_tables
-            repair_attendance_tables()
-            print("Attendance tables repair completed at startup")
-        except Exception as e:
-            print(f"Non-critical error during attendance table repair: {e}")
+        print(f"Non-critical error during database maintenance: {e}")
 except Exception as e:
     print(f"Error fixing attendance schema: {e}")
 
@@ -173,6 +168,7 @@ from src.database_sync import sync_user_tables
 def show_app():
     """Main application entry point"""
     # Ensure database consistency at startup
+    from src.database_sync import sync_user_tables
     sync_user_tables()
     
     # Ensure database is initialized at application start
@@ -197,11 +193,10 @@ def show_app():
     from src.global_css_handler import ensure_consistent_padding
     ensure_consistent_padding()
     
-    # FIX: Properly import and reload database_utils with correct path
-    import src.database_utils
-    importlib.reload(src.database_utils)
+    # Fix: Use the proper approach to reload modules - use the direct module reference
+    importlib.reload(database_utils)  # This works if "database_utils" is imported at the top
     
-    # Triple redundancy approach - layer 1: Import and run function, now with absolute path
+    # Triple redundancy approach - layer 1: Import and run function
     try:
         from src.database_utils import ensure_student_profiles_compatibility
         success = ensure_student_profiles_compatibility()
