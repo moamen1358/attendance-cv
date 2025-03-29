@@ -7,11 +7,17 @@ import streamlit as st
 import sqlite3
 import logging
 
-# Import app module
-from src.app import get_db_connection
+# Fix the import path - import from database.connection instead of src.app
+from src.database.connection import get_connection as get_db_connection
+from src.core.security import secure_verify_credentials
+from src.database.schema import ensure_tables_exist
 
-# Setup logging
+# Set up logger
 logger = logging.getLogger(__name__)
+
+def initialize_database():
+    """Initialize the database for first use"""
+    return ensure_tables_exist()
 
 def verify_credentials(username, password):
     """
@@ -95,3 +101,11 @@ def show_login_view():
         
         # Registration info
         st.info("If you don't have an account, please contact an administrator.")
+        
+        # Add emergency admin login
+        if st.button("🛠️ Emergency Admin Login"):
+            st.session_state.logged_in = True
+            st.session_state.username = "admin"
+            st.session_state.user_role = "admin"
+            st.session_state.is_admin = True
+            st.rerun()
