@@ -13,18 +13,10 @@ from time_format_utils import convert_to_ampm_format, normalize_time_format, tim
 from global_css_handler import apply_global_css  # Only import what we need
 from global_css_handler import ensure_consistent_padding
 
-# Page configuration
-st.set_page_config(
-    page_title="Student Attendance",
-    page_icon="📚",
-    layout="wide",
-)
-
 # Constants
 DATABASE_PATH = 'attendance_system.db'
 
-# Remove the initial CSS block that's being duplicated
-# CSS will now be applied from global_css_handler.py
+# Remove the page configuration as it's already set in app.py
 
 def get_db_connection():
     """Get a connection to the SQLite database"""
@@ -1379,11 +1371,6 @@ def show_student_report():
             display: flex;
             align-items: center;
             width: %;
-            margin: 0 !important;
-            padding: 0 !important;
-        }
-        
-        .dashboard-title {
             margin: 0 !important;
             padding: 0 !important;
             font-size: 1.5rem !important;

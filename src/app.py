@@ -9,6 +9,11 @@ The app provides different views based on the user's role:
 - Professor: Access to class attendance records and reports
 - Admin: Full system management and configuration
 """
+# Import page config first to set configuration
+from src.page_config import apply_page_config
+apply_page_config()
+
+# Only now import streamlit
 import streamlit as st
 import os
 import sys
@@ -631,7 +636,6 @@ def logout_user():
 
 if __name__ == "__main__":
     # This block only runs when app.py is executed directly
-    st.set_page_config(layout="wide")
     
     # CRITICAL: Import and run persistent session manager FIRST
     from persistent_session_manager import PersistentSessionManager
@@ -639,9 +643,9 @@ if __name__ == "__main__":
     session_manager.ensure_session_persistence()
     
     # Continue with existing code...
-    # CRITICAL: Import role_session_persistence as the very first step
-    import role_session_persistence
-    role_session_persistence.ensure_role_persistence()
+    # CRITICAL: Import session manager for role persistence
+    from src.core.session_manager import ensure_role_persistence
+    ensure_role_persistence()
     
     # CRITICAL: Restore roles from query params if present
     if "user_role" in st.query_params:
@@ -690,5 +694,6 @@ if __name__ == "__main__":
     if st.session_state.logged_in:
         show_app()
     else:
-        import login
-        login.main()
+        # Import login module function instead of the whole module
+        from src.login import main as login_main
+        login_main()
