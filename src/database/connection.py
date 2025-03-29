@@ -7,7 +7,6 @@ This module provides functionality for managing database connections:
 - Connection context management
 """
 import sqlite3
-import threading
 import logging
 import pandas as pd
 from contextlib import contextmanager
@@ -19,7 +18,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Database path with cross-platform compatibility
-DATABASE_PATH = Path('attendance_system.db')
+from src.constants import DATABASE_PATH
 
 def get_connection():
     """Get a connection to the database"""
@@ -48,15 +47,16 @@ def execute_query(query, params=None):
         else:
             cursor.execute(query)
         
-        # Note: We're returning the cursor directly,
-        # which keeps the connection open
+        conn.commit()
         return cursor
     except Exception as e:
-        conn.close()
+        conn.rollback()
         logger.error(f"Query error: {e}")
         logger.error(f"Query: {query}")
         logger.error(f"Params: {params}")
         raise
+    finally:
+        conn.close()
 
 def execute_query_df(query, params=None):
     """
