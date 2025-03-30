@@ -1,5 +1,5 @@
 # Core dependencies
-streamlit>=1.18.0
+streamlit>=1.27.0
 pandas>=1.5.0
 numpy>=1.22.0
 
@@ -12,9 +12,11 @@ sqlalchemy>=1.4.0
 scipy>=1.9.0
 
 # Machine learning and image processing
-opencv-python>=4.6.0
+opencv-python>=4.5.5
 pillow>=9.2.0
 scikit-learn>=1.1.0
+onnxruntime>=1.13.1
+insightface>=0.7.3
 
 # Security
 cryptography>=38.0.0
@@ -22,4 +24,5 @@ cryptography>=38.0.0
 # Utilities
 python-dotenv>=0.21.0
 tqdm>=4.64.0
+chromadb>=0.4.13
 

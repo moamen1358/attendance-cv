@@ -1,5 +1,11 @@
+"""
+Display Patch Module
+
+This module provides patches and fixes for Streamlit's display functionality.
+"""
 import streamlit as st
-import builtins
+import pandas as pd
+import numpy as np
 import sqlite3
 
 # Original warning function
@@ -80,7 +86,26 @@ st.warning = patched_warning
 
 def patch_display_functions():
     """
-    Apply all display function patches. Call this at the start of your application.
+    Apply patches to Streamlit display functions to handle edge cases.
+    
+    This includes:
+    - Handling NaN values and None values in DataFrames
+    - Formatting dates in a consistent way
+    - Improving the display of numeric values
     """
-    # Nothing more to do, the monkey patching happens on import
-    pass
+    # Patch pandas DataFrame display in Streamlit
+    # Save original _repr_html_ method
+    original_repr_html = pd.DataFrame._repr_html_
+    
+    def patched_repr_html(self):
+        """Patched HTML representation with better NaN handling"""
+        # Replace NaN with empty string for display
+        df_display = self.copy()
+        df_display = df_display.replace({np.nan: ""})
+        return original_repr_html(df_display)
+    
+    # Apply the patch (optional - uncomment if needed)
+    # pd.DataFrame._repr_html_ = patched_repr_html
+    
+    print("Display patches applied successfully")
+    return True

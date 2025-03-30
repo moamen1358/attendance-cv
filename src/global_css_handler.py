@@ -1,106 +1,152 @@
+"""
+Global CSS Handler Module
+
+This module provides consistent styling across the application
+by injecting CSS into Streamlit pages.
+"""
 import streamlit as st
 
 def apply_global_css():
-    """Apply global CSS styling to all pages"""
+    """Apply global CSS to Streamlit app for consistent styling"""
+    # Only inject once per session
+    if 'css_applied' not in st.session_state:
+        st.session_state.css_applied = True
+        
+        # Define CSS styles
+        css = """
+        <style>
+        /* Global font and spacing improvements */
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+        }
+        
+        /* Improve table styling */
+        .dataframe {
+            border-collapse: collapse;
+            margin: 25px 0;
+            font-size: 14px;
+            width: 100%;
+        }
+        
+        .dataframe th {
+            background-color: #1E88E5;
+            color: white;
+            text-align: left;
+            padding: 12px;
+            font-weight: 600;
+        }
+        
+        .dataframe td {
+            padding: 10px;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .dataframe tr:nth-of-type(even) {
+            background-color: #f3f3f3;
+        }
+        
+        .dataframe tr:hover {
+            background-color: #e1f5fe;
+        }
+        
+        /* Button improvements */
+        .stButton>button {
+            color: #ffffff;
+            background-color: #1E88E5;
+            border: none;
+            border-radius: 4px;
+            padding: 0.5rem 1rem;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        .stButton>button:hover {
+            background-color: #1565C0;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+        
+        /* Username container for consistent header styling */
+        .username-container {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 1rem;
+        }
+        
+        .username-text {
+            background-color: #f0f2f6;
+            padding: 8px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            font-size: 0.9rem;
+        }
+        
+        /* Admin username container */
+        .admin-username-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 10px;
+            background-color: #FFECB3;
+            border-radius: 8px;
+            margin-bottom: 10px;
+        }
+        
+        .admin-username-text {
+            font-weight: bold;
+            color: #E65100;
+        }
+        </style>
+        """
+        
+        # Inject CSS
+        st.markdown(css, unsafe_allow_html=True)
+
+def ensure_consistent_padding():
+    """Apply consistent padding to all containers"""
     st.markdown("""
     <style>
-    /* Global CSS for consistent appearance */
-    body {
-        font-family: 'Roboto', sans-serif;
+    .block-container {
+        padding-top: 1rem;
+        padding-bottom: 1rem;
+        padding-left: 5rem;
+        padding-right: 5rem;
     }
-    
-    /* Additional styles can be added here */
     </style>
     """, unsafe_allow_html=True)
 
 def enforce_fixed_padding():
-    """Force consistent 80px padding on both sides with aggressive approach"""
-    st.markdown("""
-    <style>
-    /* Super-aggressive force 80px padding on both sides with maximum specificity */
-    body .main .block-container,
-    .main .block-container,
-    div.block-container,
-    [data-testid="stAppViewBlockContainer"] div.block-container,
-    #root > div:nth-child(1) > div > div > div > section > div > div > div > div > div.block-container,
-    section[data-testid="stVerticalBlock"] > div > div > div,
-    .element-container .stBlock > div > div,
-    .main > div > div > div > div:not([data-testid="stSidebar"]) div.block-container,
-    [data-testid="stAppViewContainer"] .main .block-container {
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
-        padding-left: 80px !important;
-        padding-right: 80px !important;
-        max-width: unset !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Also add JavaScript to ensure padding after the page fully loads
+    """Enforce fixed padding with JavaScript for more reliability"""
     st.markdown("""
     <script>
-    // Run this script after the DOM is fully loaded
     document.addEventListener('DOMContentLoaded', function() {
-        function enforcePadding() {
-            // Get all possible container elements
-            const containers = document.querySelectorAll('.block-container, [data-testid="stAppViewBlockContainer"] div.block-container');
-            
-            // Apply the padding to each container
-            containers.forEach(function(container) {
-                container.style.setProperty('padding-left', '80px', 'important');
-                container.style.setProperty('padding-right', '80px', 'important');
-                container.style.setProperty('max-width', 'unset', 'important');
+        const style = document.createElement('style');
+        style.innerHTML = `
+            section[data-testid="stSidebar"] { 
+                width: 20rem !important;
+            }
+            .block-container {
+                padding-left: 5rem !important;
+                padding-right: 5rem !important;
+                max-width: none !important;
+            }
+        `;
+        document.head.appendChild(style);
+        
+        // Force padding on containers
+        function applyPadding() {
+            const containers = document.querySelectorAll('.block-container');
+            containers.forEach(container => {
+                container.style.paddingLeft = '5rem';
+                container.style.paddingRight = '5rem';
+                container.style.maxWidth = 'none';
             });
         }
         
-        // Apply immediately 
-        enforcePadding();
-        
-        // Apply again after a short delay to catch any late-loading elements
-        setTimeout(enforcePadding, 100);
-        setTimeout(enforcePadding, 500);
-        setTimeout(enforcePadding, 1000);
-        
-        // Apply when the window is resized
-        window.addEventListener('resize', enforcePadding);
-        
-        // Create a MutationObserver to detect DOM changes and reapply padding
-        const observer = new MutationObserver(function(mutations) {
-            enforcePadding();
-        });
-        
-        // Start observing the body for changes
-        observer.observe(document.body, { 
-            childList: true, 
-            subtree: true 
-        });
+        // Apply immediately and after a delay to ensure it's applied
+        applyPadding();
+        setTimeout(applyPadding, 100);
+        setTimeout(applyPadding, 500);
     });
     </script>
     """, unsafe_allow_html=True)
-
-# Function to apply padding to any page
-def ensure_consistent_padding():
-    """Call this at the beginning of each page to ensure consistent padding"""
-    if 'padding_enforced' not in st.session_state:
-        enforce_fixed_padding()
-        st.session_state.padding_enforced = True
-    
-    # Re-apply CSS on every page load to be absolutely sure
-    enforce_fixed_padding()
-
-# Keep these functions as empty functions for backward compatibility
-def apply_student_css():
-    """
-    Empty function for backward compatibility - 
-    All functionality now in apply_global_css()
-    """
-    enforce_fixed_padding()  # Make sure we still enforce padding even when this is called
-    pass
-
-# Add a function to reset the CSS flag (useful for testing)
-def reset_css_flag():
-    """Reset the CSS application flag to force reapplication of CSS"""
-    if 'css_applied' in st.session_state:
-        del st.session_state.css_applied
-    if 'padding_enforced' in st.session_state:
-        del st.session_state.padding_enforced

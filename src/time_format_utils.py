@@ -1,145 +1,111 @@
-from datetime import datetime, time
+"""
+Time Format Utilities Module
+
+This module provides utilities for handling time formats and calculations.
+"""
+from datetime import datetime, timedelta
+import re
+
+def normalize_time_format(time_str):
+    """
+    Normalize a time string to ensure it's in a consistent format (HH:MM AM/PM)
+    
+    Args:
+        time_str (str): Time string in various formats
+        
+    Returns:
+        str: Normalized time string in "HH:MM AM/PM" format
+    """
+    # Already in correct format
+    if re.match(r'\d{1,2}:\d{2}\s[AP]M', time_str):
+        return time_str
+    
+    # 24-hour format (HH:MM)
+    if re.match(r'\d{1,2}:\d{2}$', time_str):
+        try:
+            dt = datetime.strptime(time_str, "%H:%M")
+            return dt.strftime("%I:%M %p")
+        except:
+            pass
+    
+    # Try other common formats
+    formats = [
+        "%H:%M:%S",  # 24-hour with seconds
+        "%I:%M:%S %p",  # 12-hour with seconds
+        "%I%p",  # Like 9AM
+        "%I:%M%p"  # Like 9:30AM (no space)
+    ]
+    
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(time_str, fmt)
+            return dt.strftime("%I:%M %p")
+        except:
+            continue
+    
+    # Return original if no format matches
+    print(f"Warning: Could not normalize time format: {time_str}")
+    return time_str
 
 def convert_to_ampm_format(time_str):
     """
     Convert time string to AM/PM format
     
-    Handles both 24-hour format and existing AM/PM format
-    
     Args:
-        time_str (str): Time string in either "HH:MM" or "HH:MM AM/PM" format
+        time_str (str): Time string, likely in 24-hour format
         
     Returns:
-        str: Time in "HH:MM AM/PM" format
+        str: Time string in AM/PM format
     """
     try:
-        # Check if already in AM/PM format
-        if " AM" in time_str or " PM" in time_str:
-            return time_str
+        # Handle 24-hour format (HH:MM)
+        if re.match(r'\d{1,2}:\d{2}$', time_str):
+            dt = datetime.strptime(time_str, "%H:%M")
+            return dt.strftime("%I:%M %p")
         
-        # Try parsing as 24-hour format
-        time_obj = datetime.strptime(time_str, "%H:%M").time()
-        return time_obj.strftime("%I:%M %p")
-    except ValueError:
-        # Try other possible formats
-        try:
-            time_obj = datetime.strptime(time_str, "%H:%M:%S").time()
-            return time_obj.strftime("%I:%M %p")
-        except ValueError:
-            # Return original if can't parse
-            return time_str
-
-def convert_to_24hour_format(time_str):
-    """
-    Convert time string from AM/PM to 24-hour format
-    
-    Args:
-        time_str (str): Time string in "HH:MM AM/PM" format
-        
-    Returns:
-        str: Time in "HH:MM" format
-    """
-    try:
-        # Check if already in 24-hour format
-        if " AM" not in time_str and " PM" not in time_str:
-            return time_str
-            
-        time_obj = datetime.strptime(time_str, "%I:%M %p").time()
-        return time_obj.strftime("%H:%M")
-    except ValueError:
-        # Return original if can't parse
+        # If already in AM/PM format, return as is
+        return time_str
+    except:
+        # Return original if conversion fails
         return time_str
 
-def time_between(test_time, start_time, end_time):
+def time_between(start_time, end_time):
     """
-    Check if test_time is between start_time and end_time
-    
-    Works with both 24-hour and AM/PM formats
+    Calculate duration between two time strings
     
     Args:
-        test_time (str): Time to test
         start_time (str): Start time
         end_time (str): End time
         
     Returns:
-        bool: True if test_time is between start and end times
-    """
-    # Convert all times to datetime.time objects for comparison
-    try:
-        # First, ensure all times are in 24-hour format for comparison
-        test_24h = convert_to_24hour_format(test_time)
-        start_24h = convert_to_24hour_format(start_time)
-        end_24h = convert_to_24hour_format(end_time)
-        
-        # Parse as time objects
-        test_obj = datetime.strptime(test_24h, "%H:%M").time()
-        start_obj = datetime.strptime(start_24h, "%H:%M").time()
-        end_obj = datetime.strptime(end_24h, "%H:%M").time()
-        
-        # Compare times
-        return start_obj <= test_obj <= end_obj
-    except ValueError:
-        # If parsing fails, return False
-        return False
-
-def get_current_time_ampm():
-    """Get current time in AM/PM format"""
-    return datetime.now().strftime("%I:%M %p")
-
-def normalize_time_format(time_str):
-    """
-    Normalize time format for consistent storage
-    
-    - Ensures times are stored in AM/PM format
-    - Handles various input formats
-    - Returns a standardized format
-    
-    Args:
-        time_str (str): Time string in any reasonable format
-        
-    Returns:
-        str: Time in standardized "HH:MM AM/PM" format
+        str: Duration in hours and minutes (e.g., "2h 30m")
     """
     try:
-        # Try various formats
-        for fmt in ["%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M%p", "%I:%M %P", "%I:%M%P", "%I%p"]:
-            try:
-                time_obj = datetime.strptime(time_str, fmt).time()
-                return time_obj.strftime("%I:%M %p")
-            except ValueError:
-                continue
+        # Normalize both times to ensure consistent format
+        start_time = normalize_time_format(start_time)
+        end_time = normalize_time_format(end_time)
         
-        # If all parsing attempts fail
-        return time_str
-    except Exception:
-        return time_str
-
-def format_datetime_for_db(date_str, time_str):
-    """
-    Combine date and time strings into a datetime string format suitable for SQLite
-    
-    Args:
-        date_str (str): Date in YYYY-MM-DD format
-        time_str (str): Time in either 12 or 24 hour format
-    
-    Returns:
-        str: Datetime string in SQLite compatible format
-    """
-    try:
-        # Ensure time is normalized
-        time_str = normalize_time_format(time_str)
+        # Parse times
+        start = datetime.strptime(start_time, "%I:%M %p")
+        end = datetime.strptime(end_time, "%I:%M %p")
         
-        # Combine date and time
-        datetime_str = f"{date_str} {time_str}"
+        # Calculate difference
+        diff = end - start
         
-        # Parse as datetime
-        if "AM" in datetime_str or "PM" in datetime_str:
-            dt_obj = datetime.strptime(datetime_str, "%Y-%m-%d %I:%M %p")
+        # Handle negative time (crossing midnight)
+        if diff.total_seconds() < 0:
+            end = end + timedelta(days=1)
+            diff = end - start
+        
+        # Calculate hours and minutes
+        hours, remainder = divmod(diff.total_seconds(), 3600)
+        minutes = remainder // 60
+        
+        # Format result
+        if hours > 0:
+            return f"{int(hours)}h {int(minutes)}m"
         else:
-            dt_obj = datetime.strptime(datetime_str, "%Y-%m-%d %H:%M")
-            
-        # Return in SQLite format
-        return dt_obj.strftime("%Y-%m-%d %H:%M:%S")
-    except ValueError:
-        # If parsing fails, return original
-        return f"{date_str} {time_str}"
+            return f"{int(minutes)}m"
+    except:
+        # Return fallback if calculation fails
+        return "Unknown"
