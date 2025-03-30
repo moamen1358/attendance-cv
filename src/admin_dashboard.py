@@ -2,6 +2,37 @@
 from admin_validator import enforce_admin_role
 
 def show_admin_dashboard():
+    # Hide sidebar explicitly with CSS
+    st.markdown("""
+    <style>
+    [data-testid="stSidebar"] {
+        display: none;
+    }
+    
+    /* Make admin page fit full width with 80px padding */
+    .main .block-container {
+        max-width: 100%;
+        padding-top: 80px !important;
+        padding-right: 80px !important;
+        padding-left: 80px !important;
+        padding-bottom: 80px !important;
+    }
+    
+    /* Remove default max-width restriction */
+    .css-1n76uvr, .css-18e3th9 {
+        max-width: 100%;
+        padding-top: 0px;
+    }
+    
+    /* Responsive padding for mobile */
+    @media (max-width: 768px) {
+        .main .block-container {
+            padding: 40px !important;
+        }
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
     """
     Display the admin dashboard with key management functions
     """

@@ -1317,6 +1317,15 @@ def create_subject_bar_chart(history_df):
 # Restore dashboard title while maintaining zero spacing
 
 def show_student_report():
+    # Hide sidebar explicitly with CSS
+    st.markdown("""
+    <style>
+    [data-testid="stSidebar"] {
+        display: none;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # CRITICAL ADMIN SAFETY CHECK - immediately redirect admin users
     if st.session_state.get('user_role', '').lower() == 'admin' or 'admin' in st.session_state.get('username', '').lower():
         st.warning("Admin users should not use the student dashboard. Redirecting to admin dashboard...")
@@ -1359,11 +1368,11 @@ def show_student_report():
         st.session_state.student_css_added = True
         st.markdown("""
         <style>
-        /* Super aggressive top space elimination specific to student dashboard */
+        /* Set consistent 80px padding for student dashboard */
         body .main .block-container,
         .main .block-container,
         div.block-container {
-            padding-top: 0 !important;
+            padding: 80px !important;
             margin-top: 0 !important;
         }
         
@@ -1374,14 +1383,18 @@ def show_student_report():
             width: %;
             margin: 0 !important;
             padding: 0 !important;
-        }
-        
-        .dashboard-title {
-            margin: 0 !important;
-            padding: 0 !important;
             font-size: 1.5rem !important;
             color: #1E88E5 !important;
             font-weight: bold !important;
+        }
+        
+        /* Make sure content doesn't get too close to edges on mobile */
+        @media (max-width: 768px) {
+            body .main .block-container,
+            .main .block-container,
+            div.block-container {
+                padding: 40px !important;
+            }
         }
         </style>
         """, unsafe_allow_html=True)
