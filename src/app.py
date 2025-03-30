@@ -1,3 +1,12 @@
+import streamlit as st
+# Set page config as the very first Streamlit command
+st.set_page_config(
+    page_title="Attendance Management System",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="auto"
+)
+
 """
 Main Application Entry Point
 
@@ -9,7 +18,6 @@ The app provides different views based on the user's role:
 - Professor: Access to class attendance records and reports
 - Admin: Full system management and configuration
 """
-import streamlit as st
 import os
 import sys
 import sqlite3
@@ -31,11 +39,11 @@ import student_report
 import registration_form
 import subject_management
 
-# Use new consolidated database package
-from src.database import execute_query, execute_query_df, get_connection
-from src.database.maintenance import repair_attendance_tables
-from src.global_css_handler import apply_global_css, enforce_fixed_padding
-from src.display_patch import patch_display_functions
+# Use direct imports without src prefix
+from database_utils import execute_query, execute_query_df
+from database_maintenance import repair_attendance_tables
+from global_css_handler import apply_global_css, enforce_fixed_padding
+from display_patch import patch_display_functions
 
 # Configure logging
 logging.basicConfig(
@@ -54,7 +62,7 @@ logger.info(f"Using database at: {DATABASE_PATH.absolute()}")
 # Run attendance table repair early in startup
 try:
     # First fix schema detection
-    from src.database_utils import get_attendance_records_schema
+    from database_utils import get_attendance_records_schema
     logger.info("Pre-initializing attendance records schema...")
     schema_mapping = get_attendance_records_schema()
     logger.info(f"Attendance schema mapping: {schema_mapping}")
@@ -66,21 +74,21 @@ except Exception as e:
     logger.error(f"Error during database maintenance: {e}")
 
 # Now import bootstrap tables after ensuring critical tables exist
-from src.bootstrap_tables import bootstrap_essential_tables
+from bootstrap_tables import bootstrap_essential_tables
 bootstrap_essential_tables()  # Run table creation at import time
 
 # Add import for database sync
-from src.database_sync import sync_user_tables
+from database_sync import sync_user_tables
 
 def show_app():
     """Main application entry point"""
     # Ensure database consistency at startup
-    from src.database_sync import sync_user_tables
+    from database_sync import sync_user_tables
     sync_user_tables()
     
     # Ensure database is initialized at application start
     if 'database_initialized' not in st.session_state:
-        from src.login import initialize_database
+        from login import initialize_database
         logger.info("Initializing database from app.py")
         st.session_state.database_initialized = initialize_database()
     
@@ -97,7 +105,7 @@ def show_app():
     session_manager.inject_session_js()
     
     # Apply consistent padding immediately at app start
-    from src.global_css_handler import ensure_consistent_padding
+    from global_css_handler import ensure_consistent_padding
     ensure_consistent_padding()
     
     # Fix: Make module reloading more defensive by using try-except
@@ -112,7 +120,7 @@ def show_app():
     
     # Triple redundancy approach - layer 1: Import and run function
     try:
-        from src.database_utils import ensure_student_profiles_compatibility
+        from database_utils import ensure_student_profiles_compatibility
         success = ensure_student_profiles_compatibility()
         logger.info(f"Student profiles compatibility setup: {'SUCCESS' if success else 'FAILED'}")
         
@@ -212,7 +220,7 @@ def show_app():
                 logger.error(f"Initial table creation error: {e}")
                 
             # Then run our compatibility function
-            from src.database_utils import ensure_student_profiles_compatibility
+            from database_utils import ensure_student_profiles_compatibility
             ensure_student_profiles_compatibility()
             
             # Now check for the table or view

@@ -5,8 +5,8 @@ import pandas as pd
 # Constants
 DATABASE_PATH = 'attendance_system.db'
 
-# Add import for database sync
-from src.database_sync import sync_user_tables
+# Add import for database sync - using direct import
+from database_sync import sync_user_tables
 
 def get_db_connection():
     """Get a connection to the database"""

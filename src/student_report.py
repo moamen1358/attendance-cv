@@ -13,13 +13,6 @@ from time_format_utils import convert_to_ampm_format, normalize_time_format, tim
 from global_css_handler import apply_global_css  # Only import what we need
 from global_css_handler import ensure_consistent_padding
 
-# Page configuration
-st.set_page_config(
-    page_title="Student Attendance",
-    page_icon="📚",
-    layout="wide",
-)
-
 # Constants
 DATABASE_PATH = 'attendance_system.db'
 

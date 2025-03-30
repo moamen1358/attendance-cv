@@ -8,12 +8,12 @@ import sys
 # Add utils directory to path
 sys.path.append('/home/invisa/Desktop/my_grad_streamlit')
 
-# Update imports to use utils directory
-from src.database_utils import execute_query, execute_query_df
+# Update imports to use direct module imports without src prefix
+from database_utils import execute_query, execute_query_df
 import hashlib
 
 # Add import for database synchronization
-from src.database_sync import sync_user_tables, register_user
+from database_sync import sync_user_tables, register_user
 
 def create_connection():
     """Create a connection to the database with absolute path"""
