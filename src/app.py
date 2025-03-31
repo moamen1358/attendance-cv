@@ -82,6 +82,11 @@ from database_sync import sync_user_tables
 
 def show_app():
     """Main application entry point"""
+    # Apply global CSS immediately at app startup before any other code
+    from global_css_handler import apply_global_css, enforce_fixed_padding
+    apply_global_css()
+    enforce_fixed_padding()
+    
     # Ensure database consistency at startup
     from database_sync import sync_user_tables
     sync_user_tables()
@@ -151,6 +156,34 @@ def show_app():
         logger.error(f"Error in final table check: {e}")
     finally:
         conn.close()
+    
+    # Make sure full-width is enforced after login
+    st.markdown("""
+    <script>
+        // Ensure full width layout is enforced even after login
+        function enforcePersistentFullWidth() {
+            // Override container widths
+            document.querySelectorAll('.block-container, .main .block-container').forEach(el => {
+                el.style.maxWidth = '100%';
+                el.style.width = '100%';
+                el.style.paddingLeft = '40px';
+                el.style.paddingRight = '40px';
+            });
+            
+            document.querySelectorAll('.element-container, [data-testid="stVerticalBlock"]').forEach(el => {
+                el.style.maxWidth = '100%';
+                el.style.width = '100%';
+            });
+        }
+        
+        // Apply and periodically reapply
+        enforcePersistentFullWidth();
+        setInterval(enforcePersistentFullWidth, 1000);
+        
+        // Store preference in localStorage
+        localStorage.setItem('fullWidthLayout', 'enabled');
+    </script>
+    """, unsafe_allow_html=True)
     
     # Get user info from session state
     username = st.session_state.get('username', 'Unknown')
