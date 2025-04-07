@@ -144,6 +144,15 @@ def apply_global_css():
         box-sizing: border-box;
     }
     
+    /* Admin red separator line */
+    .admin-red-separator {
+        height: 3px;
+        background-color: #e53935;
+        margin: 15px 0;
+        border-radius: 1.5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+    }
+    
     .admin-username-text {
         font-weight: bold;
         color: #E65100;
@@ -204,6 +213,71 @@ def apply_global_css():
         margin-bottom: 1.2rem;
         width: 100%;
     }
+    
+    /* Remove ALL background colors from tab elements */
+    button[data-baseweb="tab"],
+    button[data-testid="stTab"],
+    button[role="tab"],
+    .st-as, .st-at, .st-au, .st-av, .st-aw,
+    [data-baseweb="tab"],
+    [role="tab"] {
+        background-color: transparent !important;
+        background-image: none !important;
+        border: none !important;
+        box-shadow: none !important;
+        outline: none !important;
+        /* Add right border as vertical separator */
+        border-right: 2px solid #e53935 !important;
+        margin-right: 4px !important;
+        padding-right: 8px !important;
+        position: relative !important;
+    }
+    
+    /* Remove border from last tab */
+    button[data-testid="stTab"]:last-child,
+    button[data-baseweb="tab"]:last-child,
+    [role="tab"]:last-child {
+        border-right: none !important;
+        margin-right: 0 !important;
+    }
+
+    /* Ensure active/selected tab states also have no background */
+    button[data-baseweb="tab"][aria-selected="true"],
+    button[data-testid="stTab"][aria-selected="true"],
+    [role="tab"][aria-selected="true"],
+    .st-bs[aria-selected="true"] {
+        background-color: transparent !important;
+        background-image: none !important;
+        box-shadow: none !important;
+        border-bottom-color: #ddd !important;
+        color: inherit !important;
+    }
+    
+    /* Ensure tab container has padding for the separators */
+    div[role="tablist"] {
+        padding: 0 5px !important;
+        display: flex !important;
+        align-items: center !important;
+    }
+    
+    /* Fix hover state to avoid background color */
+    button[data-baseweb="tab"]:hover,
+    button[data-testid="stTab"]:hover,
+    [role="tab"]:hover {
+        background-color: transparent !important;
+        background-image: none !important;
+        color: inherit !important;
+        text-decoration: underline !important;
+    }
+    
+    /* Fix tab panel containers */
+    [role="tabpanel"],
+    [data-testid="stTabContent"] {
+        background-color: transparent !important;
+        background-image: none !important;
+        border: none !important;
+    }
+    
     </style>
     """
     
