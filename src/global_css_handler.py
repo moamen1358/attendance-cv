@@ -130,18 +130,24 @@ def apply_global_css():
         padding: 0.5rem 1.2rem !important;
     }
     
-    /* Admin username container - UPDATED TO MATCH BUTTON HEIGHT */
+    /* Admin username container - UPDATED TO REMOVE BACKGROUND */
     .admin-username-container {
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 10px;
         padding: 0.5rem 1.2rem;
-        background-color: #FFECB3;
+        background-color: transparent !important; /* Removed background color */
         border-radius: 8px;
         margin-bottom: 10px;
         height: 38px;
         box-sizing: border-box;
+    }
+    
+    .admin-username-text {
+        font-weight: bold;
+        color: #E65100;
+        line-height: 1;
     }
     
     /* Admin red separator line */
@@ -151,12 +157,6 @@ def apply_global_css():
         margin: 15px 0;
         border-radius: 1.5px;
         box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-    }
-    
-    .admin-username-text {
-        font-weight: bold;
-        color: #E65100;
-        line-height: 1;
     }
     
     /* Admin sidebar specific styling for consistent height */
@@ -226,8 +226,8 @@ def apply_global_css():
         border: none !important;
         box-shadow: none !important;
         outline: none !important;
-        /* Add right border as vertical separator */
-        border-right: 2px solid #e53935 !important;
+        /* Remove red line separator */
+        border-right: none !important;
         margin-right: 4px !important;
         padding-right: 8px !important;
         position: relative !important;
