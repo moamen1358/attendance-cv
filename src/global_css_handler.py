@@ -130,6 +130,37 @@ def apply_global_css():
         padding: 0.5rem 1.2rem !important;
     }
     
+    /* Admin username container - UPDATED TO MATCH BUTTON HEIGHT */
+    .admin-username-container {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 10px;
+        padding: 0.5rem 1.2rem;
+        background-color: #FFECB3;
+        border-radius: 8px;
+        margin-bottom: 10px;
+        height: 38px;
+        box-sizing: border-box;
+    }
+    
+    .admin-username-text {
+        font-weight: bold;
+        color: #E65100;
+        line-height: 1;
+    }
+    
+    /* Admin sidebar specific styling for consistent height */
+    [data-testid="stSidebar"] .admin-username-container {
+        height: 38px;
+        margin-bottom: 16px;
+    }
+    
+    [data-testid="stSidebar"] .stButton > button {
+        height: 38px;
+        box-sizing: border-box;
+    }
+    
     /* Username container for consistent header styling */
     .username-container {
         display: flex;
@@ -172,23 +203,6 @@ def apply_global_css():
         align-items: center;
         margin-bottom: 1.2rem;
         width: 100%;
-    }
-    
-    /* Admin username container */
-    .admin-username-container {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        gap: 10px;
-        padding: 10px;
-        background-color: #FFECB3;
-        border-radius: 8px;
-        margin-bottom: 10px;
-    }
-    
-    .admin-username-text {
-        font-weight: bold;
-        color: #E65100;
     }
     </style>
     """

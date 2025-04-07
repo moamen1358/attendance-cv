@@ -580,6 +580,38 @@ def show_subject_management():
         margin-bottom: 0.5rem;
         border-radius: 0 0.25rem 0.25rem 0;
     }
+    
+    /* Complete removal of background color from tabs */
+    [data-testid="stTabs"] {
+        background-color: transparent !important;
+    }
+    [data-testid="stTabsContent"] {
+        background-color: transparent !important;
+        border: none !important;
+    }
+    div[role="tablist"] {
+        background-color: transparent !important;
+    }
+    div[role="tab"] {
+        background-color: transparent !important;
+        border: none !important;
+        border-bottom: 2px solid transparent;
+        transition: all 0.3s ease;
+    }
+    div[role="tab"][aria-selected="true"] {
+        background-color: transparent !important;
+        border-bottom-color: #1E88E5;
+        color: #1E88E5;
+        box-shadow: none !important;
+    }
+    div[role="tab"]:hover {
+        background-color: transparent !important;
+        color: #1565C0;
+    }
+    [data-testid="stTabContent"] {
+        padding-top: 20px;
+        background-color: transparent !important;
+    }
     </style>
     """, unsafe_allow_html=True)
     

@@ -396,10 +396,10 @@ def show_app():
             
             # Always show sidebar for admin
             with st.sidebar:
-                # Updated sidebar header with centered style
+                # Updated sidebar header with centered style and fixed height
                 st.markdown(f"""
                 <div class="admin-username-container">
-                    <span style="font-size: 24px;">👤</span>
+                    <span style="font-size: 20px; line-height: 1;">👤</span>
                     <span class="admin-username-text">{username} (Admin)</span>
                 </div>
                 """, unsafe_allow_html=True)
@@ -409,13 +409,6 @@ def show_app():
                     logout_user()
                 
                 # Add a subtle divider
-                st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
-                
-                # Show admin dashboard button at top of sidebar
-                if st.button("🏠 Admin Home", use_container_width=True):
-                    st.session_state.current_page = "Admin Dashboard"
-                    st.rerun()
-                
                 st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
                 
                 # Create a radio button for navigation - using filtered nav_pages
