@@ -591,24 +591,30 @@ def show_app():
         </script>
         """, unsafe_allow_html=True)
         
-        # Top navigation bar with title and user info in a better layout (matching student report)
+        # IMPROVED LAYOUT: Put title, username and buttons all in the same container - MATCHING STUDENT LAYOUT
+        st.markdown('<div style="margin-top: 0; padding-top: 0;">', unsafe_allow_html=True)
         top_col1, top_col2 = st.columns([3, 2])
         
+        # Put the dashboard title in the first column
         with top_col1:
-            st.markdown("## 📚 Teacher Dashboard", unsafe_allow_html=False)
+            st.markdown("""
+            <div class="dashboard-header">
+                <h2 class="dashboard-title">📚 Teacher Dashboard</h2>
+            </div>
+            """, unsafe_allow_html=True)
         
         # User info and buttons in column 2
         with top_col2:
-            # Username display with right alignment
+            # Username display with right alignment - USING THE SAME STYLING AS STUDENT
             st.markdown(f"""
             <div class="username-container">
-                <div class="username-text">
-                    👤 {username}
+                <div class="username-text" style="font-size: 0.8rem;">
+                    👤 {username} | Professor
                 </div>
             </div>
             """, unsafe_allow_html=True)
             
-            # Refresh and logout buttons side by side
+            # Two buttons side by side - MATCHES STUDENT LAYOUT
             button_col1, button_col2 = st.columns(2)
             
             with button_col1:
@@ -620,6 +626,8 @@ def show_app():
                 # Logout button
                 if st.button("🚪 Logout", key="prof_logout", use_container_width=True):
                     logout_user()
+        
+        st.markdown('</div>', unsafe_allow_html=True)
         
         # Always show reports page for professor role
         report.show_report()

@@ -86,20 +86,48 @@ def apply_global_css():
         background-color: #e1f5fe;
     }
     
-    /* Button improvements */
-    .stButton>button {
-        color: #ffffff;
-        background-color: #1E88E5;
-        border: none;
-        border-radius: 4px;
-        padding: 0.5rem 1rem;
-        font-weight: 600;
-        transition: all 0.2s ease;
+    /* Enhanced button improvements with rounded styling - APPLIED TO ALL BUTTONS INCLUDING ADMIN PAGES */
+    .stButton>button,
+    button.css-e12lpz,
+    button.st-bq,
+    button.st-bu,
+    button.st-ae,
+    button.st-af,
+    .stButton>button[kind="primary"],
+    .stSidebar .stButton>button,
+    [data-testid="stSidebar"] .stButton>button {
+        color: #ffffff !important;
+        background-color: #1E88E5 !important;
+        border: none !important;
+        border-radius: 50px !important;  /* Fully rounded buttons */
+        padding: 0.5rem 1.2rem !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) !important;
     }
     
-    .stButton>button:hover {
-        background-color: #1565C0;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    .stButton>button:hover,
+    button.css-e12lpz:hover,
+    button.st-bq:hover,
+    button.st-bu:hover,
+    button.st-ae:hover,
+    button.st-af:hover,
+    .stButton>button[kind="primary"]:hover,
+    .stSidebar .stButton>button:hover,
+    [data-testid="stSidebar"] .stButton>button:hover {
+        background-color: #1565C0 !important;
+        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2) !important;
+        transform: translateY(-1px) !important;
+    }
+    
+    /* Admin-specific button styling */
+    .admin-page .stButton>button,
+    .admin_dashboard .stButton>button,
+    #admin-section .stButton>button,
+    #quick-access-section .stButton>button,
+    div[data-testid="stSidebar"] .stButton>button {
+        border-radius: 50px !important;
+        padding: 0.5rem 1.2rem !important;
     }
     
     /* Username container for consistent header styling */
@@ -109,12 +137,41 @@ def apply_global_css():
         margin-bottom: 1rem;
     }
     
+    /* Updated username text styling for student users */
     .username-text {
-        background-color: #f0f2f6;
+        background: linear-gradient(to right, #4CAF50, #2E7D32);
+        color: white;
         padding: 8px 15px;
         border-radius: 20px;
         font-weight: bold;
         font-size: 0.9rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+        border: 1px solid #2E7D32;
+    }
+    
+    /* Professor username text styling with white background */
+    .professor-username-text {
+        background: white;
+        color: #1E88E5;
+        padding: 10px 20px;
+        border-radius: 20px;
+        font-weight: bold;
+        font-size: 1rem;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        border: 1px solid #1E88E5;
+        text-align: center;
+        margin: 0 auto 15px auto;
+        display: inline-block;
+    }
+    
+    /* Professor username container for centered display */
+    .professor-username-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin-bottom: 1.2rem;
+        width: 100%;
     }
     
     /* Admin username container */
