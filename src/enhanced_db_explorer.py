@@ -4,6 +4,8 @@ from database_utils import execute_query, execute_query_df
 import pandas as pd
 import re
 from datetime import datetime
+# Add import for professor assignments functionality
+import importlib
 
 # Define a list of tables that should be hidden from the UI
 HIDDEN_TABLES = [
@@ -103,292 +105,384 @@ def show_db_explorer():
     if 'search_term' not in st.session_state:
         st.session_state.search_term = ""
     
-    # Move table selection to main content
-    tables = st.session_state.tables
+    # Create a tab for professor assignments at the top level
+    tab_main, tab_prof_assign = st.tabs(["Database Tables", "Professor Assignments"])
     
-    if not tables:
-        st.info("No tables found in the database. Create a new table below.")
+    with tab_prof_assign:
+        st.header("Professor Subject Assignments")
         
-        # Move create table functionality to main content for empty database
-        create_new_table()
-    else:
-        # Table selection at the top of main content
-        # Modified to use full width instead of columns since refresh button is removed
-        selected_table = st.selectbox(
-            "Select Table",
-            tables,
-            index=tables.index(st.session_state.selected_table) if st.session_state.selected_table in tables else 0,
-            key="table_selector"
-        )
-        
-        if selected_table != st.session_state.selected_table:
-            st.session_state.selected_table = selected_table
-            st.session_state.editing_row = None
-            st.session_state.search_term = ""
-            st.rerun()
-        
-        table = st.session_state.selected_table
-        columns = get_column_names(table)
-        primary_keys = get_primary_key(table)
-        
-        # Get row count
-        row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
-        row_count = row_count_result[0][0] if row_count_result else 0
-        
-        # Table header with stats
-        st.markdown(f"""
-        <div style="background-color:#f5f5f5; padding:10px; border-radius:5px; margin:10px 0;">
-            <h3 style="margin:0;">📊 {table}</h3>
-            <p style="margin:5px 0;"><b>Columns:</b> {len(columns)} | <b>Rows:</b> {row_count} | <b>Primary Key:</b> {', '.join(primary_keys) if primary_keys else 'None'}</p>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Create tabs for different operations - UPDATED to include Database Operations tab
-        view_tab, add_tab, delete_tab, sql_tab, manage_tab = st.tabs(["View Data", "Add Row", "Delete Records", "SQL Query", "Database Operations"])
-        
-        # VIEW DATA TAB
-        with view_tab:
-            # Search control only (REMOVE pagination controls)
-            search_col = st.columns(1)[0]
+        # Try to import the professor_subject_assignment module
+        try:
+            # Import dynamically to avoid issues if the module isn't available
+            prof_subject_module = importlib.import_module('professor_subject_assignment')
+            prof_subject_module.show_professor_assignments()
+        except (ImportError, AttributeError) as e:
+            st.error(f"Could not load Professor Subject Assignment functionality: {e}")
             
-            with search_col:
-                search_term = st.text_input("🔍 Search in any column:", value=st.session_state.search_term)
-                if search_term != st.session_state.search_term:
-                    st.session_state.search_term = search_term
-                    st.rerun()
+            # Fallback implementation
+            st.write("### Manual Professor Subject Assignment")
+            
+            # Get professors from user_accounts
+            try:
+                professors_df = execute_query_df("SELECT username FROM user_accounts WHERE role = 'professor' ORDER BY username")
+                professors = professors_df['username'].tolist() if not professors_df.empty else []
+                
+                # Get subjects
+                subjects_df = execute_query_df("SELECT subject_id, name FROM subjects ORDER BY name")
+                subjects = [(row['subject_id'], row['name']) for _, row in subjects_df.iterrows()] if not subjects_df.empty else []
+                
+                if professors and subjects:
+                    with st.form("manual_assignment"):
+                        selected_prof = st.selectbox("Select Professor:", professors)
+                        selected_subject = st.selectbox("Select Subject:", 
+                                                       options=[s[0] for s in subjects],
+                                                       format_func=lambda x: next((s[1] for s in subjects if s[0] == x), "Unknown"))
+                        
+                        if st.form_submit_button("Assign Subject"):
+                            try:
+                                # Check if assignment already exists
+                                check_query = """
+                                SELECT id FROM professor_subject_assignments 
+                                WHERE professor_username = ? AND subject_id = ?
+                                """
+                                result = execute_query(check_query, (selected_prof, selected_subject), fetch=True)
+                                
+                                if result:
+                                    st.info("This assignment already exists.")
+                                else:
+                                    # Create new assignment
+                                    insert_query = """
+                                    INSERT INTO professor_subject_assignments 
+                                    (professor_username, subject_id) VALUES (?, ?)
+                                    """
+                                    execute_query(insert_query, (selected_prof, selected_subject), commit=True)
+                                    st.success("Subject assigned successfully!")
+                            except Exception as e:
+                                st.error(f"Error assigning subject: {e}")
+                    
+                    # Show current assignments
+                    st.subheader("Current Assignments")
+                    try:
+                        assignments_query = """
+                        SELECT a.id, a.professor_username, s.name as subject_name
+                        FROM professor_subject_assignments a
+                        JOIN subjects s ON a.subject_id = s.subject_id
+                        ORDER BY a.professor_username, s.name
+                        """
+                        assignments_df = execute_query_df(assignments_query)
+                        
+                        if not assignments_df.empty:
+                            st.dataframe(assignments_df)
+                            
+                            # Add remove functionality
+                            assignment_to_remove = st.selectbox("Select assignment to remove:", 
+                                                              assignments_df['id'].tolist(),
+                                                              format_func=lambda x: f"{assignments_df[assignments_df['id']==x]['professor_username'].iloc[0]} - {assignments_df[assignments_df['id']==x]['subject_name'].iloc[0]}")
+                            
+                            if st.button("Remove Assignment"):
+                                try:
+                                    delete_query = "DELETE FROM professor_subject_assignments WHERE id = ?"
+                                    execute_query(delete_query, (assignment_to_remove,), commit=True)
+                                    st.success("Assignment removed successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error removing assignment: {e}")
+                        else:
+                            st.info("No assignments found.")
+                    except Exception as e:
+                        st.error(f"Error loading assignments: {e}")
+                else:
+                    st.warning("No professors or subjects found in the database.")
+            except Exception as e:
+                st.error(f"Error setting up manual assignment: {e}")
+    
+    with tab_main:
+        # Move table selection to main content
+        tables = st.session_state.tables
         
+        if not tables:
+            st.info("No tables found in the database. Create a new table below.")
+            
+            # Move create table functionality to main content for empty database
+            create_new_table()
+        else:
+            # Table selection at the top of main content
+            # Modified to use full width instead of columns since refresh button is removed
+            selected_table = st.selectbox(
+                "Select Table",
+                tables,
+                index=tables.index(st.session_state.selected_table) if st.session_state.selected_table in tables else 0,
+                key="table_selector"
+            )
+            
+            if selected_table != st.session_state.selected_table:
+                st.session_state.selected_table = selected_table
+                st.session_state.editing_row = None
+                st.session_state.search_term = ""
+                st.rerun()
+            
+            table = st.session_state.selected_table
+            columns = get_column_names(table)
+            primary_keys = get_primary_key(table)
+            
             # Get row count
             row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
             row_count = row_count_result[0][0] if row_count_result else 0
-        
-            # Build query without pagination limits
-            if st.session_state.search_term:
-                # Build search condition for each column
-                search_conditions = []
-                for col in columns:
-                    search_conditions.append(f"{col} LIKE ?")
-                
-                # Combine conditions with OR (removed LIMIT and OFFSET)
-                search_query = f"SELECT * FROM {table} WHERE " + " OR ".join(search_conditions)
-                
-                # Prepare search parameters
-                search_params = [f"%{st.session_state.search_term}%"] * len(columns)
-                
-                # Execute search query
-                conn = sqlite3.connect('attendance_system.db')
-                df = execute_query_df(search_query, search_params)
-                conn.close()
-            else:
-                # Simple query without pagination
-                query = f"SELECT * FROM {table};"
-                conn = sqlite3.connect('attendance_system.db')
-                df = execute_query_df(query)
-                conn.close()
-        
-            # Show record count with filter info
-            showing = len(df)
+            
+            # Table header with stats
             st.markdown(f"""
-                <div style="margin:10px 0;">
-                    <div>Showing <b>{showing}</b> of <b>{row_count:,}</b> records {f"(filtered)" if st.session_state.search_term else ""}</div>
-                </div>
+            <div style="background-color:#f5f5f5; padding:10px; border-radius:5px; margin:10px 0;">
+                <h3 style="margin:0;">📊 {table}</h3>
+                <p style="margin:5px 0;"><b>Columns:</b> {len(columns)} | <b>Rows:</b> {row_count} | <b>Primary Key:</b> {', '.join(primary_keys) if primary_keys else 'None'}</p>
+            </div>
             """, unsafe_allow_html=True)
-        
-            # Display table data with edit functionality
-            if not df.empty:
-                edited_df = st.data_editor(
-                    df,
-                    hide_index=True,
-                    use_container_width=True,
-                    num_rows="fixed",
-                    key="data_editor"
-                )
-                
-                # Detect changes and update database
-                if not df.equals(edited_df):
-                    if st.button("Save Changes", type="primary"):
-                        try:
-                            # Find the changed rows
-                            for index, row in edited_df.iterrows():
-                                if not df.iloc[index].equals(row):
-                                    # Get primary key value for this row
-                                    pk_values = {}
-                                    for pk in primary_keys:
-                                        pk_values[pk] = df.iloc[index][pk]
-                                    
-                                    # Build UPDATE statement
-                                    update_cols = []
-                                    update_vals = []
-                                    
-                                    for col in columns:
-                                        if df.iloc[index][col] != row[col]:
-                                            update_cols.append(f"{col} = ?")
-                                            update_vals.append(row[col])
-                                    
-                                    # Add WHERE clause parameters
-                                    where_conditions = []
-                                    for pk, val in pk_values.items():
-                                        where_conditions.append(f"{pk} = ?")
-                                        update_vals.append(val)
-                                    
-                                    update_stmt = f"UPDATE {table} SET " + ", ".join(update_cols) + " WHERE " + " AND ".join(where_conditions)
-                                    
-                                    # Execute update
-                                    execute_query(update_stmt, tuple(update_vals), commit=True)
-                                    
-                            st.success("Data updated successfully!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error updating data: {e}")
-            else:
-                st.info("No data to display.")
-        
-        # ADD ROW TAB
-        with add_tab:
-            render_add_row_form(table, columns, primary_keys)
-        
-        # DELETE TAB
-        with delete_tab:
-            st.subheader(f"Delete Records from {table}")
             
-            # Single record deletion
-            st.write("#### Delete Single Record")
-            if primary_keys:
-                with st.form("delete_single_form"):
-                    # For each primary key, create an input field
-                    pk_values = {}
-                    for pk in primary_keys:
-                        pk_values[pk] = st.text_input(f"{pk}:", key=f"delete_pk_{pk}")
-                    
-                    delete_submitted = st.form_submit_button("Delete Record", type="primary")
-                    
-                    if delete_submitted:
-                        # Build where clause
-                        where_conditions = []
-                        delete_vals = []
-                        
-                        for pk, val in pk_values.items():
-                            if val:  # Only include non-empty values
-                                where_conditions.append(f"{pk} = ?")
-                                delete_vals.append(val)
-                        
-                        if not where_conditions:
-                            st.error("Please provide at least one primary key value")
-                        else:
-                            # Build and execute DELETE statement
-                            delete_stmt = f"DELETE FROM {table} WHERE " + " AND ".join(where_conditions)
-                            
-                            # Execute delete with confirmation
-                            if st.checkbox("I confirm this deletion", key="confirm_single_delete"):
-                                try:
-                                    affected_rows = execute_query(delete_stmt, tuple(delete_vals), commit=True)
-                                    st.success("Record deleted successfully!")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error deleting record: {str(e)}")
-            else:
-                st.info("This table doesn't have a primary key. Use the bulk delete option below.")
+            # Create tabs for different operations - UPDATED to include Database Operations tab
+            view_tab, add_tab, delete_tab, sql_tab, manage_tab = st.tabs(["View Data", "Add Row", "Delete Records", "SQL Query", "Database Operations"])
             
-            # Bulk delete option
-            st.write("#### Delete Multiple Records")
-            with st.form("delete_bulk_form"):
-                where_clause = st.text_area("WHERE Clause:", placeholder=f"Example: column_name = 'value' AND other_column > 10")
-                preview_button = st.form_submit_button("Preview Records to Delete")
+            # VIEW DATA TAB
+            with view_tab:
+                # Search control only (REMOVE pagination controls)
+                search_col = st.columns(1)[0]
                 
-                if preview_button and where_clause:
-                    try:
-                        # Preview what will be deleted
-                        preview_query = f"SELECT * FROM {table} WHERE {where_clause} LIMIT 10"
-                        conn = sqlite3.connect('attendance_system.db')
-                        preview_df = execute_query_df(preview_query)
-                        conn.close()
-                        
-                        # Get count of all records that will be deleted
-                        count_query = f"SELECT COUNT(*) FROM {table} WHERE {where_clause}"
-                        count_result = execute_query(count_query, fetch=True)
-                        total_count = count_result[0][0] if count_result else 0
-                        
-                        st.write(f"This will delete {total_count} records. Here's a preview of up to 10 records:")
-                        st.dataframe(preview_df, use_container_width=True)
-                        
-                        # Show delete button only after preview
-                        if st.checkbox("I confirm deletion of these records", key="confirm_bulk_delete"):
-                            delete_stmt = f"DELETE FROM {table} WHERE {where_clause}"
+                with search_col:
+                    search_term = st.text_input("🔍 Search in any column:", value=st.session_state.search_term)
+                    if search_term != st.session_state.search_term:
+                        st.session_state.search_term = search_term
+                        st.rerun()
+            
+                # Get row count
+                row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
+                row_count = row_count_result[0][0] if row_count_result else 0
+            
+                # Build query without pagination limits
+                if st.session_state.search_term:
+                    # Build search condition for each column
+                    search_conditions = []
+                    for col in columns:
+                        search_conditions.append(f"{col} LIKE ?")
+                    
+                    # Combine conditions with OR (removed LIMIT and OFFSET)
+                    search_query = f"SELECT * FROM {table} WHERE " + " OR ".join(search_conditions)
+                    
+                    # Prepare search parameters
+                    search_params = [f"%{st.session_state.search_term}%"] * len(columns)
+                    
+                    # Execute search query
+                    conn = sqlite3.connect('attendance_system.db')
+                    df = execute_query_df(search_query, search_params)
+                    conn.close()
+                else:
+                    # Simple query without pagination
+                    query = f"SELECT * FROM {table};"
+                    conn = sqlite3.connect('attendance_system.db')
+                    df = execute_query_df(query)
+                    conn.close()
+            
+                # Show record count with filter info
+                showing = len(df)
+                st.markdown(f"""
+                    <div style="margin:10px 0;">
+                        <div>Showing <b>{showing}</b> of <b>{row_count:,}</b> records {f"(filtered)" if st.session_state.search_term else ""}</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            
+                # Display table data with edit functionality
+                if not df.empty:
+                    edited_df = st.data_editor(
+                        df,
+                        hide_index=True,
+                        use_container_width=True,
+                        num_rows="fixed",
+                        key="data_editor"
+                    )
+                    
+                    # Detect changes and update database
+                    if not df.equals(edited_df):
+                        if st.button("Save Changes", type="primary"):
                             try:
-                                execute_query(delete_stmt, commit=True)
-                                st.success(f"Successfully deleted {total_count} records!")
+                                # Find the changed rows
+                                for index, row in edited_df.iterrows():
+                                    if not df.iloc[index].equals(row):
+                                        # Get primary key value for this row
+                                        pk_values = {}
+                                        for pk in primary_keys:
+                                            pk_values[pk] = df.iloc[index][pk]
+                                        
+                                        # Build UPDATE statement
+                                        update_cols = []
+                                        update_vals = []
+                                        
+                                        for col in columns:
+                                            if df.iloc[index][col] != row[col]:
+                                                update_cols.append(f"{col} = ?")
+                                                update_vals.append(row[col])
+                                        
+                                        # Add WHERE clause parameters
+                                        where_conditions = []
+                                        for pk, val in pk_values.items():
+                                            where_conditions.append(f"{pk} = ?")
+                                            update_vals.append(val)
+                                        
+                                        update_stmt = f"UPDATE {table} SET " + ", ".join(update_cols) + " WHERE " + " AND ".join(where_conditions)
+                                        
+                                        # Execute update
+                                        execute_query(update_stmt, tuple(update_vals), commit=True)
+                                        
+                                st.success("Data updated successfully!")
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"Error during bulk delete: {str(e)}")
-                    except Exception as e:
-                        st.error(f"Error in WHERE clause: {str(e)}")
-        
-        # SQL QUERY TAB
-        with sql_tab:
-            st.subheader("Run Custom SQL Query")
-            query = st.text_area("Enter SQL Query:", height=100, placeholder=f"Example: SELECT * FROM {table} WHERE column_name = 'value'")
-            col1, col2 = st.columns(2)
+                                st.error(f"Error updating data: {e}")
+                else:
+                    st.info("No data to display.")
             
-            with col1:
-                if st.button("🔍 Execute SELECT Query", use_container_width=True):
-                    if not query.strip():
-                        st.warning("Please enter a SQL query")
-                    elif query.strip().upper().startswith("SELECT"):
+            # ADD ROW TAB
+            with add_tab:
+                render_add_row_form(table, columns, primary_keys)
+            
+            # DELETE TAB
+            with delete_tab:
+                st.subheader(f"Delete Records from {table}")
+                
+                # Single record deletion
+                st.write("#### Delete Single Record")
+                if primary_keys:
+                    with st.form("delete_single_form"):
+                        # For each primary key, create an input field
+                        pk_values = {}
+                        for pk in primary_keys:
+                            pk_values[pk] = st.text_input(f"{pk}:", key=f"delete_pk_{pk}")
+                        
+                        delete_submitted = st.form_submit_button("Delete Record", type="primary")
+                        
+                        if delete_submitted:
+                            # Build where clause
+                            where_conditions = []
+                            delete_vals = []
+                            
+                            for pk, val in pk_values.items():
+                                if val:  # Only include non-empty values
+                                    where_conditions.append(f"{pk} = ?")
+                                    delete_vals.append(val)
+                            
+                            if not where_conditions:
+                                st.error("Please provide at least one primary key value")
+                            else:
+                                # Build and execute DELETE statement
+                                delete_stmt = f"DELETE FROM {table} WHERE " + " AND ".join(where_conditions)
+                                
+                                # Execute delete with confirmation
+                                if st.checkbox("I confirm this deletion", key="confirm_single_delete"):
+                                    try:
+                                        affected_rows = execute_query(delete_stmt, tuple(delete_vals), commit=True)
+                                        st.success("Record deleted successfully!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error deleting record: {str(e)}")
+                else:
+                    st.info("This table doesn't have a primary key. Use the bulk delete option below.")
+                
+                # Bulk delete option
+                st.write("#### Delete Multiple Records")
+                with st.form("delete_bulk_form"):
+                    where_clause = st.text_area("WHERE Clause:", placeholder=f"Example: column_name = 'value' AND other_column > 10")
+                    preview_button = st.form_submit_button("Preview Records to Delete")
+                    
+                    if preview_button and where_clause:
                         try:
+                            # Preview what will be deleted
+                            preview_query = f"SELECT * FROM {table} WHERE {where_clause} LIMIT 10"
                             conn = sqlite3.connect('attendance_system.db')
-                            result_df = execute_query_df(query)
+                            preview_df = execute_query_df(preview_query)
                             conn.close()
                             
-                            st.success("Query executed successfully!")
-                            st.dataframe(result_df, use_container_width=True)
+                            # Get count of all records that will be deleted
+                            count_query = f"SELECT COUNT(*) FROM {table} WHERE {where_clause}"
+                            count_result = execute_query(count_query, fetch=True)
+                            total_count = count_result[0][0] if count_result else 0
+                            
+                            st.write(f"This will delete {total_count} records. Here's a preview of up to 10 records:")
+                            st.dataframe(preview_df, use_container_width=True)
+                            
+                            # Show delete button only after preview
+                            if st.checkbox("I confirm deletion of these records", key="confirm_bulk_delete"):
+                                delete_stmt = f"DELETE FROM {table} WHERE {where_clause}"
+                                try:
+                                    execute_query(delete_stmt, commit=True)
+                                    st.success(f"Successfully deleted {total_count} records!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error during bulk delete: {str(e)}")
                         except Exception as e:
-                            st.error(f"Error executing query: {e}")
-                    else:
-                        st.error("Only SELECT queries are allowed with this button.")
+                            st.error(f"Error in WHERE clause: {str(e)}")
             
-            with col2:
-                if st.button("⚠️ Execute Action Query", type="primary", use_container_width=True):
-                    if not query.strip():
-                        st.warning("Please enter a SQL query")
-                    elif query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
-                        # Show confirmation checkbox
-                        if st.checkbox("I understand this will modify the database", key="confirm_action_query"):
+            # SQL QUERY TAB
+            with sql_tab:
+                st.subheader("Run Custom SQL Query")
+                query = st.text_area("Enter SQL Query:", height=100, placeholder=f"Example: SELECT * FROM {table} WHERE column_name = 'value'")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if st.button("🔍 Execute SELECT Query", use_container_width=True):
+                        if not query.strip():
+                            st.warning("Please enter a SQL query")
+                        elif query.strip().upper().startswith("SELECT"):
                             try:
-                                execute_query(query, commit=True)
+                                conn = sqlite3.connect('attendance_system.db')
+                                result_df = execute_query_df(query)
+                                conn.close()
+                                
                                 st.success("Query executed successfully!")
-                                st.rerun()
+                                st.dataframe(result_df, use_container_width=True)
                             except Exception as e:
                                 st.error(f"Error executing query: {e}")
-                    else:
-                        st.error("Only INSERT, UPDATE, or DELETE queries are allowed with this button.")
-        
-        # DATABASE OPERATIONS TAB (new)
-        with manage_tab:
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.subheader("Create New Table")
-                create_new_table()
-            
-            with col2:
-                st.subheader("Delete Current Table")
-                if st.session_state.selected_table:
-                    st.warning(f"Are you sure you want to delete table '{st.session_state.selected_table}'?\nThis action cannot be undone!")
-                    confirm_name = st.text_input("Type the table name to confirm deletion:", key="confirm_delete_main")
-                    
-                    if st.button("🗑️ DELETE TABLE", type="primary", use_container_width=True):
-                        if confirm_name == st.session_state.selected_table:
-                            execute_query(f"DROP TABLE {st.session_state.selected_table};", commit=True)
-                            st.success(f"Table '{st.session_state.selected_table}' deleted successfully!")
-                            st.session_state.tables = get_tables()
-                            if st.session_state.tables:
-                                st.session_state.selected_table = st.session_state.tables[0]
-                            else:
-                                st.session_state.selected_table = None
-                            st.rerun()
                         else:
-                            st.error("Table name doesn't match. Deletion cancelled.")
-                else:
-                    st.info("No table selected to delete.")
+                            st.error("Only SELECT queries are allowed with this button.")
+                
+                with col2:
+                    if st.button("⚠️ Execute Action Query", type="primary", use_container_width=True):
+                        if not query.strip():
+                            st.warning("Please enter a SQL query")
+                        elif query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+                            # Show confirmation checkbox
+                            if st.checkbox("I understand this will modify the database", key="confirm_action_query"):
+                                try:
+                                    execute_query(query, commit=True)
+                                    st.success("Query executed successfully!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Error executing query: {e}")
+                        else:
+                            st.error("Only INSERT, UPDATE, or DELETE queries are allowed with this button.")
+            
+            # DATABASE OPERATIONS TAB (new)
+            with manage_tab:
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    st.subheader("Create New Table")
+                    create_new_table()
+                
+                with col2:
+                    st.subheader("Delete Current Table")
+                    if st.session_state.selected_table:
+                        st.warning(f"Are you sure you want to delete table '{st.session_state.selected_table}'?\nThis action cannot be undone!")
+                        confirm_name = st.text_input("Type the table name to confirm deletion:", key="confirm_delete_main")
+                        
+                        if st.button("🗑️ DELETE TABLE", type="primary", use_container_width=True):
+                            if confirm_name == st.session_state.selected_table:
+                                execute_query(f"DROP TABLE {st.session_state.selected_table};", commit=True)
+                                st.success(f"Table '{st.session_state.selected_table}' deleted successfully!")
+                                st.session_state.tables = get_tables()
+                                if st.session_state.tables:
+                                    st.session_state.selected_table = st.session_state.tables[0]
+                                else:
+                                    st.session_state.selected_table = None
+                                st.rerun()
+                            else:
+                                st.error("Table name doesn't match. Deletion cancelled.")
+                    else:
+                        st.info("No table selected to delete.")
     
     # Remove database info sidebar completely - keep empty sidebar to prevent layout issues
     with st.sidebar:

@@ -226,7 +226,7 @@ def apply_global_css():
         border: none !important;
         box-shadow: none !important;
         outline: none !important;
-        /* Remove red line separator */
+        /* Remove the red border separator */
         border-right: none !important;
         margin-right: 4px !important;
         padding-right: 8px !important;

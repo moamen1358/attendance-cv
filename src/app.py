@@ -37,7 +37,6 @@ import real_time_prediction
 import report
 import student_report
 import registration_form
-import subject_management
 
 # Use direct imports without src prefix
 from database_utils import execute_query, execute_query_df
@@ -372,14 +371,12 @@ def show_app():
         try:
             # Import all the required modules for admin users
             import admin_dashboard
-            import subject_management
             import enhanced_db_explorer
             
             # Create a dictionary mapping page names to their respective functions
             # Include Admin Dashboard in the complete pages dictionary, but we'll filter it from navigation
             all_pages = {
                 "Admin Dashboard": admin_dashboard.show_admin_dashboard,
-                "Subject Management": subject_management.show_subject_management,
                 "Real-Time Recognition": real_time_prediction.show_real_time_prediction,
                 "Registration": registration_form.show_registration_form,
                 "Database Explorer": enhanced_db_explorer.show_db_explorer
@@ -388,11 +385,12 @@ def show_app():
             # Create a filtered version for the sidebar navigation (without Admin Dashboard)
             nav_pages = {k: v for k, v in all_pages.items() if k != "Admin Dashboard"}
             
-            # Set default page to Subject Management if not already set or if was Admin Dashboard
+            # Set default page to Database Explorer if not already set or if was Admin Dashboard or Subject Management
             if ('current_page' not in st.session_state 
                 or st.session_state.current_page not in all_pages
-                or st.session_state.current_page == "Admin Dashboard"):
-                st.session_state.current_page = "Subject Management"
+                or st.session_state.current_page == "Admin Dashboard" 
+                or st.session_state.current_page == "Subject Management"):
+                st.session_state.current_page = "Database Explorer"
             
             # Always show sidebar for admin
             with st.sidebar:
@@ -440,13 +438,11 @@ def show_app():
         # This is the fallback code that runs if the primary admin view fails
         try:
             # Try to import required admin modules - if they fail, we'll handle it
-            import subject_management
             import enhanced_db_explorer
             
             # Create a dictionary mapping page names to their respective functions
             pages = {
                 "Admin Dashboard": admin_dashboard.show_admin_dashboard,  # Add admin dashboard as first option
-                "Subject Management": subject_management.show_subject_management,
                 "Real-Time Recognition": real_time_prediction.show_real_time_prediction,
                 "Registration": registration_form.show_registration_form,
                 "Database Explorer": enhanced_db_explorer.show_db_explorer
