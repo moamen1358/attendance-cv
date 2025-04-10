@@ -119,6 +119,140 @@ def show_db_explorer():
     # Create a tab for professor assignments at the top level
     tab_main, tab_prof_assign = st.tabs(["Database Tables", "Professor Assignments"])
     
+    # Add enhanced CSS for better styling and user experience
+    st.markdown("""
+    <style>
+    /* Enhance overall appearance */
+    .main .block-container {
+        padding-top: 1rem !important;
+    }
+    
+    /* Compact table selection styling */
+    .compact-tables {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin: 5px 0;
+    }
+    
+    /* Ultra compact table selector buttons */
+    .compact-table-selector {
+        background-color: #f8f9fa;
+        border: 1px solid #eaeaea;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 0.8rem;
+        margin: 0;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+        display: inline-block;
+    }
+    .compact-table-selector:hover {
+        background-color: #e9f2fe;
+        border-color: #bbd6fe;
+    }
+    .compact-table-selector.selected {
+        background-color: #e1f5fe;
+        border-color: #4fc3f7;
+        color: #0277bd;
+        font-weight: 600;
+    }
+    
+    /* Category headers */
+    .table-category {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #555;
+        margin: 5px 0 2px 0;
+        padding: 0;
+    }
+    
+    /* Section dividers */
+    .compact-section-divider {
+        height: 1px;
+        background: #e0e0e0;
+        margin: 10px 0;
+    }
+    
+    /* Horizontal scrollable container for tables */
+    .table-scroll-container {
+        display: flex;
+        overflow-x: auto;
+        padding: 5px 0;
+        margin-bottom: 8px;
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: thin;     /* Firefox */
+    }
+    
+    /* Thin scrollbar for better appearance */
+    .table-scroll-container::-webkit-scrollbar {
+        height: 4px;
+    }
+    
+    .table-scroll-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    
+    .table-scroll-container::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 10px;
+    }
+    
+    /* Table card styling */
+    .table-card {
+        background-color: #f8f9fa;
+        border: 1px solid #eaeaea;
+        border-radius: 4px;
+        padding: 5px 12px;
+        margin-right: 8px;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.85rem;
+        min-width: fit-content;
+        display: inline-block;
+    }
+    
+    .table-card:hover {
+        background-color: #e9f2fe;
+        border-color: #bbd6fe;
+    }
+    
+    .table-card.selected {
+        background-color: #e1f5fe;
+        border-color: #4fc3f7;
+        color: #0277bd;
+        font-weight: 600;
+    }
+    
+    /* Category headers with icon */
+    .table-category {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #555;
+        margin: 5px 0 2px 0;
+        padding: 0;
+        display: flex;
+        align-items: center;
+    }
+    
+    .category-icon {
+        margin-right: 5px;
+        opacity: 0.8;
+    }
+    
+    /* Section dividers */
+    .compact-section-divider {
+        height: 1px;
+        background: #e0e0e0;
+        margin: 10px 0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     with tab_prof_assign:
         st.header("Professor Subject Assignments")
         
@@ -215,24 +349,14 @@ def show_db_explorer():
             st.info("No tables found in the database. Create a new table below.")
             create_new_table()
         else:
-            st.markdown("""
-            <style>
-            .table-checkbox-container {
-                display: flex;
-                flex-wrap: wrap;
-                gap: 8px;
-                margin-bottom: 15px;
-            }
-            .table-category {
-                margin-right: 5px;
-                font-weight: 500;
-                color: #555;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            # Add a search filter for tables
-            filter_term = st.text_input("🔍 Filter tables:", key="table_filter")
+            # Create a compact table filter
+            col1, col2 = st.columns([4, 1])
+            with col1:
+                filter_term = st.text_input("🔍 Filter:", key="table_filter", placeholder="Type to filter tables")
+            with col2:
+                st.markdown("<div style='height: 32px;'></div>", unsafe_allow_html=True)  # Empty space to align with input
+                total_tables = len(tables)
+                st.caption(f"{total_tables} tables")
             
             # Filter tables if needed
             if filter_term:
@@ -250,70 +374,118 @@ def show_db_explorer():
             
             filtered_tables = unique_filtered_tables
             
-            # Calculate how many columns we need
-            max_cols = 6  # Maximum columns to ensure they're readable
-            col_count = min(max_cols, len(filtered_tables))
+            # Group tables by type for better organization
+            student_tables = [t for t in filtered_tables if "student" in t.lower()]
+            attendance_tables = [t for t in filtered_tables if "attend" in t.lower()]
+            user_tables = [t for t in filtered_tables if "user" in t.lower() or "account" in t.lower()]
+            other_tables = [t for t in filtered_tables if t not in student_tables + attendance_tables + user_tables]
             
-            # Create a multi-column layout for table checkboxes
-            if filtered_tables:
-                # Create a container for the table checkboxes
-                st.markdown("<div class='table-checkbox-container'>", unsafe_allow_html=True)
-                
-                # Calculate rows and columns
-                items_per_row = min(8, len(filtered_tables))  # Maximum 8 items per row
-                rows_needed = (len(filtered_tables) + items_per_row - 1) // items_per_row
-                rows_needed = min(2, rows_needed)  # Limit to max 2 rows as requested
-                
-                # Create enough columns for the items
-                cols = st.columns(items_per_row)
-                
-                # Distribute tables across the columns with unique keys
-                for i, table in enumerate(filtered_tables[:items_per_row * rows_needed]):
-                    col_idx = i % items_per_row
-                    with cols[col_idx]:
-                        # Use a checkbox for each table with a UNIQUE KEY including index
-                        is_selected = st.checkbox(
-                            table, 
-                            value=(table == st.session_state.selected_table),
-                            key=f"main_table_idx_{i}_{table}"  # Add index to ensure uniqueness
-                        )
-                        
-                        # Handle selection logic
-                        if is_selected and table != st.session_state.selected_table:
-                            # Update selected table
-                            st.session_state.selected_table = table
-                            st.session_state.editing_row = None
-                            st.session_state.search_term = ""
-                            st.rerun()
-                
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                # If there are more tables than fit in our rows/columns, show a "More tables..." expander
-                if len(filtered_tables) > items_per_row * rows_needed:
-                    with st.expander("More tables..."):
-                        remaining_tables = filtered_tables[items_per_row * rows_needed:]
-                        remaining_cols = st.columns(min(items_per_row, len(remaining_tables)))
-                        
-                        for i, table in enumerate(remaining_tables):
-                            col_idx = i % len(remaining_cols)
-                            with remaining_cols[col_idx]:
-                                # Unique key for expanded tables
-                                is_selected = st.checkbox(
-                                    table, 
-                                    value=(table == st.session_state.selected_table),
-                                    key=f"more_table_idx_{i}_{table}"  # Add prefix + index to ensure uniqueness
-                                )
-                                
-                                # Handle selection logic
-                                if is_selected and table != st.session_state.selected_table:
-                                    # Update selected table without trying to uncheck previous
-                                    st.session_state.selected_table = table
-                                    st.session_state.editing_row = None
-                                    st.session_state.search_term = ""
-                                    st.rerun()
+            # Create a better organized dropdown list with proper optgroup
+            st.markdown("""
+            <style>
+            /* Style for dropdown with optgroups */
+            div[data-testid="stSelectbox"] ul {
+                max-height: 240px !important;
+            }
             
-            # Add separator after table selection
-            st.markdown("<hr style='margin: 15px 0;'>", unsafe_allow_html=True)
+            /* Style option groups in dropdown */
+            .table-group-header {
+                font-weight: bold;
+                color: #555;
+                font-size: 0.9em;
+                padding: 5px;
+                pointer-events: none !important;
+                background-color: #f0f2f6 !important;
+                border-bottom: 1px solid #ddd;
+                margin-top: 5px;
+            }
+            
+            /* Style normal options */
+            .table-option {
+                padding-left: 10px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
+            
+            # Create a flat list with better styling for headers
+            table_options = []
+            table_labels = []
+            is_header = []
+            
+            # Build lists for dropdown - removed headers to avoid selection issues
+            if student_tables:
+                for table in student_tables:
+                    table_options.append(table)
+                    table_labels.append(table)
+                    is_header.append(False)
+            
+            if attendance_tables:
+                for table in attendance_tables:
+                    table_options.append(table)
+                    table_labels.append(table)
+                    is_header.append(False)
+                
+            if user_tables:
+                for table in user_tables:
+                    table_options.append(table)
+                    table_labels.append(table)
+                    is_header.append(False)
+                
+            if other_tables:
+                for table in other_tables:
+                    table_options.append(table)
+                    table_labels.append(table)
+                    is_header.append(False)
+            
+            # Get current selected table or default to first available
+            current_table = st.session_state.selected_table
+            
+            # Default to first table if current selection isn't valid
+            if current_table not in table_options and table_options:
+                current_table = table_options[0]
+            
+            # Find index of current table in our options list
+            try:
+                default_index = table_options.index(current_table)
+            except ValueError:
+                # If not found, default to first item
+                default_index = 0
+            
+            # Create the dropdown for table selection - without disabled parameter
+            st.write("### Select Table")
+            
+            # Create category headers
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                if student_tables:
+                    st.markdown("**👨‍🎓 STUDENT TABLES**")
+            with col2:
+                if attendance_tables:
+                    st.markdown("**📋 ATTENDANCE TABLES**")
+            with col3:
+                if user_tables:
+                    st.markdown("**👤 USER TABLES**")
+            with col4:
+                if other_tables:
+                    st.markdown("**📊 OTHER TABLES**")
+            
+            # Simple selectbox without disabled parameter
+            selected_option = st.selectbox(
+                "Choose a table to view or edit:",
+                options=table_options,
+                index=default_index,
+                key="table_dropdown"
+            )
+            
+            # Handle selection
+            if selected_option != st.session_state.selected_table:
+                st.session_state.selected_table = selected_option
+                st.session_state.editing_row = None
+                st.session_state.search_term = ""
+                st.rerun()
+            
+            # Add thin separator line
+            st.markdown('<div class="compact-section-divider"></div>', unsafe_allow_html=True)
             
             # Check if we have a selected table
             if st.session_state.selected_table:
@@ -325,16 +497,22 @@ def show_db_explorer():
                 row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
                 row_count = row_count_result[0][0] if row_count_result else 0
                 
-                # Table header with stats
+                # Table header with stats - enhanced styling
                 st.markdown(f"""
-                <div style="background-color:#f5f5f5; padding:10px; border-radius:5px; margin:10px 0;">
-                    <h3 style="margin:0;">📊 {table}</h3>
-                    <p style="margin:5px 0;"><b>Columns:</b> {len(columns)} | <b>Rows:</b> {row_count} | <b>Primary Key:</b> {', '.join(primary_keys) if primary_keys else 'None'}</p>
+                <div class="table-info-card">
+                    <h2 style="margin:0; color:#0277bd; display:flex; align-items:center;">
+                        <span style="margin-right:8px;">📊</span> {table}
+                    </h2>
+                    <div style="margin-top:10px; display:flex; gap:15px; color:#555;">
+                        <div><strong>Columns:</strong> {len(columns)}</div>
+                        <div><strong>Rows:</strong> {row_count}</div>
+                        <div><strong>Primary Key:</strong> {', '.join(primary_keys) if primary_keys else 'None'}</div>
+                    </div>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 # Create tabs for different operations - UPDATED to include Database Operations tab
-                view_tab, add_tab, delete_tab, sql_tab, manage_tab = st.tabs(["View Data", "Add Row", "Delete Records", "SQL Query", "Database Operations"])
+                view_tab, add_tab, delete_tab, sql_tab, manage_tab = st.tabs(["📄 View Data", "➕ Add Row", "🗑️ Delete Records", "🔍 SQL Query", "⚙️ Database Operations"])
                 
                 # VIEW DATA TAB
                 with view_tab:
@@ -551,7 +729,7 @@ def show_db_explorer():
                             else:
                                 st.error("Only INSERT, UPDATE, or DELETE queries are allowed with this button.")
                 
-                # DATABASE OPERATIONS TAB (new)
+                # DATABASE OPERATIONS TAB
                 with manage_tab:
                     col1, col2 = st.columns(2)
                     
@@ -580,7 +758,8 @@ def show_db_explorer():
                         else:
                             st.info("No table selected to delete.")
             else:
-                st.info("Select a table to view its data.")
+                st.info("Select a table from above to view and manage its data.")
+                st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
                 create_new_table()
 
     # Remove database info sidebar completely - keep empty sidebar to prevent layout issues
@@ -588,87 +767,96 @@ def show_db_explorer():
         # Empty sidebar
         pass
 
-# Add a new function for creating tables to avoid code duplication
+# Clean up the create_new_table function with better styling
 def create_new_table():
-    """Create a new table form component"""
-    new_table_name = st.text_input("Table Name", key="new_table_name_main")
-    
-    # Column definition section
-    st.write("Define Columns:")
-    col1, col2, col3 = st.columns([3, 2, 1])
-    with col1:
-        st.write("Name")
-    with col2:
-        st.write("Type")
-    with col3:
-        st.write("PK")
+    """Create a new table form component with enhanced styling"""
+    with st.container():
+        st.markdown('<div class="clean-form">', unsafe_allow_html=True)
         
-    # Initialize columns list if not exists
-    if 'new_table_columns' not in st.session_state:
-        st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
+        st.markdown("### Create New Table")
+        new_table_name = st.text_input("Table Name", key="new_table_name_main", placeholder="Enter a name for your new table")
         
-    # Display column inputs
-    columns_to_add = []
-    for i, col in enumerate(st.session_state.new_table_columns):
-        col1, col2, col3, col4 = st.columns([3, 2, 1, 0.5])
+        # Column definition section with improved styling
+        st.markdown("#### Define Columns")
+        st.caption("Add columns to your table structure")
+        
+        col1, col2, col3 = st.columns([3, 2, 1])
         with col1:
-            col_name = st.text_input("", value=col["name"], key=f"col_name_main_{i}")
+            st.markdown("**Name**")
         with col2:
-            col_type = st.selectbox("", ["TEXT", "INTEGER", "REAL", "BLOB", "DATETIME"], 
-                                   index=["TEXT", "INTEGER", "REAL", "BLOB", "DATETIME"].index(col["type"]),
-                                   key=f"col_type_main_{i}")
+            st.markdown("**Type**")
         with col3:
-            col_pk = st.checkbox("", value=col["pk"], key=f"col_pk_main_{i}")
-        with col4:
-            # Only show delete button if there's more than one column
-            if len(st.session_state.new_table_columns) > 1:
-                if st.button("❌", key=f"del_col_main_{i}"):
-                    st.session_state.new_table_columns.pop(i)
-                    st.rerun()
-                    
-        columns_to_add.append({"name": col_name, "type": col_type, "pk": col_pk})
-    
-    # Update column definitions
-    st.session_state.new_table_columns = columns_to_add
-    
-    # Add column button
-    if st.button("➕ Add Column", key="add_column_main"):
-        st.session_state.new_table_columns.append({"name": "", "type": "TEXT", "pk": False})
-        st.rerun()
-    
-    # Create table button
-    if st.button("Create Table", key="create_table_main"):
-        if not new_table_name:
-            st.error("Please provide a table name")
-        else:
-            # Check if any columns are defined and have names
-            if not any(col["name"] for col in st.session_state.new_table_columns):
-                st.error("Please define at least one column with a name")
-            else:
-                # Build CREATE TABLE statement
-                column_defs = []
-                for col in st.session_state.new_table_columns:
-                    if col["name"]:
-                        col_def = f"{col['name']} {col['type']}"
-                        if col["pk"]:
-                            col_def += " PRIMARY KEY"
-                        column_defs.append(col_def)
-                        
-                if column_defs:
-                    create_stmt = f"CREATE TABLE {new_table_name} (\n" + ",\n".join(column_defs) + "\n);"
-                    
-                    # Execute create table
-                    try:
-                        execute_query(create_stmt, commit=True)
-                        st.success(f"Table '{new_table_name}' created successfully!")
-                        st.session_state.tables = get_tables()
-                        st.session_state.selected_table = new_table_name
-                        st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
+            st.markdown("**PK**")
+        
+        # Initialize columns list if not exists
+        if 'new_table_columns' not in st.session_state:
+            st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
+        
+        # Display column inputs
+        columns_to_add = []
+        for i, col in enumerate(st.session_state.new_table_columns):
+            col1, col2, col3, col4 = st.columns([3, 2, 1, 0.5])
+            with col1:
+                col_name = st.text_input("", value=col["name"], key=f"col_name_main_{i}")
+            with col2:
+                col_type = st.selectbox("", ["TEXT", "INTEGER", "REAL", "BLOB", "DATETIME"], 
+                                       index=["TEXT", "INTEGER", "REAL", "BLOB", "DATETIME"].index(col["type"]),
+                                       key=f"col_type_main_{i}")
+            with col3:
+                col_pk = st.checkbox("", value=col["pk"], key=f"col_pk_main_{i}")
+            with col4:
+                # Only show delete button if there's more than one column
+                if len(st.session_state.new_table_columns) > 1:
+                    if st.button("❌", key=f"del_col_main_{i}"):
+                        st.session_state.new_table_columns.pop(i)
                         st.rerun()
-                    except Exception as e:
-                        st.error(f"Error creating table: {e}")
+                        
+            columns_to_add.append({"name": col_name, "type": col_type, "pk": col_pk})
+        
+        # Update column definitions
+        st.session_state.new_table_columns = columns_to_add
+        
+        # Add column button with icon and better styling
+        col1, col2 = st.columns([1, 3])
+        with col1:
+            if st.button("➕ Add Column", key="add_column_main"):
+                st.session_state.new_table_columns.append({"name": "", "type": "TEXT", "pk": False})
+                st.rerun()
+        
+        # Create table button with better styling
+        if st.button("Create Table", key="create_table_main", type="primary", use_container_width=True):
+            if not new_table_name:
+                st.error("Please provide a table name")
+            else:
+                # Check if any columns are defined and have names
+                if not any(col["name"] for col in st.session_state.new_table_columns):
+                    st.error("Please define at least one column with a name")
+                else:
+                    # Build CREATE TABLE statement
+                    column_defs = []
+                    for col in st.session_state.new_table_columns:
+                        if col["name"]:
+                            col_def = f"{col['name']} {col['type']}"
+                            if col["pk"]:
+                                col_def += " PRIMARY KEY"
+                            column_defs.append(col_def)
+                            
+                    if column_defs:
+                        create_stmt = f"CREATE TABLE {new_table_name} (\n" + ",\n".join(column_defs) + "\n);"
+                        
+                        # Execute create table
+                        try:
+                            execute_query(create_stmt, commit=True)
+                            st.success(f"Table '{new_table_name}' created successfully!")
+                            st.session_state.tables = get_tables()
+                            st.session_state.selected_table = new_table_name
+                            st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Error creating table: {e}")
+        
+        st.markdown('</div>', unsafe_allow_html=True)
 
-# Add these new helper functions for improved input fields
 def get_foreign_key_values(table_name, column_name):
     """Get possible values for a foreign key column"""
     conn = sqlite3.connect('attendance_system.db')
