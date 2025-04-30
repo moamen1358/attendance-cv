@@ -453,36 +453,21 @@ def show_db_explorer():
             
             # Create the dropdown for table selection - without disabled parameter
             st.write("### Select Table")
-            
-            # Create category headers
-            col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                if student_tables:
-                    st.markdown("**👨‍🎓 STUDENT TABLES**")
-            with col2:
-                if attendance_tables:
-                    st.markdown("**📋 ATTENDANCE TABLES**")
-            with col3:
-                if user_tables:
-                    st.markdown("**👤 USER TABLES**")
-            with col4:
-                if other_tables:
-                    st.markdown("**📊 OTHER TABLES**")
-            
-            # Simple selectbox without disabled parameter
-            selected_option = st.selectbox(
+            selected_table = st.selectbox(
                 "Choose a table to view or edit:",
-                options=table_options,
-                index=default_index,
-                key="table_dropdown"
+                options=filtered_tables,
+                index=filtered_tables.index(current_table) if current_table in filtered_tables else 0,
+                key="table_selector_fixed",
+                on_change=None
             )
             
-            # Handle selection
-            if selected_option != st.session_state.selected_table:
-                st.session_state.selected_table = selected_option
+            # Handle selection - ensure session state is updated immediately
+            if selected_table != st.session_state.selected_table:
+                st.session_state.selected_table = selected_table
                 st.session_state.editing_row = None
                 st.session_state.search_term = ""
-                st.rerun()
+                # Use a more reliable technique - set a flag and check later to rerun
+                st.session_state.needs_rerun = True
             
             # Add thin separator line
             st.markdown('<div class="compact-section-divider"></div>', unsafe_allow_html=True)

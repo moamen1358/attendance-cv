@@ -390,7 +390,7 @@ def show_app():
                 or st.session_state.current_page not in all_pages
                 or st.session_state.current_page == "Admin Dashboard" 
                 or st.session_state.current_page == "Subject Management"):
-                st.session_state.current_page = "Database Explorer"
+                st.session_state.current_page = "Real-Time Recognition"
             
             # Always show sidebar for admin
             with st.sidebar:
