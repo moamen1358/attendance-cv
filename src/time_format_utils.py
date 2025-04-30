@@ -28,6 +28,14 @@ def normalize_time_format(time_str):
         except:
             pass
     
+    # 24-hour format with seconds (HH:MM:SS) - Common database format
+    if re.match(r'\d{1,2}:\d{2}:\d{2}$', time_str):
+        try:
+            dt = datetime.strptime(time_str, "%H:%M:%S")
+            return dt.strftime("%I:%M %p")
+        except:
+            pass
+    
     # Try other common formats
     formats = [
         "%H:%M:%S",  # 24-hour with seconds
@@ -47,6 +55,63 @@ def normalize_time_format(time_str):
     print(f"Warning: Could not normalize time format: {time_str}")
     return time_str
 
+def display_formatted_time(time_str):
+    """
+    Display time in friendly AM/PM format from any supported format
+    
+    Args:
+        time_str (str): Time string in any format (HH:MM:SS, HH:MM, etc.)
+        
+    Returns:
+        str: Time string in "HH:MM AM/PM" format (e.g., "02:00 PM")
+    """
+    if not time_str:
+        return ""
+        
+    try:
+        # Handle 24-hour format with seconds (HH:MM:SS)
+        if re.match(r'\d{1,2}:\d{2}:\d{2}$', time_str):
+            dt = datetime.strptime(time_str, "%H:%M:%S")
+            return dt.strftime("%I:%M %p")  # Keep leading zero
+            
+        # Handle 24-hour format (HH:MM)
+        if re.match(r'\d{1,2}:\d{2}$', time_str):
+            dt = datetime.strptime(time_str, "%H:%M")
+            return dt.strftime("%I:%M %p")  # Keep leading zero
+        
+        # If already in AM/PM format but missing leading zero, add it back
+        if re.match(r'\d{1,2}:\d{2}\s[AP]M', time_str):
+            # Split the time and AM/PM parts
+            time_parts = time_str.split(' ')
+            hour_min = time_parts[0]
+            am_pm = time_parts[1]
+            
+            # Check if hour part needs a leading zero
+            hour_min_parts = hour_min.split(':')
+            hour = hour_min_parts[0]
+            minute = hour_min_parts[1]
+            
+            # Add leading zero if hour is single digit
+            if len(hour) == 1:
+                hour = "0" + hour
+                
+            return f"{hour}:{minute} {am_pm}"
+            
+        # Try other common formats
+        formats = ["%I:%M:%S %p", "%I%p", "%I:%M%p"]
+        for fmt in formats:
+            try:
+                dt = datetime.strptime(time_str, fmt)
+                return dt.strftime("%I:%M %p")  # Keep leading zero
+            except:
+                continue
+                
+        # Return original if no format matches
+        return time_str
+    except:
+        # Return original if conversion fails
+        return time_str
+
 def convert_to_ampm_format(time_str):
     """
     Convert time string to AM/PM format
@@ -57,14 +122,44 @@ def convert_to_ampm_format(time_str):
     Returns:
         str: Time string in AM/PM format
     """
+    return display_formatted_time(time_str)
+
+def convert_to_db_time_format(time_str):
+    """
+    Convert any time format to database format (HH:MM:SS)
+    
+    Args:
+        time_str (str): Time string in any supported format
+        
+    Returns:
+        str: Time in HH:MM:SS format for database storage
+    """
     try:
-        # Handle 24-hour format (HH:MM)
+        # Already in HH:MM:SS format
+        if re.match(r'\d{1,2}:\d{2}:\d{2}$', time_str):
+            return time_str
+            
+        # Handle AM/PM format
+        if re.match(r'\d{1,2}:\d{2}\s[AP]M', time_str):
+            dt = datetime.strptime(time_str, "%I:%M %p")
+            return dt.strftime("%H:%M:%S")
+            
+        # Handle 24-hour format without seconds
         if re.match(r'\d{1,2}:\d{2}$', time_str):
             dt = datetime.strptime(time_str, "%H:%M")
-            return dt.strftime("%I:%M %p")
-        
-        # If already in AM/PM format, return as is
-        return time_str
+            return dt.strftime("%H:%M:%S")
+            
+        # Try other common formats
+        formats = ["%I:%M:%S %p", "%I%p", "%I:%M%p"]
+        for fmt in formats:
+            try:
+                dt = datetime.strptime(time_str, fmt)
+                return dt.strftime("%H:%M:%S")
+            except:
+                continue
+                
+        # Return with added seconds if format unknown
+        return f"{time_str}:00" if re.match(r'\d{1,2}:\d{2}$', time_str) else time_str
     except:
         # Return original if conversion fails
         return time_str
@@ -109,3 +204,12 @@ def time_between(start_time, end_time):
     except:
         # Return fallback if calculation fails
         return "Unknown"
+
+# Example usage:
+# Convert "11:00:00" to "11:00 AM"
+# time_24h = "11:00:00" 
+# time_12h = display_formatted_time(time_24h)  # Result: "11:00 AM"
+# 
+# Convert "8:00" to "8:00 AM"
+# early_time = "8:00"
+# early_time_12h = display_formatted_time(early_time)  # Result: "8:00 AM"

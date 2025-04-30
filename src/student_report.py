@@ -1490,6 +1490,13 @@ def show_student_report():
     # Get schedule for today
     schedule_df = get_schedule_for_day(day_name)
     
+    # Convert time format in schedule_df to AM/PM format before displaying anywhere
+    if not schedule_df.empty:
+        # Apply display_formatted_time to all time columns to ensure AM/PM format
+        from time_format_utils import display_formatted_time
+        schedule_df['start_time'] = schedule_df['start_time'].apply(display_formatted_time)
+        schedule_df['end_time'] = schedule_df['end_time'].apply(display_formatted_time)
+    
     # Main content starts here
     
     # Show welcome message - but continue displaying data even if no schedule today
@@ -1514,12 +1521,20 @@ def show_student_report():
         # Parse times correctly handling AM/PM format
         for _, row in schedule_df.iterrows():
             try:
-                # Try to parse as AM/PM format
-                start_time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
+                # First convert to display format
+                display_start_time = display_formatted_time(row['start_time'])
+                display_end_time = display_formatted_time(row['end_time'])
+                
+                # Update the dataframe with display versions
+                row['start_time'] = display_start_time
+                row['end_time'] = display_end_time
+                
+                # Now try to parse the display format
+                start_time_obj = datetime.strptime(display_start_time, '%I:%M %p').time()
             except ValueError:
                 try:
-                    # Try to parse as 24-hour format
-                    start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
+                    # If display format fails, try with the original format
+                    start_time_obj = datetime.strptime(row['start_time'], '%H:%M:%S').time()
                 except ValueError:
                     # Handle any other format issues
                     st.error(f"Invalid time format: {row['start_time']}")
@@ -1560,7 +1575,7 @@ def show_student_report():
             except ValueError:
                 try:
                     # Try to parse as 24-hour format
-                        start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
+                    start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
                 except ValueError:
                     # Handle any other format issues
                     continue

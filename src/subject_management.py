@@ -405,6 +405,11 @@ def add_class_schedule(schedule_data):
     cursor = conn.cursor()
     
     try:
+        # Format time values to 12-hour format with AM/PM
+        from time_format_utils import display_formatted_time
+        formatted_start_time = display_formatted_time(schedule_data['start_time'])
+        formatted_end_time = display_formatted_time(schedule_data['end_time'])
+        
         # Check the actual schema of the class_schedules table
         execute_query("PRAGMA table_info(class_schedules)")
         columns = [col[1] for col in cursor.fetchall()]
@@ -428,8 +433,8 @@ def add_class_schedule(schedule_data):
                     subject_id,
                     subject_name,
                     schedule_data['day'], 
-                    schedule_data['start_time'], 
-                    schedule_data['end_time'], 
+                    formatted_start_time, 
+                    formatted_end_time, 
                     schedule_data['room'],
                     schedule_data['type']
                 )
@@ -440,8 +445,8 @@ def add_class_schedule(schedule_data):
                 (
                     schedule_data['subject_id'], 
                     schedule_data['day'], 
-                    schedule_data['start_time'], 
-                    schedule_data['end_time'], 
+                    formatted_start_time, 
+                    formatted_end_time, 
                     schedule_data['room'],
                     schedule_data['type']
                 )
@@ -457,8 +462,8 @@ def add_class_schedule(schedule_data):
                 (
                     subject_name,
                     schedule_data['day'], 
-                    schedule_data['start_time'], 
-                    schedule_data['end_time'], 
+                    formatted_start_time, 
+                    formatted_end_time, 
                     schedule_data['room'],
                     schedule_data['type']
                 )

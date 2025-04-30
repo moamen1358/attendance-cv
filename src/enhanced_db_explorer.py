@@ -6,6 +6,8 @@ import re
 from datetime import datetime
 # Add import for professor assignments functionality
 import importlib
+# Import time utilities for better formatting
+from time_format_utils import display_formatted_time, convert_to_db_time_format
 
 # Define a list of tables that should be hidden from the UI
 HIDDEN_TABLES = [
@@ -548,8 +550,19 @@ def show_db_explorer():
                     
                     # Display table data with edit functionality
                     if not df.empty:
+                        # Format time columns to 12-hour format before displaying
+                        df_display = df.copy()
+                        
+                        # Check if this table has time columns
+                        if 'start_time' in df.columns:
+                            df_display['start_time'] = df['start_time'].apply(display_formatted_time)
+                        if 'end_time' in df.columns:
+                            df_display['end_time'] = df['end_time'].apply(display_formatted_time)
+                        if 'time' in df.columns:
+                            df_display['time'] = df['time'].apply(display_formatted_time)
+                        
                         edited_df = st.data_editor(
-                            df,
+                            df_display,
                             hide_index=True,
                             use_container_width=True,
                             num_rows="fixed",
@@ -692,7 +705,23 @@ def show_db_explorer():
                                     conn.close()
                                     
                                     st.success("Query executed successfully!")
-                                    st.dataframe(result_df, use_container_width=True)
+                                    
+                                    # Process DataFrame to convert time formats
+                                    if not df.empty and 'start_time' in df.columns and 'end_time' in df.columns:
+                                        # Format time columns to AM/PM display format for user-friendly view
+                                        df['start_time_display'] = df['start_time'].apply(display_formatted_time)
+                                        df['end_time_display'] = df['end_time'].apply(display_formatted_time)
+                                        
+                                        # Use the display columns for the actual view
+                                        df_display = df.copy()
+                                        df_display['start_time'] = df_display['start_time_display']
+                                        df_display['end_time'] = df_display['end_time_display']
+                                        df_display = df_display.drop(['start_time_display', 'end_time_display'], axis=1)
+                                        
+                                        # Display the human-readable version
+                                        st.dataframe(df_display, use_container_width=True)
+                                    else:
+                                        st.dataframe(df, use_container_width=True)
                                 except Exception as e:
                                     st.error(f"Error executing query: {e}")
                             else:
@@ -961,13 +990,63 @@ def render_add_row_form(table, columns, primary_keys):
                         
                     # Check for time type
                     elif 'TIME' in col_type or ('time' in col_name.lower() and 'stamp' not in col_name.lower()):
-                        value = st.time_input(
-                            col_name,
-                            value=datetime.now().time(),
-                            key=f"time_{table}_{col_name}"
-                        )
-                        # Format time as string for storage
-                        new_row_data[col_name] = value.strftime("%H:%M:%S")
+                        # Custom 12-hour time input with AM/PM selector
+                        hour_col, minute_col, ampm_col = st.columns([1, 1, 1])
+                        
+                        with hour_col:
+                            # Create hour selector (1-12)
+                            current_hour = datetime.now().hour
+                            # Convert 24h to 12h format for default selection
+                            display_hour = current_hour % 12
+                            if display_hour == 0:
+                                display_hour = 12
+                                
+                            hour_value = st.selectbox(
+                                "Hour",
+                                options=list(range(1, 13)),  # 1-12 for 12-hour format
+                                index=display_hour-1,  # Adjust for 0-based index
+                                key=f"hour_{table}_{col_name}"
+                            )
+                            
+                        with minute_col:
+                            # Create minute selector (00, 15, 30, 45)
+                            minute_value = st.selectbox(
+                                "Minute",
+                                options=[0, 15, 30, 45],
+                                index=0,
+                                format_func=lambda x: f"{x:02d}",  # Format as "00", "15", etc.
+                                key=f"minute_{table}_{col_name}"
+                            )
+                            
+                        with ampm_col:
+                            # AM/PM selector
+                            default_index = 1 if current_hour >= 12 else 0
+                            am_pm = st.selectbox(
+                                "AM/PM",
+                                options=["AM", "PM"],
+                                index=default_index,
+                                key=f"ampm_{table}_{col_name}"
+                            )
+                        
+                        # Convert to database format (24-hour)
+                        if am_pm == "PM" and hour_value < 12:
+                            hour_24 = hour_value + 12
+                        elif am_pm == "AM" and hour_value == 12:
+                            hour_24 = 0
+                        else:
+                            hour_24 = hour_value
+                            
+                        # Create a time object
+                        time_obj = datetime.strptime(f"{hour_24:02d}:{minute_value:02d}:00", "%H:%M:%S").time()
+                        
+                        # Store in 24-hour format for database
+                        new_row_data[col_name] = time_obj.strftime("%H:%M:%S")
+                        
+                        # Show preview of the time in 12-hour format with leading zeros
+                        display_time = f"{hour_value:02d}:{minute_value:02d} {am_pm}"
+                        
+                        # Add label for the time field
+                        st.markdown(f"**{col_name}:** {display_time}")
                         
                     # Check for datetime/timestamp type
                     elif any(x in col_type for x in ['DATETIME', 'TIMESTAMP']):
