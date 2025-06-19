@@ -9,7 +9,10 @@ import time
 import random
 import math
 from streamlit.components.v1 import html
-from time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
+try:
+    from time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
+except ImportError:
+    from .time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
 from global_css_handler import apply_global_css  # Only import what we need
 from global_css_handler import ensure_consistent_padding
 

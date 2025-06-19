@@ -1,5 +1,8 @@
 # ...existing imports...
-from admin_validator import enforce_admin_role
+try:
+    from admin_validator import enforce_admin_role
+except ImportError:
+    from .admin_validator import enforce_admin_role
 
 def show_admin_dashboard():
     # Hide sidebar explicitly with CSS

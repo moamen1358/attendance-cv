@@ -32,7 +32,6 @@ import logging
 from datetime import datetime
 
 # Local imports - direct module imports
-import home
 import real_time_prediction
 import report
 import student_report
@@ -438,6 +437,7 @@ def show_app():
         # This is the fallback code that runs if the primary admin view fails
         try:
             # Try to import required admin modules - if they fail, we'll handle it
+            import admin_dashboard
             import enhanced_db_explorer
             
             # Create a dictionary mapping page names to their respective functions

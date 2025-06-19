@@ -4,9 +4,15 @@ Initializes core components on import.
 """
 
 # Apply display patches first thing on import
-from display_patch import patch_display_functions  # Changed from src.display_patch
-patch_display_functions()
+try:
+    from .display_patch import patch_display_functions
+    patch_display_functions()
+except ImportError:
+    pass
 
 # Bootstrap essential database tables
-from bootstrap_tables import bootstrap_essential_tables  # Changed from src.bootstrap_tables
-bootstrap_essential_tables()
+try:
+    from .bootstrap_tables import bootstrap_essential_tables
+    bootstrap_essential_tables()
+except ImportError:
+    pass
