@@ -1,6 +1,5 @@
 import streamlit as st
 import sqlite3
-from database_utils import execute_query, execute_query_df
 import pandas as pd
 import re
 from datetime import datetime
@@ -19,9 +18,9 @@ HIDDEN_TABLES = [
     'control_4'         # Legacy control table
 ]
 
-def execute_query(query, params=(), fetch=False, commit=False):
+def execute_query_safe(query, params=None, fetch=False, commit=False):
     """
-    Execute a SQL query with error handling
+    Execute a SQL query with error handling - safe wrapper for database explorer
     
     Args:
         query (str): SQL query to execute
@@ -36,7 +35,11 @@ def execute_query(query, params=(), fetch=False, commit=False):
     try:
         conn = sqlite3.connect('attendance_system.db')
         cursor = conn.cursor()
-        cursor.execute(query, params)
+        
+        if params:
+            cursor.execute(query, params)
+        else:
+            cursor.execute(query)
         
         if fetch:
             result = cursor.fetchall()
@@ -50,48 +53,64 @@ def execute_query(query, params=(), fetch=False, commit=False):
     except sqlite3.Error as e:
         # Add query info to error message
         error_msg = f"SQLite error: {e}\nQuery: {query}\nParams: {params}"
-        st.error(error_msg)
-        raise Exception(error_msg)  # Re-raise for caller to handle
+        if 'st' in globals():
+            st.error(error_msg)
+        else:
+            print(error_msg)
+        return None if fetch else False
     finally:
         if conn:
             conn.close()
 
+# Use the safe version for all database operations in this module
+def execute_query(query, params=None, fetch=False, commit=False):
+    """Wrapper to maintain compatibility with existing code"""
+    return execute_query_safe(query, params, fetch, commit)
+
 def get_tables():
     """Get list of all tables in the database, filtering out system tables"""
-    result = execute_query("SELECT name FROM sqlite_master WHERE type='table';", fetch=True)
-    if not result:
+    try:
+        result = execute_query("SELECT name FROM sqlite_master WHERE type='table';", fetch=True)
+        if not result:
+            return []
+        
+        # Filter out hidden tables and strip whitespace from table names
+        visible_tables = [table[0].strip() for table in result if table[0] not in HIDDEN_TABLES]
+        
+        # Remove any empty strings or pure whitespace strings
+        visible_tables = [t for t in visible_tables if t and not t.isspace()]
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_tables = []
+        for t in visible_tables:
+            if t not in seen:
+                seen.add(t)
+                unique_tables.append(t)
+        
+        # Sort tables in logical groups
+        student_tables = [t for t in unique_tables if "student" in t.lower()]
+        attendance_tables = [t for t in unique_tables if "attend" in t.lower()]
+        subject_tables = [t for t in unique_tables if "subject" in t.lower() or "class" in t.lower()]
+        user_tables = [t for t in unique_tables if "user" in t.lower() or "account" in t.lower()]
+        other_tables = [t for t in unique_tables if t not in 
+                      student_tables + attendance_tables + subject_tables + user_tables]
+        
+        # Return tables in a logical order
+        return (student_tables + attendance_tables + subject_tables + 
+                user_tables + other_tables)
+    except Exception as e:
+        st.error(f"Error getting tables: {e}")
         return []
-    
-    # Filter out hidden tables and strip whitespace from table names
-    visible_tables = [table[0].strip() for table in result if table[0] not in HIDDEN_TABLES]
-    
-    # Remove any empty strings or pure whitespace strings
-    visible_tables = [t for t in visible_tables if t and not t.isspace()]
-    
-    # Remove duplicates while preserving order
-    seen = set()
-    unique_tables = []
-    for t in visible_tables:
-        if t not in seen:
-            seen.add(t)
-            unique_tables.append(t)
-    
-    # Sort tables in logical groups
-    student_tables = [t for t in unique_tables if "student" in t.lower()]
-    attendance_tables = [t for t in unique_tables if "attend" in t.lower()]
-    subject_tables = [t for t in unique_tables if "subject" in t.lower() or "class" in t.lower()]
-    user_tables = [t for t in unique_tables if "user" in t.lower() or "account" in t.lower()]
-    other_tables = [t for t in unique_tables if t not in 
-                  student_tables + attendance_tables + subject_tables + user_tables]
-    
-    # Return tables in a logical order
-    return (student_tables + attendance_tables + subject_tables + 
-            user_tables + other_tables)
 
 def get_table_columns(table):
     """Get column info for a table"""
-    result = execute_query(f"PRAGMA table_info({table});", fetch=True)
-    return result if result else []
+    try:
+        result = execute_query(f"PRAGMA table_info({table});", fetch=True)
+        return result if result else []
+    except Exception as e:
+        st.error(f"Error getting columns for table {table}: {e}")
+        return []
 
 def get_column_names(table):
     """Get column names for a table"""
@@ -105,8 +124,18 @@ def get_primary_key(table):
 
 def show_db_explorer():
     """Display database explorer with full CRUD functionality"""
-    st.title("SQLite Database Manager")
-    st.write("Manage your database tables with this interactive tool")
+    # Enhanced header with modern styling
+    st.markdown("""
+    <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); 
+                padding: 2rem; border-radius: 10px; margin-bottom: 2rem;">
+        <h1 style="color: white; margin: 0; font-size: 2.5rem; font-weight: 700;">
+            🗄️ Database Explorer
+        </h1>
+        <p style="color: rgba(255,255,255,0.9); margin: 0.5rem 0 0 0; font-size: 1.1rem;">
+            Advanced database management with real-time analytics and intelligent features
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Initialize session state
     if 'tables' not in st.session_state:
@@ -124,133 +153,315 @@ def show_db_explorer():
     # Add enhanced CSS for better styling and user experience
     st.markdown("""
     <style>
-    /* Enhance overall appearance */
+    /* Modern design system */
+    :root {
+        --primary-color: #667eea;
+        --secondary-color: #764ba2;
+        --success-color: #06d6a0;
+        --warning-color: #ffd166;
+        --error-color: #f25c54;
+        --text-primary: #2d3748;
+        --text-secondary: #718096;
+        --bg-light: #f7fafc;
+        --bg-card: #ffffff;
+        --border-color: #e2e8f0;
+        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* Main container styling */
     .main .block-container {
         padding-top: 1rem !important;
+        max-width: 95% !important;
     }
     
-    /* Compact table selection styling */
-    .compact-tables {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-        margin: 5px 0;
+    /* Enhanced card components */
+    .info-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: var(--shadow);
+        transition: all 0.3s ease;
     }
     
-    /* Ultra compact table selector buttons */
-    .compact-table-selector {
-        background-color: #f8f9fa;
-        border: 1px solid #eaeaea;
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 0.8rem;
-        margin: 0;
-        text-align: center;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        white-space: nowrap;
-        display: inline-block;
-    }
-    .compact-table-selector:hover {
-        background-color: #e9f2fe;
-        border-color: #bbd6fe;
-    }
-    .compact-table-selector.selected {
-        background-color: #e1f5fe;
-        border-color: #4fc3f7;
-        color: #0277bd;
-        font-weight: 600;
+    .info-card:hover {
+        box-shadow: var(--shadow-lg);
+        transform: translateY(-2px);
     }
     
-    /* Category headers */
-    .table-category {
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: #555;
-        margin: 5px 0 2px 0;
-        padding: 0;
+    /* Table selector with modern design */
+    .table-selector-container {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1.5rem;
+        margin: 1rem 0;
+        box-shadow: var(--shadow);
     }
     
-    /* Section dividers */
-    .compact-section-divider {
-        height: 1px;
-        background: #e0e0e0;
-        margin: 10px 0;
+    .table-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.75rem;
+        margin-top: 1rem;
     }
     
-    /* Horizontal scrollable container for tables */
-    .table-scroll-container {
-        display: flex;
-        overflow-x: auto;
-        padding: 5px 0;
-        margin-bottom: 8px;
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: thin;     /* Firefox */
-    }
-    
-    /* Thin scrollbar for better appearance */
-    .table-scroll-container::-webkit-scrollbar {
-        height: 4px;
-    }
-    
-    .table-scroll-container::-webkit-scrollbar-track {
-        background: #f1f1f1;
-        border-radius: 10px;
-    }
-    
-    .table-scroll-container::-webkit-scrollbar-thumb {
-        background: #c1c1c1;
-        border-radius: 10px;
-    }
-    
-    /* Table card styling */
     .table-card {
-        background-color: #f8f9fa;
-        border: 1px solid #eaeaea;
-        border-radius: 4px;
-        padding: 5px 12px;
-        margin-right: 8px;
-        white-space: nowrap;
+        background: linear-gradient(135deg, var(--bg-light) 0%, #ffffff 100%);
+        border: 2px solid var(--border-color);
+        border-radius: 8px;
+        padding: 1rem;
         cursor: pointer;
-        transition: all 0.2s ease;
-        font-size: 0.85rem;
-        min-width: fit-content;
-        display: inline-block;
+        transition: all 0.3s ease;
+        text-align: center;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .table-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 3px;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+        opacity: 0;
+        transition: opacity 0.3s ease;
     }
     
     .table-card:hover {
-        background-color: #e9f2fe;
-        border-color: #bbd6fe;
+        border-color: var(--primary-color);
+        transform: translateY(-3px);
+        box-shadow: var(--shadow-lg);
+    }
+    
+    .table-card:hover::before {
+        opacity: 1;
     }
     
     .table-card.selected {
-        background-color: #e1f5fe;
-        border-color: #4fc3f7;
-        color: #0277bd;
-        font-weight: 600;
+        border-color: var(--primary-color);
+        background: linear-gradient(135deg, #667eea1a 0%, #764ba21a 100%);
+        box-shadow: var(--shadow-lg);
     }
     
-    /* Category headers with icon */
-    .table-category {
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: #555;
-        margin: 5px 0 2px 0;
-        padding: 0;
+    .table-card.selected::before {
+        opacity: 1;
+    }
+    
+    .table-card-title {
+        font-weight: 600;
+        color: var(--text-primary);
+        margin-bottom: 0.5rem;
+        font-size: 0.95rem;
+    }
+    
+    .table-card-meta {
+        font-size: 0.8rem;
+        color: var(--text-secondary);
+        display: flex;
+        justify-content: space-between;
+        margin-top: 0.5rem;
+    }
+    
+    /* Category headers */
+    .category-header {
+        font-size: 1rem;
+        font-weight: 600;
+        color: var(--text-primary);
+        margin: 1.5rem 0 0.75rem 0;
+        padding-bottom: 0.5rem;
+        border-bottom: 2px solid var(--primary-color);
         display: flex;
         align-items: center;
     }
     
     .category-icon {
-        margin-right: 5px;
-        opacity: 0.8;
+        margin-right: 0.5rem;
+        font-size: 1.1rem;
     }
     
-    /* Section dividers */
-    .compact-section-divider {
-        height: 1px;
-        background: #e0e0e0;
-        margin: 10px 0;
+    /* Stats dashboard */
+    .stats-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    
+    .stat-card {
+        background: var(--bg-card);
+        border: 1px solid var(--border-color);
+        border-radius: 10px;
+        padding: 1.25rem;
+        text-align: center;
+        box-shadow: var(--shadow);
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .stat-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+    }
+    
+    .stat-card:hover {
+        transform: translateY(-2px);
+        box-shadow: var(--shadow-lg);
+    }
+    
+    .stat-number {
+        font-size: 2rem;
+        font-weight: 700;
+        color: var(--primary-color);
+        margin: 0;
+    }
+    
+    .stat-label {
+        font-size: 0.9rem;
+        color: var(--text-secondary);
+        margin-top: 0.25rem;
+    }
+    
+    /* Enhanced tabs */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 0.5rem;
+        background: var(--bg-light);
+        border-radius: 10px;
+        padding: 0.25rem;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        height: 3rem;
+        border-radius: 8px;
+        background: transparent;
+        border: none;
+        padding: 0 1.5rem;
+        font-weight: 500;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [data-baseweb="tab"]:hover {
+        background: rgba(102, 126, 234, 0.1);
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: var(--primary-color) !important;
+        color: white !important;
+        box-shadow: var(--shadow);
+    }
+    
+    /* Enhanced buttons */
+    .stButton > button {
+        border-radius: 8px;
+        border: none;
+        font-weight: 500;
+        transition: all 0.3s ease;
+        padding: 0.5rem 1.5rem;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-1px);
+        box-shadow: var(--shadow);
+    }
+    
+    /* Enhanced form elements */
+    .stSelectbox > div > div {
+        border-radius: 8px;
+        border: 2px solid var(--border-color);
+        transition: border-color 0.3s ease;
+    }
+    
+    .stSelectbox > div > div:focus-within {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    .stTextInput > div > div > input {
+        border-radius: 8px;
+        border: 2px solid var(--border-color);
+        transition: all 0.3s ease;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: var(--primary-color);
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    /* Enhanced data editor */
+    .stDataFrame {
+        border-radius: 10px;
+        overflow: hidden;
+        box-shadow: var(--shadow);
+    }
+    
+    /* Action buttons container */
+    .action-buttons {
+        display: flex;
+        gap: 0.5rem;
+        margin: 1rem 0;
+        flex-wrap: wrap;
+    }
+    
+    /* Search bar styling */
+    .search-container {
+        background: var(--bg-card);
+        border: 2px solid var(--border-color);
+        border-radius: 12px;
+        padding: 1rem;
+        margin: 1rem 0;
+        box-shadow: var(--shadow);
+    }
+    
+    /* Responsive design */
+    @media screen and (max-width: 768px) {
+        .table-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .stats-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .action-buttons {
+            flex-direction: column;
+        }
+        
+        .action-buttons > div {
+            width: 100% !important;
+        }
+    }
+    
+    /* Loading states and animations */
+    @keyframes pulse {
+        0% { opacity: 1; }
+        50% { opacity: 0.5; }
+        100% { opacity: 1; }
+    }
+    
+    .loading {
+        animation: pulse 2s infinite;
+    }
+    
+    /* Success/error message styling */
+    .stAlert {
+        border-radius: 8px;
+        border: none;
+        box-shadow: var(--shadow);
+    }
+    
+    /* Sidebar styling */
+    .css-1d391kg {
+        background: var(--bg-light);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -271,11 +482,11 @@ def show_db_explorer():
             
             # Get professors from user_accounts
             try:
-                professors_df = execute_query_df("SELECT username FROM user_accounts WHERE role = 'professor' ORDER BY username")
+                professors_df = pd.read_sql_query("SELECT username FROM user_accounts WHERE role = 'professor' ORDER BY username", sqlite3.connect('attendance_system.db'))
                 professors = professors_df['username'].tolist() if not professors_df.empty else []
                 
                 # Get subjects
-                subjects_df = execute_query_df("SELECT subject_id, name FROM subjects ORDER BY name")
+                subjects_df = pd.read_sql_query("SELECT subject_id, name FROM subjects ORDER BY name", sqlite3.connect('attendance_system.db'))
                 subjects = [(row['subject_id'], row['name']) for _, row in subjects_df.iterrows()] if not subjects_df.empty else []
                 
                 if professors and subjects:
@@ -316,7 +527,7 @@ def show_db_explorer():
                         JOIN subjects s ON a.subject_id = s.subject_id
                         ORDER BY a.professor_username, s.name
                         """
-                        assignments_df = execute_query_df(assignments_query)
+                        assignments_df = pd.read_sql_query(assignments_query, sqlite3.connect('attendance_system.db'))
                         
                         if not assignments_df.empty:
                             st.dataframe(assignments_df)
@@ -344,13 +555,23 @@ def show_db_explorer():
                 st.error(f"Error setting up manual assignment: {e}")
     
     with tab_main:
+        # Database overview and statistics
+        show_database_overview()
+        
         # Get fresh list of tables
         tables = get_tables()  # Get fresh list of tables
         
         if not tables:
-            st.info("No tables found in the database. Create a new table below.")
+            st.markdown("""
+            <div class="info-card">
+                <h3>🎯 No Tables Found</h3>
+                <p>Your database is empty. Create your first table to get started!</p>
+            </div>
+            """, unsafe_allow_html=True)
             create_new_table()
         else:
+            # Enhanced table selection interface
+            show_table_selector(tables)
             # Create a compact table filter
             col1, col2 = st.columns([4, 1])
             with col1:
@@ -468,8 +689,13 @@ def show_db_explorer():
                 st.session_state.selected_table = selected_table
                 st.session_state.editing_row = None
                 st.session_state.search_term = ""
-                # Use a more reliable technique - set a flag and check later to rerun
-                st.session_state.needs_rerun = True
+                # Force rerun to refresh the interface
+                st.rerun()
+            
+            # Check if we need to rerun (set by other components)
+            if st.session_state.get('needs_rerun', False):
+                st.session_state.needs_rerun = False
+                st.rerun()
             
             # Add thin separator line
             st.markdown('<div class="compact-section-divider"></div>', unsafe_allow_html=True)
@@ -481,8 +707,12 @@ def show_db_explorer():
                 primary_keys = get_primary_key(table)
                 
                 # Get row count
-                row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
-                row_count = row_count_result[0][0] if row_count_result else 0
+                try:
+                    row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
+                    row_count = row_count_result[0][0] if row_count_result else 0
+                except Exception as e:
+                    st.error(f"Error getting row count: {e}")
+                    row_count = 0
                 
                 # Table header with stats - enhanced styling
                 st.markdown(f"""
@@ -513,32 +743,35 @@ def show_db_explorer():
                             st.rerun()
                     
                     # Get row count
-                    row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
-                    row_count = row_count_result[0][0] if row_count_result else 0
+                    try:
+                        row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
+                        row_count = row_count_result[0][0] if row_count_result else 0
+                    except Exception as e:
+                        st.error(f"Error getting row count: {e}")
+                        row_count = 0
                     
                     # Build query without pagination limits
-                    if st.session_state.search_term:
-                        # Build search condition for each column
-                        search_conditions = []
-                        for col in columns:
-                            search_conditions.append(f"{col} LIKE ?")
-                        
-                        # Combine conditions with OR (removed LIMIT and OFFSET)
-                        search_query = f"SELECT * FROM {table} WHERE " + " OR ".join(search_conditions)
-                        
-                        # Prepare search parameters
-                        search_params = [f"%{st.session_state.search_term}%"] * len(columns)
-                        
-                        # Execute search query
-                        conn = sqlite3.connect('attendance_system.db')
-                        df = execute_query_df(search_query, search_params)
-                        conn.close()
-                    else:
-                        # Simple query without pagination
-                        query = f"SELECT * FROM {table};"
-                        conn = sqlite3.connect('attendance_system.db')
-                        df = execute_query_df(query)
-                        conn.close()
+                    try:
+                        if st.session_state.search_term:
+                            # Build search condition for each column
+                            search_conditions = []
+                            for col in columns:
+                                search_conditions.append(f"{col} LIKE ?")
+                            
+                            # Combine conditions with OR (removed LIMIT and OFFSET)
+                            search_query = f"SELECT * FROM {table} WHERE " + " OR ".join(search_conditions)
+                            
+                            # Prepare search parameters
+                            search_params = [f"%{st.session_state.search_term}%"] * len(columns)
+                            
+                            # Execute search query
+                            df = pd.read_sql_query(search_query, sqlite3.connect('attendance_system.db'), params=search_params)
+                        else:
+                            # Simple query without pagination
+                            df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
+                    except Exception as e:
+                        st.error(f"Error querying data: {e}")
+                        df = pd.DataFrame()  # Empty dataframe on error
                     
                     # Show record count with filter info
                     showing = len(df)
@@ -570,41 +803,70 @@ def show_db_explorer():
                         )
                         
                         # Detect changes and update database
-                        if not df.equals(edited_df):
-                            if st.button("Save Changes", type="primary"):
-                                try:
-                                    # Find the changed rows
-                                    for index, row in edited_df.iterrows():
-                                        if not df.iloc[index].equals(row):
-                                            # Get primary key value for this row
-                                            pk_values = {}
-                                            for pk in primary_keys:
-                                                pk_values[pk] = df.iloc[index][pk]
-                                            
-                                            # Build UPDATE statement
-                                            update_cols = []
-                                            update_vals = []
-                                            
-                                            for col in columns:
-                                                if df.iloc[index][col] != row[col]:
-                                                    update_cols.append(f"{col} = ?")
-                                                    update_vals.append(row[col])
-                                            
-                                            # Add WHERE clause parameters
-                                            where_conditions = []
-                                            for pk, val in pk_values.items():
-                                                where_conditions.append(f"{pk} = ?")
-                                                update_vals.append(val)
-                                            
-                                            update_stmt = f"UPDATE {table} SET " + ", ".join(update_cols) + " WHERE " + " AND ".join(where_conditions)
-                                            
-                                            # Execute update
-                                            execute_query(update_stmt, tuple(update_vals), commit=True)
-                                            
-                                    st.success("Data updated successfully!")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error updating data: {e}")
+                        if st.button("💾 Check for Changes", use_container_width=True):
+                            # Compare original and edited data
+                            changes_detected = False
+                            
+                            try:
+                                # Convert time columns back to original format for comparison
+                                df_compare = df.copy()
+                                edited_compare = edited_df.copy()
+                                
+                                # Revert time formatting for comparison
+                                time_columns = ['start_time', 'end_time', 'time']
+                                for time_col in time_columns:
+                                    if time_col in df_compare.columns:
+                                        # edited_df has formatted times, convert back for comparison
+                                        # This is tricky - we need to detect if values actually changed
+                                        pass  # Skip this complex comparison for now
+                                
+                                # Simple comparison - check if dataframes are different
+                                if not df_display.equals(edited_df):
+                                    changes_detected = True
+                                
+                                if changes_detected:
+                                    st.success("Changes detected! Click 'Save Changes' to apply them.")
+                                    
+                                    if st.button("💾 Save Changes", type="primary", use_container_width=True):
+                                        try:
+                                            # Find the changed rows
+                                            for index, row in edited_df.iterrows():
+                                                original_row = df_display.iloc[index]
+                                                if not original_row.equals(row):
+                                                    # Get primary key value for this row
+                                                    pk_values = {}
+                                                    for pk in primary_keys:
+                                                        pk_values[pk] = df.iloc[index][pk]
+                                                    
+                                                    # Build UPDATE statement
+                                                    update_cols = []
+                                                    update_vals = []
+                                                    
+                                                    for col in columns:
+                                                        if str(original_row[col]) != str(row[col]):
+                                                            update_cols.append(f"{col} = ?")
+                                                            update_vals.append(row[col])
+                                                    
+                                                    if update_cols:  # Only update if there are changes
+                                                        # Add WHERE clause parameters
+                                                        where_conditions = []
+                                                        for pk, val in pk_values.items():
+                                                            where_conditions.append(f"{pk} = ?")
+                                                            update_vals.append(val)
+                                                        
+                                                        update_stmt = f"UPDATE {table} SET " + ", ".join(update_cols) + " WHERE " + " AND ".join(where_conditions)
+                                                        
+                                                        # Execute update
+                                                        execute_query(update_stmt, tuple(update_vals), commit=True)
+                                                        
+                                            st.success("Data updated successfully!")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error updating data: {e}")
+                                else:
+                                    st.info("No changes detected.")
+                            except Exception as e:
+                                st.error(f"Error checking for changes: {e}")
                     else:
                         st.info("No data to display.")
                     
@@ -663,10 +925,7 @@ def show_db_explorer():
                         if preview_button and where_clause:
                             try:
                                 # Preview what will be deleted
-                                preview_query = f"SELECT * FROM {table} WHERE {where_clause} LIMIT 10"
-                                conn = sqlite3.connect('attendance_system.db')
-                                preview_df = execute_query_df(preview_query)
-                                conn.close()
+                                preview_df = pd.read_sql_query(f"SELECT * FROM {table} WHERE {where_clause} LIMIT 10", sqlite3.connect('attendance_system.db'))
                                 
                                 # Get count of all records that will be deleted
                                 count_query = f"SELECT COUNT(*) FROM {table} WHERE {where_clause}"
@@ -700,28 +959,24 @@ def show_db_explorer():
                                 st.warning("Please enter a SQL query")
                             elif query.strip().upper().startswith("SELECT"):
                                 try:
-                                    conn = sqlite3.connect('attendance_system.db')
-                                    result_df = execute_query_df(query)
-                                    conn.close()
+                                    result_df = pd.read_sql_query(query, sqlite3.connect('attendance_system.db'))
                                     
                                     st.success("Query executed successfully!")
                                     
                                     # Process DataFrame to convert time formats
-                                    if not df.empty and 'start_time' in df.columns and 'end_time' in df.columns:
+                                    if not result_df.empty:
                                         # Format time columns to AM/PM display format for user-friendly view
-                                        df['start_time_display'] = df['start_time'].apply(display_formatted_time)
-                                        df['end_time_display'] = df['end_time'].apply(display_formatted_time)
-                                        
-                                        # Use the display columns for the actual view
-                                        df_display = df.copy()
-                                        df_display['start_time'] = df_display['start_time_display']
-                                        df_display['end_time'] = df_display['end_time_display']
-                                        df_display = df_display.drop(['start_time_display', 'end_time_display'], axis=1)
+                                        if 'start_time' in result_df.columns:
+                                            result_df['start_time'] = result_df['start_time'].apply(display_formatted_time)
+                                        if 'end_time' in result_df.columns:
+                                            result_df['end_time'] = result_df['end_time'].apply(display_formatted_time)
+                                        if 'time' in result_df.columns:
+                                            result_df['time'] = result_df['time'].apply(display_formatted_time)
                                         
                                         # Display the human-readable version
-                                        st.dataframe(df_display, use_container_width=True)
+                                        st.dataframe(result_df, use_container_width=True)
                                     else:
-                                        st.dataframe(df, use_container_width=True)
+                                        st.info("Query returned no results.")
                                 except Exception as e:
                                     st.error(f"Error executing query: {e}")
                             else:
@@ -839,81 +1094,99 @@ def create_new_table():
         
         # Create table button with better styling
         if st.button("Create Table", key="create_table_main", type="primary", use_container_width=True):
-            if not new_table_name:
+            if not new_table_name.strip():
                 st.error("Please provide a table name")
+            elif not new_table_name.replace('_', '').replace('-', '').isalnum():
+                st.error("Table name should only contain letters, numbers, underscores, and hyphens")
             else:
                 # Check if any columns are defined and have names
-                if not any(col["name"] for col in st.session_state.new_table_columns):
+                valid_columns = [col for col in st.session_state.new_table_columns if col["name"].strip()]
+                if not valid_columns:
                     st.error("Please define at least one column with a name")
                 else:
                     # Build CREATE TABLE statement
                     column_defs = []
-                    for col in st.session_state.new_table_columns:
-                        if col["name"]:
-                            col_def = f"{col['name']} {col['type']}"
-                            if col["pk"]:
-                                col_def += " PRIMARY KEY"
-                            column_defs.append(col_def)
-                            
-                    if column_defs:
-                        create_stmt = f"CREATE TABLE {new_table_name} (\n" + ",\n".join(column_defs) + "\n);"
+                    for col in valid_columns:
+                        col_name = col["name"].strip()
+                        if not col_name.replace('_', '').replace('-', '').isalnum():
+                            st.error(f"Column name '{col_name}' should only contain letters, numbers, underscores, and hyphens")
+                            break
                         
-                        # Execute create table
-                        try:
-                            execute_query(create_stmt, commit=True)
-                            st.success(f"Table '{new_table_name}' created successfully!")
-                            st.session_state.tables = get_tables()
-                            st.session_state.selected_table = new_table_name
-                            st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error creating table: {e}")
+                        col_def = f"{col_name} {col['type']}"
+                        if col["pk"]:
+                            col_def += " PRIMARY KEY"
+                        column_defs.append(col_def)
+                    else:  # This else belongs to the for loop - executes if no break occurred
+                        if column_defs:
+                            create_stmt = f"CREATE TABLE {new_table_name} (\n" + ",\n".join(column_defs) + "\n);"
+                            
+                            # Execute create table
+                            try:
+                                # Check if table already exists
+                                existing_tables = get_tables()
+                                if new_table_name in existing_tables:
+                                    st.error(f"Table '{new_table_name}' already exists")
+                                else:
+                                    execute_query(create_stmt, commit=True)
+                                    st.success(f"Table '{new_table_name}' created successfully!")
+                                    st.session_state.tables = get_tables()
+                                    st.session_state.selected_table = new_table_name
+                                    st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
+                                    st.rerun()
+                            except Exception as e:
+                                st.error(f"Error creating table: {e}")
         
         st.markdown('</div>', unsafe_allow_html=True)
 
 def get_foreign_key_values(table_name, column_name):
     """Get possible values for a foreign key column"""
-    conn = sqlite3.connect('attendance_system.db')
-    cursor = conn.cursor()
-    
-    # Get foreign key info
-    execute_query(f"PRAGMA foreign_key_list({table_name})")
-    fk_data = cursor.fetchall()
-    
-    # Check if this column is a foreign key
-    ref_table = None
-    ref_col = None
-    
-    for fk in fk_data:
-        if fk[3] == column_name:  # [3] is the "from" column
-            ref_table = fk[2]     # [2] is the referenced table
-            ref_col = fk[4]       # [4] is the referenced column
-            break
-    
-    if not ref_table:
-        return []
-    
-    # Get values from the referenced table
+    conn = None
     try:
-        # First check if the table has a "name" column for better display
-        execute_query(f"PRAGMA table_info({ref_table})")
-        columns = [col[1] for col in cursor.fetchall()]
+        conn = sqlite3.connect('attendance_system.db')
+        cursor = conn.cursor()
         
-        if 'name' in columns:
-            # Include both ID and name for better display
-            execute_query(f"SELECT {ref_col}, name FROM {ref_table} ORDER BY name")
-            values = [(str(row[0]), f"{row[0]} - {row[1]}") for row in cursor.fetchall()]
-        else:
-            # Just use the referenced column value
-            execute_query(f"SELECT {ref_col} FROM {ref_table} ORDER BY {ref_col}")
-            values = [(str(row[0]), str(row[0])) for row in cursor.fetchall()]
+        # Get foreign key info
+        cursor.execute(f"PRAGMA foreign_key_list({table_name})")
+        fk_data = cursor.fetchall()
         
-        return values
+        # Check if this column is a foreign key
+        ref_table = None
+        ref_col = None
+        
+        for fk in fk_data:
+            if fk[3] == column_name:  # [3] is the "from" column
+                ref_table = fk[2]     # [2] is the referenced table
+                ref_col = fk[4]       # [4] is the referenced column
+                break
+        
+        if not ref_table:
+            return []
+        
+        # Get values from the referenced table
+        try:
+            # First check if the table has a "name" column for better display
+            cursor.execute(f"PRAGMA table_info({ref_table})")
+            columns = [col[1] for col in cursor.fetchall()]
+            
+            if 'name' in columns:
+                # Include both ID and name for better display
+                cursor.execute(f"SELECT {ref_col}, name FROM {ref_table} ORDER BY name")
+                values = [(str(row[0]), f"{row[0]} - {row[1]}") for row in cursor.fetchall()]
+            else:
+                # Just use the referenced column value
+                cursor.execute(f"SELECT {ref_col} FROM {ref_table} ORDER BY {ref_col}")
+                values = [(str(row[0]), str(row[0])) for row in cursor.fetchall()]
+            
+            return values
+        except Exception as e:
+            st.warning(f"Error fetching foreign key values: {e}")
+            return []
     except Exception as e:
-        st.warning(f"Error fetching foreign key values: {e}")
+        st.error(f"Error accessing foreign key info: {e}")
         return []
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 def get_common_values(column_name):
     """Return common values for known column types"""
@@ -1028,7 +1301,7 @@ def render_add_row_form(table, columns, primary_keys):
                                 key=f"ampm_{table}_{col_name}"
                             )
                         
-                        # Convert to database format (24-hour)
+                        # Convert to 12-hour AM/PM format for storage
                         if am_pm == "PM" and hour_value < 12:
                             hour_24 = hour_value + 12
                         elif am_pm == "AM" and hour_value == 12:
@@ -1036,17 +1309,13 @@ def render_add_row_form(table, columns, primary_keys):
                         else:
                             hour_24 = hour_value
                             
-                        # Create a time object
-                        time_obj = datetime.strptime(f"{hour_24:02d}:{minute_value:02d}:00", "%H:%M:%S").time()
+                        # Format as 12-hour AM/PM for database storage (consistent with system)
+                        display_hour = hour_value
+                        time_str = f"{display_hour:02d}:{minute_value:02d} {am_pm}"
+                        new_row_data[col_name] = time_str
                         
-                        # Store in 24-hour format for database
-                        new_row_data[col_name] = time_obj.strftime("%H:%M:%S")
-                        
-                        # Show preview of the time in 12-hour format with leading zeros
-                        display_time = f"{hour_value:02d}:{minute_value:02d} {am_pm}"
-                        
-                        # Add label for the time field
-                        st.markdown(f"**{col_name}:** {display_time}")
+                        # Show preview of the time
+                        st.markdown(f"**{col_name}:** {time_str}")
                         
                     # Check for datetime/timestamp type
                     elif any(x in col_type for x in ['DATETIME', 'TIMESTAMP']):
@@ -1138,46 +1407,54 @@ class CustomTableView:
 
     def _get_filtered_data(self, where_clause="", order_by="", limit=1000, offset=0):
         """Get data from the table with optional filtering"""
-        conn = self._get_db_connection()
-        
-        # Check if this is an attendance-related table and apply special sorting
-        is_attendance_table = any(name in self.table_name.lower() for name in ['attendance', 'class_attendance'])
-        
-        query = f"SELECT * FROM {self.table_name}"
-        
-        if where_clause:
-            query += f" WHERE {where_clause}"
+        conn = None
+        try:
+            conn = sqlite3.connect('attendance_system.db')
             
-        # For attendance tables, default to timestamp/date descending if no explicit order is given
-        if is_attendance_table and not order_by:
-            # Try to find date/time column for sorting
-            for time_col in ['timestamp', 'class_date', 'date', 'created_at', 'time']:
-                cursor = conn.cursor()
-                execute_query(f"PRAGMA table_info({self.table_name})")
-                columns = [col[1] for col in cursor.fetchall()]
-                if time_col in columns:
-                    order_by = f"{time_col} DESC"
-                    break
-        
-        # Apply order_by clause
-        if order_by:
-            query += f" ORDER BY {order_by}"
-        elif self.primary_key:
-            query += f" ORDER BY {self.primary_key}"
+            # Check if this is an attendance-related table and apply special sorting
+            is_attendance_table = any(name in self.table_name.lower() for name in ['attendance', 'class_attendance'])
             
-        query += f" LIMIT {limit} OFFSET {offset}"
-        
-        df = execute_query_df(query)
-        
-        # Get total row count
-        count_query = f"SELECT COUNT(*) FROM {self.table_name}"
-        if where_clause:
-            count_query += f" WHERE {where_clause}"
-        
-        total_rows = execute_query_df(count_query).iloc[0, 0]
-        
-        conn.close()
-        return df, total_rows
+            query = f"SELECT * FROM {self.table_name}"
+            
+            if where_clause:
+                query += f" WHERE {where_clause}"
+                
+            # For attendance tables, default to timestamp/date descending if no explicit order is given
+            if is_attendance_table and not order_by:
+                # Try to find date/time column for sorting
+                for time_col in ['timestamp', 'class_date', 'date', 'created_at', 'time']:
+                    cursor = conn.cursor()
+                    cursor.execute(f"PRAGMA table_info({self.table_name})")
+                    columns = [col[1] for col in cursor.fetchall()]
+                    if time_col in columns:
+                        order_by = f"{time_col} DESC"
+                        break
+            
+            # Apply order_by clause
+            if order_by:
+                query += f" ORDER BY {order_by}"
+            elif hasattr(self, 'primary_key') and self.primary_key:
+                query += f" ORDER BY {self.primary_key}"
+                
+            query += f" LIMIT {limit} OFFSET {offset}"
+            
+            df = pd.read_sql_query(query, conn)
+            
+            # Get total row count
+            count_query = f"SELECT COUNT(*) FROM {self.table_name}"
+            if where_clause:
+                count_query += f" WHERE {where_clause}"
+            
+            count_df = pd.read_sql_query(count_query, conn)
+            total_rows = count_df.iloc[0, 0] if not count_df.empty else 0
+            
+            return df, total_rows
+        except Exception as e:
+            st.error(f"Error getting filtered data: {e}")
+            return pd.DataFrame(), 0
+        finally:
+            if conn:
+                conn.close()
 
     # ... rest of the class methods ...
 
