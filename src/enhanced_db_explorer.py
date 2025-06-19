@@ -3,6 +3,8 @@ import sqlite3
 import pandas as pd
 import re
 from datetime import datetime
+import plotly.express as px
+import plotly.graph_objects as go
 # Add import for professor assignments functionality
 import importlib
 # Import time utilities for better formatting
@@ -124,18 +126,8 @@ def get_primary_key(table):
 
 def show_db_explorer():
     """Display database explorer with full CRUD functionality"""
-    # Enhanced header with modern styling
-    st.markdown("""
-    <div style="background: linear-gradient(90deg, #667eea 0%, #764ba2 100%); 
-                padding: 2rem; border-radius: 10px; margin-bottom: 2rem;">
-        <h1 style="color: white; margin: 0; font-size: 2.5rem; font-weight: 700;">
-            🗄️ Database Explorer
-        </h1>
-        <p style="color: rgba(255,255,255,0.9); margin: 0.5rem 0 0 0; font-size: 1.1rem;">
-            Advanced database management with real-time analytics and intelligent features
-        </p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.title("SQLite Database Manager")
+    st.write("Manage your database tables with this interactive tool")
     
     # Initialize session state
     if 'tables' not in st.session_state:
@@ -153,315 +145,133 @@ def show_db_explorer():
     # Add enhanced CSS for better styling and user experience
     st.markdown("""
     <style>
-    /* Modern design system */
-    :root {
-        --primary-color: #667eea;
-        --secondary-color: #764ba2;
-        --success-color: #06d6a0;
-        --warning-color: #ffd166;
-        --error-color: #f25c54;
-        --text-primary: #2d3748;
-        --text-secondary: #718096;
-        --bg-light: #f7fafc;
-        --bg-card: #ffffff;
-        --border-color: #e2e8f0;
-        --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-        --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    }
-    
-    /* Main container styling */
+    /* Enhance overall appearance */
     .main .block-container {
         padding-top: 1rem !important;
-        max-width: 95% !important;
     }
     
-    /* Enhanced card components */
-    .info-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: var(--shadow);
-        transition: all 0.3s ease;
-    }
-    
-    .info-card:hover {
-        box-shadow: var(--shadow-lg);
-        transform: translateY(-2px);
-    }
-    
-    /* Table selector with modern design */
-    .table-selector-container {
-        background: var(--bg-card);
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 1.5rem;
-        margin: 1rem 0;
-        box-shadow: var(--shadow);
-    }
-    
-    .table-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 0.75rem;
-        margin-top: 1rem;
-    }
-    
-    .table-card {
-        background: linear-gradient(135deg, var(--bg-light) 0%, #ffffff 100%);
-        border: 2px solid var(--border-color);
-        border-radius: 8px;
-        padding: 1rem;
-        cursor: pointer;
-        transition: all 0.3s ease;
-        text-align: center;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .table-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 3px;
-        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-        opacity: 0;
-        transition: opacity 0.3s ease;
-    }
-    
-    .table-card:hover {
-        border-color: var(--primary-color);
-        transform: translateY(-3px);
-        box-shadow: var(--shadow-lg);
-    }
-    
-    .table-card:hover::before {
-        opacity: 1;
-    }
-    
-    .table-card.selected {
-        border-color: var(--primary-color);
-        background: linear-gradient(135deg, #667eea1a 0%, #764ba21a 100%);
-        box-shadow: var(--shadow-lg);
-    }
-    
-    .table-card.selected::before {
-        opacity: 1;
-    }
-    
-    .table-card-title {
-        font-weight: 600;
-        color: var(--text-primary);
-        margin-bottom: 0.5rem;
-        font-size: 0.95rem;
-    }
-    
-    .table-card-meta {
-        font-size: 0.8rem;
-        color: var(--text-secondary);
+    /* Compact table selection styling */
+    .compact-tables {
         display: flex;
-        justify-content: space-between;
-        margin-top: 0.5rem;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin: 5px 0;
+    }
+    
+    /* Ultra compact table selector buttons */
+    .compact-table-selector {
+        background-color: #f8f9fa;
+        border: 1px solid #eaeaea;
+        border-radius: 4px;
+        padding: 4px 8px;
+        font-size: 0.8rem;
+        margin: 0;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        white-space: nowrap;
+        display: inline-block;
+    }
+    .compact-table-selector:hover {
+        background-color: #e9f2fe;
+        border-color: #bbd6fe;
+    }
+    .compact-table-selector.selected {
+        background-color: #e1f5fe;
+        border-color: #4fc3f7;
+        color: #0277bd;
+        font-weight: 600;
     }
     
     /* Category headers */
-    .category-header {
-        font-size: 1rem;
+    .table-category {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #555;
+        margin: 5px 0 2px 0;
+        padding: 0;
+    }
+    
+    /* Section dividers */
+    .compact-section-divider {
+        height: 1px;
+        background: #e0e0e0;
+        margin: 10px 0;
+    }
+    
+    /* Horizontal scrollable container for tables */
+    .table-scroll-container {
+        display: flex;
+        overflow-x: auto;
+        padding: 5px 0;
+        margin-bottom: 8px;
+        -ms-overflow-style: none;  /* IE and Edge */
+        scrollbar-width: thin;     /* Firefox */
+    }
+    
+    /* Thin scrollbar for better appearance */
+    .table-scroll-container::-webkit-scrollbar {
+        height: 4px;
+    }
+    
+    .table-scroll-container::-webkit-scrollbar-track {
+        background: #f1f1f1;
+        border-radius: 10px;
+    }
+    
+    .table-scroll-container::-webkit-scrollbar-thumb {
+        background: #c1c1c1;
+        border-radius: 10px;
+    }
+    
+    /* Table card styling */
+    .table-card {
+        background-color: #f8f9fa;
+        border: 1px solid #eaeaea;
+        border-radius: 4px;
+        padding: 5px 12px;
+        margin-right: 8px;
+        white-space: nowrap;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        font-size: 0.85rem;
+        min-width: fit-content;
+        display: inline-block;
+    }
+    
+    .table-card:hover {
+        background-color: #e9f2fe;
+        border-color: #bbd6fe;
+    }
+    
+    .table-card.selected {
+        background-color: #e1f5fe;
+        border-color: #4fc3f7;
+        color: #0277bd;
         font-weight: 600;
-        color: var(--text-primary);
-        margin: 1.5rem 0 0.75rem 0;
-        padding-bottom: 0.5rem;
-        border-bottom: 2px solid var(--primary-color);
+    }
+    
+    /* Category headers with icon */
+    .table-category {
+        font-size: 0.85rem;
+        font-weight: 500;
+        color: #555;
+        margin: 5px 0 2px 0;
+        padding: 0;
         display: flex;
         align-items: center;
     }
     
     .category-icon {
-        margin-right: 0.5rem;
-        font-size: 1.1rem;
+        margin-right: 5px;
+        opacity: 0.8;
     }
     
-    /* Stats dashboard */
-    .stats-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-        gap: 1rem;
-        margin: 1rem 0;
-    }
-    
-    .stat-card {
-        background: var(--bg-card);
-        border: 1px solid var(--border-color);
-        border-radius: 10px;
-        padding: 1.25rem;
-        text-align: center;
-        box-shadow: var(--shadow);
-        transition: all 0.3s ease;
-        position: relative;
-        overflow: hidden;
-    }
-    
-    .stat-card::before {
-        content: '';
-        position: absolute;
-        top: 0;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-    }
-    
-    .stat-card:hover {
-        transform: translateY(-2px);
-        box-shadow: var(--shadow-lg);
-    }
-    
-    .stat-number {
-        font-size: 2rem;
-        font-weight: 700;
-        color: var(--primary-color);
-        margin: 0;
-    }
-    
-    .stat-label {
-        font-size: 0.9rem;
-        color: var(--text-secondary);
-        margin-top: 0.25rem;
-    }
-    
-    /* Enhanced tabs */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 0.5rem;
-        background: var(--bg-light);
-        border-radius: 10px;
-        padding: 0.25rem;
-    }
-    
-    .stTabs [data-baseweb="tab"] {
-        height: 3rem;
-        border-radius: 8px;
-        background: transparent;
-        border: none;
-        padding: 0 1.5rem;
-        font-weight: 500;
-        transition: all 0.3s ease;
-    }
-    
-    .stTabs [data-baseweb="tab"]:hover {
-        background: rgba(102, 126, 234, 0.1);
-    }
-    
-    .stTabs [aria-selected="true"] {
-        background: var(--primary-color) !important;
-        color: white !important;
-        box-shadow: var(--shadow);
-    }
-    
-    /* Enhanced buttons */
-    .stButton > button {
-        border-radius: 8px;
-        border: none;
-        font-weight: 500;
-        transition: all 0.3s ease;
-        padding: 0.5rem 1.5rem;
-    }
-    
-    .stButton > button:hover {
-        transform: translateY(-1px);
-        box-shadow: var(--shadow);
-    }
-    
-    /* Enhanced form elements */
-    .stSelectbox > div > div {
-        border-radius: 8px;
-        border: 2px solid var(--border-color);
-        transition: border-color 0.3s ease;
-    }
-    
-    .stSelectbox > div > div:focus-within {
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    
-    .stTextInput > div > div > input {
-        border-radius: 8px;
-        border: 2px solid var(--border-color);
-        transition: all 0.3s ease;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: var(--primary-color);
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
-    }
-    
-    /* Enhanced data editor */
-    .stDataFrame {
-        border-radius: 10px;
-        overflow: hidden;
-        box-shadow: var(--shadow);
-    }
-    
-    /* Action buttons container */
-    .action-buttons {
-        display: flex;
-        gap: 0.5rem;
-        margin: 1rem 0;
-        flex-wrap: wrap;
-    }
-    
-    /* Search bar styling */
-    .search-container {
-        background: var(--bg-card);
-        border: 2px solid var(--border-color);
-        border-radius: 12px;
-        padding: 1rem;
-        margin: 1rem 0;
-        box-shadow: var(--shadow);
-    }
-    
-    /* Responsive design */
-    @media screen and (max-width: 768px) {
-        .table-grid {
-            grid-template-columns: 1fr;
-        }
-        
-        .stats-grid {
-            grid-template-columns: 1fr;
-        }
-        
-        .action-buttons {
-            flex-direction: column;
-        }
-        
-        .action-buttons > div {
-            width: 100% !important;
-        }
-    }
-    
-    /* Loading states and animations */
-    @keyframes pulse {
-        0% { opacity: 1; }
-        50% { opacity: 0.5; }
-        100% { opacity: 1; }
-    }
-    
-    .loading {
-        animation: pulse 2s infinite;
-    }
-    
-    /* Success/error message styling */
-    .stAlert {
-        border-radius: 8px;
-        border: none;
-        box-shadow: var(--shadow);
-    }
-    
-    /* Sidebar styling */
-    .css-1d391kg {
-        background: var(--bg-light);
+    /* Section dividers */
+    .compact-section-divider {
+        height: 1px;
+        background: #e0e0e0;
+        margin: 10px 0;
     }
     </style>
     """, unsafe_allow_html=True)
@@ -555,23 +365,13 @@ def show_db_explorer():
                 st.error(f"Error setting up manual assignment: {e}")
     
     with tab_main:
-        # Database overview and statistics
-        show_database_overview()
-        
         # Get fresh list of tables
         tables = get_tables()  # Get fresh list of tables
         
         if not tables:
-            st.markdown("""
-            <div class="info-card">
-                <h3>🎯 No Tables Found</h3>
-                <p>Your database is empty. Create your first table to get started!</p>
-            </div>
-            """, unsafe_allow_html=True)
+            st.info("No tables found in the database. Create a new table below.")
             create_new_table()
         else:
-            # Enhanced table selection interface
-            show_table_selector(tables)
             # Create a compact table filter
             col1, col2 = st.columns([4, 1])
             with col1:
@@ -728,18 +528,52 @@ def show_db_explorer():
                 </div>
                 """, unsafe_allow_html=True)
                 
-                # Create tabs for different operations - UPDATED to include Database Operations tab
-                view_tab, add_tab, delete_tab, sql_tab, manage_tab = st.tabs(["📄 View Data", "➕ Add Row", "🗑️ Delete Records", "🔍 SQL Query", "⚙️ Database Operations"])
+                # Create tabs for different operations - UPDATED to include Analytics tab
+                view_tab, add_tab, delete_tab, sql_tab, analytics_tab, manage_tab = st.tabs(["📄 View Data", "➕ Add Row", "🗑️ Delete Records", "🔍 SQL Query", "📊 Analytics", "⚙️ Database Operations"])
                 
                 # VIEW DATA TAB
                 with view_tab:
-                    # Search control only (REMOVE pagination controls)
-                    search_col = st.columns(1)[0]
+                    # Enhanced search controls
+                    st.subheader("🔍 Advanced Search & Filters")
                     
-                    with search_col:
-                        search_term = st.text_input("🔍 Search in any column:", value=st.session_state.search_term)
+                    # Create expandable search section
+                    with st.expander("🔧 Advanced Search Options", expanded=False):
+                        col1, col2 = st.columns(2)
+                        
+                        with col1:
+                            # Column-specific search
+                            search_column = st.selectbox("Search in specific column:", 
+                                                       ["All Columns"] + columns)
+                            search_operator = st.selectbox("Search operator:", 
+                                                         ["Contains", "Equals", "Starts with", "Ends with", "Greater than", "Less than"])
+                        
+                        with col2:
+                            # Date range filter for date columns
+                            date_columns = [col for col in columns if any(keyword in col.lower() for keyword in ['date', 'time', 'created', 'updated'])]
+                            if date_columns:
+                                date_filter_col = st.selectbox("Filter by date column:", 
+                                                             ["No date filter"] + date_columns)
+                                if date_filter_col != "No date filter":
+                                    col_date1, col_date2 = st.columns(2)
+                                    with col_date1:
+                                        start_date = st.date_input("From date:")
+                                    with col_date2:
+                                        end_date = st.date_input("To date:")
+                    
+                    # Main search control
+                    search_col1, search_col2 = st.columns([3, 1])
+                    
+                    with search_col1:
+                        search_term = st.text_input("🔍 Search:", value=st.session_state.search_term,
+                                                  placeholder="Enter search term...")
                         if search_term != st.session_state.search_term:
                             st.session_state.search_term = search_term
+                            st.rerun()
+                    
+                    with search_col2:
+                        # Quick filter buttons
+                        if st.button("🗑️ Clear", use_container_width=True):
+                            st.session_state.search_term = ""
                             st.rerun()
                     
                     # Get row count
@@ -872,7 +706,126 @@ def show_db_explorer():
                     
                 # ADD ROW TAB
                 with add_tab:
-                    render_add_row_form(table, columns, primary_keys)
+                    # Create sub-tabs for single vs bulk operations
+                    single_tab, bulk_tab = st.tabs(["➕ Add Single Row", "📋 Bulk Operations"])
+                    
+                    with single_tab:
+                        render_add_row_form(table, columns, primary_keys)
+                    
+                    with bulk_tab:
+                        st.subheader(f"📋 Bulk Operations for {table}")
+                        
+                        # Bulk insert with CSV template
+                        st.write("**Method 1: CSV Template**")
+                        
+                        if st.button("📄 Download CSV Template"):
+                            # Create a template CSV with column headers
+                            template_data = {col: [""] for col in columns}
+                            template_df = pd.DataFrame(template_data)
+                            
+                            csv_template = template_df.to_csv(index=False)
+                            st.download_button(
+                                label="💾 Download Template",
+                                data=csv_template,
+                                file_name=f"{table}_template.csv",
+                                mime="text/csv"
+                            )
+                        
+                        # Upload and process bulk data
+                        bulk_file = st.file_uploader("Upload filled CSV template:", type=['csv'])
+                        
+                        if bulk_file is not None:
+                            try:
+                                bulk_df = pd.read_csv(bulk_file)
+                                
+                                # Validate columns
+                                missing_cols = set(columns) - set(bulk_df.columns)
+                                extra_cols = set(bulk_df.columns) - set(columns)
+                                
+                                if missing_cols:
+                                    st.warning(f"Missing columns: {', '.join(missing_cols)}")
+                                if extra_cols:
+                                    st.info(f"Extra columns (will be ignored): {', '.join(extra_cols)}")
+                                
+                                # Show preview
+                                st.write("**Preview of data to insert:**")
+                                st.dataframe(bulk_df.head(10), use_container_width=True)
+                                
+                                if st.button("📤 Insert Bulk Data", type="primary"):
+                                    try:
+                                        # Filter to only include valid columns
+                                        valid_df = bulk_df[[col for col in columns if col in bulk_df.columns]]
+                                        
+                                        # Insert data
+                                        conn = sqlite3.connect('attendance_system.db')
+                                        valid_df.to_sql(table, conn, if_exists='append', index=False)
+                                        conn.commit()
+                                        conn.close()
+                                        
+                                        st.success(f"✅ Successfully inserted {len(valid_df)} records!")
+                                        st.rerun()
+                                        
+                                    except Exception as e:
+                                        st.error(f"Bulk insert failed: {e}")
+                                        
+                            except Exception as e:
+                                st.error(f"Error processing CSV: {e}")
+                        
+                        # Manual bulk insert
+                        st.write("**Method 2: Manual Entry**")
+                        
+                        # Initialize bulk data in session state
+                        if 'bulk_rows' not in st.session_state:
+                            st.session_state.bulk_rows = 3
+                        
+                        num_rows = st.number_input("Number of rows to add:", 
+                                                  min_value=1, max_value=50, 
+                                                  value=st.session_state.bulk_rows)
+                        st.session_state.bulk_rows = num_rows
+                        
+                        with st.form("bulk_manual_form"):
+                            st.write(f"Enter data for {num_rows} rows:")
+                            
+                            bulk_data = []
+                            for row in range(num_rows):
+                                st.write(f"**Row {row + 1}:**")
+                                row_data = {}
+                                
+                                # Create columns for input fields
+                                input_cols = st.columns(min(3, len(columns)))
+                                
+                                for i, col_name in enumerate(columns):
+                                    col_idx = i % len(input_cols)
+                                    with input_cols[col_idx]:
+                                        row_data[col_name] = st.text_input(
+                                            col_name, 
+                                            key=f"bulk_{row}_{col_name}",
+                                            placeholder=f"Enter {col_name}"
+                                        )
+                                
+                                bulk_data.append(row_data)
+                            
+                            if st.form_submit_button("📤 Insert All Rows", use_container_width=True):
+                                try:
+                                    # Convert to DataFrame and insert
+                                    bulk_df = pd.DataFrame(bulk_data)
+                                    
+                                    # Remove empty rows
+                                    bulk_df = bulk_df.dropna(how='all')
+                                    
+                                    if not bulk_df.empty:
+                                        conn = sqlite3.connect('attendance_system.db')
+                                        bulk_df.to_sql(table, conn, if_exists='append', index=False)
+                                        conn.commit()
+                                        conn.close()
+                                        
+                                        st.success(f"✅ Successfully inserted {len(bulk_df)} rows!")
+                                        st.rerun()
+                                    else:
+                                        st.warning("No data to insert (all rows empty)")
+                                        
+                                except Exception as e:
+                                    st.error(f"Bulk insert failed: {e}")
                 
                 # DELETE TAB
                 with delete_tab:
@@ -1026,11 +979,121 @@ def show_db_explorer():
                                     st.error("Table name doesn't match. Deletion cancelled.")
                         else:
                             st.info("No table selected to delete.")
-            else:
-                st.info("Select a table from above to view and manage its data.")
-                st.markdown('<div class="section-divider"></div>', unsafe_allow_html=True)
-                create_new_table()
-
+                    
+                    with col2:
+                        st.subheader("📤 Export & Import")
+                        
+                        # Export functionality
+                        st.write("**Export Data:**")
+                        export_format = st.selectbox("Export Format:", ["CSV", "JSON", "Excel"])
+                        
+                        if st.button("📥 Export Current Table", use_container_width=True):
+                            try:
+                                # Get all data from current table
+                                export_query = f"SELECT * FROM {st.session_state.selected_table}"
+                                export_df = pd.read_sql_query(export_query, sqlite3.connect('attendance_system.db'))
+                                
+                                if export_format == "CSV":
+                                    csv_data = export_df.to_csv(index=False)
+                                    st.download_button(
+                                        label="💾 Download CSV",
+                                        data=csv_data,
+                                        file_name=f"{st.session_state.selected_table}.csv",
+                                        mime="text/csv"
+                                    )
+                                
+                                elif export_format == "JSON":
+                                    json_data = export_df.to_json(orient='records', indent=2)
+                                    st.download_button(
+                                        label="💾 Download JSON",
+                                        data=json_data,
+                                        file_name=f"{st.session_state.selected_table}.json",
+                                        mime="application/json"
+                                    )
+                                
+                                elif export_format == "Excel":
+                                    # For Excel, we need to create a buffer
+                                    from io import BytesIO
+                                    buffer = BytesIO()
+                                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                                        export_df.to_excel(writer, sheet_name=st.session_state.selected_table, index=False)
+                                    
+                                    st.download_button(
+                                        label="💾 Download Excel",
+                                        data=buffer.getvalue(),
+                                        file_name=f"{st.session_state.selected_table}.xlsx",
+                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                                    )
+                                
+                                st.success(f"Export prepared! Click the download button above.")
+                                
+                            except Exception as e:
+                                st.error(f"Export failed: {e}")
+                        
+                        # Import functionality
+                        st.write("**Import Data:**")
+                        uploaded_file = st.file_uploader("Choose a file to import:", 
+                                                        type=['csv', 'json', 'xlsx'])
+                        
+                        if uploaded_file is not None:
+                            try:
+                                # Read the uploaded file
+                                if uploaded_file.name.endswith('.csv'):
+                                    import_df = pd.read_csv(uploaded_file)
+                                elif uploaded_file.name.endswith('.json'):
+                                    import_df = pd.read_json(uploaded_file)
+                                elif uploaded_file.name.endswith('.xlsx'):
+                                    import_df = pd.read_excel(uploaded_file)
+                                
+                                st.write("**Preview of imported data:**")
+                                st.dataframe(import_df.head(), use_container_width=True)
+                                
+                                # Import options
+                                import_mode = st.radio("Import Mode:", 
+                                                     ["Append to existing table", "Replace table data"])
+                                
+                                if st.button("📤 Import Data", type="primary"):
+                                    conn = sqlite3.connect('attendance_system.db')
+                                    
+                                    if import_mode == "Replace table data":
+                                        # Clear existing data
+                                        conn.execute(f"DELETE FROM {st.session_state.selected_table}")
+                                    
+                                    # Insert new data
+                                    import_df.to_sql(st.session_state.selected_table, conn, 
+                                                   if_exists='append', index=False)
+                                    conn.commit()
+                                    conn.close()
+                                    
+                                    st.success(f"Successfully imported {len(import_df)} records!")
+                                    st.rerun()
+                                
+                            except Exception as e:
+                                st.error(f"Import failed: {e}")
+                        
+                        # Backup functionality
+                        st.write("**Database Backup:**")
+                        if st.button("💾 Create Database Backup", use_container_width=True):
+                            try:
+                                import shutil
+                                from datetime import datetime
+                                
+                                backup_name = f"attendance_system_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
+                                shutil.copy2('attendance_system.db', backup_name)
+                                
+                                st.success(f"Backup created: {backup_name}")
+                                
+                                # Offer download of backup
+                                with open(backup_name, 'rb') as f:
+                                    st.download_button(
+                                        label="📥 Download Backup",
+                                        data=f.read(),
+                                        file_name=backup_name,
+                                        mime="application/octet-stream"
+                                    )
+                                    
+                            except Exception as e:
+                                st.error(f"Backup failed: {e}")
     # Remove database info sidebar completely - keep empty sidebar to prevent layout issues
     with st.sidebar:
         # Empty sidebar
@@ -1460,3 +1523,124 @@ class CustomTableView:
 
 if __name__ == "__main__":
     show_db_explorer()
+
+def validate_data_integrity(table_name):
+    """Perform comprehensive data integrity checks"""
+    issues = []
+    
+    try:
+        conn = sqlite3.connect('attendance_system.db')
+        
+        # Check for NULL values in NOT NULL columns
+        columns_info = execute_query(f"PRAGMA table_info({table_name})", fetch=True)
+        for col_info in columns_info:
+            col_name, col_type, not_null = col_info[1], col_info[2], col_info[3]
+            
+            if not_null:
+                null_count_result = execute_query(
+                    f"SELECT COUNT(*) FROM {table_name} WHERE {col_name} IS NULL",
+                    fetch=True
+                )
+                null_count = null_count_result[0][0] if null_count_result else 0
+                
+                if null_count > 0:
+                    issues.append({
+                        'Type': 'NULL Constraint Violation',
+                        'Column': col_name,
+                        'Issue': f'{null_count} NULL values in NOT NULL column',
+                        'Severity': 'High'
+                    })
+        
+        # Check for duplicate primary keys
+        pk_columns = get_primary_key(table_name)
+        if pk_columns:
+            pk_list = ', '.join(pk_columns)
+            dup_query = f"""
+            SELECT {pk_list}, COUNT(*) as dup_count
+            FROM {table_name}
+            GROUP BY {pk_list}
+            HAVING COUNT(*) > 1
+            """
+            
+            dup_result = execute_query(dup_query, fetch=True)
+            if dup_result:
+                issues.append({
+                    'Type': 'Primary Key Violation',
+                    'Column': pk_list,
+                    'Issue': f'{len(dup_result)} duplicate primary key values',
+                    'Severity': 'Critical'
+                })
+        
+        # Check for foreign key violations
+        fk_info = execute_query(f"PRAGMA foreign_key_list({table_name})", fetch=True)
+        for fk in fk_info:
+            from_col, to_table, to_col = fk[3], fk[2], fk[4]
+            
+            orphan_query = f"""
+            SELECT COUNT(*) FROM {table_name} t1
+            LEFT JOIN {to_table} t2 ON t1.{from_col} = t2.{to_col}
+            WHERE t1.{from_col} IS NOT NULL AND t2.{to_col} IS NULL
+            """
+            
+            try:
+                orphan_result = execute_query(orphan_query, fetch=True)
+                orphan_count = orphan_result[0][0] if orphan_result else 0
+                
+                if orphan_count > 0:
+                    issues.append({
+                        'Type': 'Foreign Key Violation',
+                        'Column': from_col,
+                        'Issue': f'{orphan_count} orphaned records',
+                        'Severity': 'Medium'
+                    })
+            except:
+                pass  # Skip if referenced table doesn't exist
+        
+        conn.close()
+        
+    except Exception as e:
+        issues.append({
+            'Type': 'Validation Error',
+            'Column': 'N/A',
+            'Issue': f'Could not complete validation: {e}',
+            'Severity': 'Low'
+        })
+    
+    return issues
+
+def generate_schema_diagram():
+    """Generate a visual representation of the database schema"""
+    try:
+        import networkx as nx
+        
+        # Get all tables and their relationships
+        tables = get_tables()
+        G = nx.DiGraph()
+        
+        # Add tables as nodes
+        for table in tables:
+            G.add_node(table, node_type='table')
+        
+        # Add foreign key relationships as edges
+        for table in tables:
+            try:
+                fk_info = execute_query(f"PRAGMA foreign_key_list({table})", fetch=True)
+                for fk in fk_info:
+                    from_table = table
+                    to_table = fk[2]
+                    from_col = fk[3]
+                    to_col = fk[4]
+                    
+                    if to_table in tables:  # Only add if target table exists
+                        G.add_edge(from_table, to_table, 
+                                 relationship=f"{from_col} -> {to_col}")
+            except:
+                continue
+        
+        return G
+    
+    except ImportError:
+        return None
+    except Exception as e:
+        st.error(f"Error generating schema diagram: {e}")
+        return None

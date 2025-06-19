@@ -26,3 +26,9 @@ python-dotenv>=0.21.0
 tqdm>=4.64.0
 chromadb>=0.4.13
 
+# Data analysis and export
+openpyxl>=3.0.0
+networkx>=2.8.0
+
+# Enhanced database explorer dependencies
+
