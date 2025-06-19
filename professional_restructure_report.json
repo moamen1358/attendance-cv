@@ -1,0 +1,20 @@
+{
+  "timestamp": "2025-06-19T17:46:45.759213",
+  "database_structure": {
+    "academic_terms": 1,
+    "departments": 1,
+    "subjects_new": 12,
+    "classes": 45,
+    "student_classes": 225,
+    "attendance_sessions": 50,
+    "attendance_records_new": 100,
+    "student_profiles": 5,
+    "professor_profiles": 5,
+    "v_student_enrollments": 0,
+    "v_class_rosters": 0,
+    "v_attendance_summary": 225,
+    "v_professor_teaching_load": 0
+  },
+  "migration_summary": {},
+  "performance_metrics": {}
+}
