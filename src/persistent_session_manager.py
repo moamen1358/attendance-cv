@@ -62,8 +62,9 @@ class PersistentSessionManager:
         Inject JavaScript to enhance session persistence using browser storage.
         This provides an additional layer of persistence beyond query parameters.
         """
-        # Skip JavaScript injection for student users to avoid display issues
-        if st.session_state.get('user_role') == 'student':
+        # Skip JavaScript injection for student and professor users to avoid display issues
+        user_role = st.session_state.get('user_role')
+        if user_role in ['student', 'professor']:
             return
             
         # Create a JSON representation of key session variables
@@ -125,8 +126,9 @@ class PersistentSessionManager:
 # Module-level function to initialize session persistence (called explicitly in app.py)
 def initialize_session_persistence():
     """Initialize session persistence - should be called explicitly in app.py"""
-    # Skip for student users
-    if st.session_state.get('user_role') == 'student':
+    # Skip session persistence for student and professor users to avoid display issues
+    user_role = st.session_state.get('user_role')
+    if user_role in ['student', 'professor']:
         return
         
     persistent_session = PersistentSessionManager()

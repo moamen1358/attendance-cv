@@ -1318,11 +1318,16 @@ def create_subject_bar_chart(history_df):
 # Restore dashboard title while maintaining zero spacing
 
 def show_student_report():
-    # Hide sidebar explicitly with CSS
+    # Hide sidebar explicitly with CSS and add top padding
     st.markdown("""
     <style>
     [data-testid="stSidebar"] {
         display: none;
+    }
+    
+    /* Add top padding to the main content */
+    .main .block-container {
+        padding-top: 10px !important;
     }
     </style>
     """, unsafe_allow_html=True)

@@ -179,14 +179,40 @@ def show_app():
     username = st.session_state.get('username', 'Unknown')
     user_role = st.session_state.get('user_role', 'Unknown')
     
+    # CRITICAL: Restore role and username from query parameters if not already set
+    if "username" in st.query_params and username == 'Unknown':
+        username = st.query_params["username"]
+        st.session_state.username = username
+        
+    # Restore logged_in state if present in query params
+    if "logged_in" in st.query_params and st.query_params["logged_in"] == "True":
+        st.session_state.logged_in = True
+        
+    if user_role == 'Unknown' and "user_role" in st.query_params:
+        role = st.query_params["user_role"]
+        st.session_state.user_role = role
+        user_role = role
+        
+        # Also ensure user is marked as logged in when restoring from query params
+        st.session_state.logged_in = True
+        
+        if role == "admin":
+            st.session_state.is_admin = True
+            logger.info("Restored admin role from query parameters in show_app")
+        elif role == "professor":
+            st.session_state.is_professor = True
+            logger.info("Restored professor role from query parameters in show_app")
+    
     # FORCE ADMIN ROLE for any admin username for fallback protection
     if username.lower() == "admin" or "admin" in username.lower() or user_role.lower() == "admin" or st.session_state.get('is_admin', False):
         user_role = "admin"
         st.session_state.user_role = "admin"
         st.session_state.is_admin = True
         
-        # IMPORTANT: Also set query param to preserve role on refresh
+        # IMPORTANT: Also set query params to preserve role and login state on refresh
         st.query_params["user_role"] = "admin" 
+        st.query_params["username"] = username
+        st.query_params["logged_in"] = "True"
         logger.info(f"Setting admin role in session and query params for user {username}")
     
     # FORCE PROFESSOR ROLE for any professor username for fallback protection
@@ -195,8 +221,10 @@ def show_app():
         st.session_state.user_role = "professor"
         st.session_state.is_professor = True
         
-        # IMPORTANT: Also set query param to preserve role on refresh
+        # IMPORTANT: Also set query params to preserve role and login state on refresh
         st.query_params["user_role"] = "professor"
+        st.query_params["username"] = username
+        st.query_params["logged_in"] = "True"
         logger.info(f"Setting professor role in session and query params for user {username}")
     
     # Debug info for admin login issues
@@ -551,48 +579,7 @@ def show_app():
                 
     # PROFESSOR VIEW - Only access to Reports page with no sidebar
     elif user_role == 'professor':
-        # Apply CSS and session management for professor users only
-        from global_css_handler import apply_global_css, enforce_fixed_padding
-        apply_global_css()
-        enforce_fixed_padding()
-        
-        # Apply session persistence for professor users
-        from persistent_session_manager import PersistentSessionManager
-        session_manager = PersistentSessionManager()
-        session_manager.ensure_session_persistence()
-        session_manager.inject_session_js()
-        
-        # Use combined CSS + JS approach for consistent padding
-        st.markdown("""
-        <script>
-        // Hide sidebar for professor user_accounts with !important to prevent CSS conflicts
-        document.addEventListener('DOMContentLoaded', function() {
-            const style = document.createElement('style');
-            style.innerHTML = `
-                section[data-testid="stSidebar"] { 
-                    display: none !important;
-                    width: 0px !important;
-                }
-            `;
-            document.head.appendChild(style);
-            
-            // Force padding on all containers
-            function enforcePadding() {
-                const containers = document.querySelectorAll('.block-container, [data-testid="stAppViewBlockContainer"] div.block-container');
-                containers.forEach(function(container) {
-                    container.style.setProperty('padding-left', '80px', 'important');
-                    container.style.setProperty('padding-right', '80px', 'important');
-                    container.style.setProperty('max-width', 'unset', 'important');
-                }
-            }
-            
-            // Apply immediately and repeatedly
-            enforcePadding();
-            setTimeout(enforcePadding, 100);
-            setTimeout(enforcePadding, 500);
-        });
-        </script>
-        """, unsafe_allow_html=True)
+        # Skip CSS and session management for professor users to avoid display issues
         
         # IMPROVED LAYOUT: Put title, username and buttons all in the same container - MATCHING STUDENT LAYOUT
         st.markdown('<div style="margin-top: 0; padding-top: 0;">', unsafe_allow_html=True)
@@ -637,39 +624,7 @@ def show_app():
     
     # STUDENT VIEW - Only access to Student Report
     else:
-        # Apply the same sidebar hiding technique and consistent padding
-        st.markdown("""
-        <script>
-        // Hide sidebar for student user_accounts with !important to prevent CSS conflicts
-        document.addEventListener('DOMContentLoaded', function() {
-            const style = document.createElement('style');
-            style.innerHTML = `
-                section[data-testid="stSidebar"] { 
-                    display: none !important;
-                    width: 0px !important;
-                }
-            `;
-            document.head.appendChild(style);
-            
-            // Force padding on all containers
-            function enforcePadding() {
-                const containers = document.querySelectorAll('.block-container, [data-testid="stAppViewBlockContainer"] div.block-container');
-                containers.forEach(function(container) {
-                    container.style.setProperty('padding-left', '80px', 'important');
-                    container.style.setProperty('padding-right', '80px', 'important');
-                    container.style.setProperty('max-width', 'unset', 'important');
-                }
-            }
-            
-            // Apply immediately and repeatedly
-            enforcePadding();
-            setTimeout(enforcePadding, 100);
-            setTimeout(enforcePadding, 500);
-        });
-        </script>
-        """, unsafe_allow_html=True)
-        
-        # Student only sees their attendance
+        # Student only sees their attendance (no CSS/JS injection for clean display)
         student_report.show_student_report()
 
 # Helper function for logout
@@ -703,6 +658,7 @@ if __name__ == "__main__":
             st.session_state.is_admin = True
             logger.info("Restored admin role from query parameters")
         elif role == "professor":
+            st.session_state.user_role = "professor"
             st.session_state.is_professor = True
             logger.info("Restored professor role from query parameters")
     

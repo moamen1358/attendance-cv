@@ -28,6 +28,16 @@ def ensure_role_persistence():
         # Log that we've restored the role
         print(f"Role persistence: Restored {role} role from query parameters")
     
+    # Restore username if present
+    if "username" in st.query_params:
+        st.session_state.username = st.query_params["username"]
+        print(f"Role persistence: Restored username {st.query_params['username']}")
+    
+    # Restore logged_in state if present  
+    if "logged_in" in st.query_params and st.query_params["logged_in"] == "True":
+        st.session_state.logged_in = True
+        print("Role persistence: Restored logged_in state")
+    
     # Handle direct admin username detection
     if "username" in st.query_params and "admin" in st.query_params["username"].lower():
         st.session_state.user_role = "admin"

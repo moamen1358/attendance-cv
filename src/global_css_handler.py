@@ -8,9 +8,10 @@ import streamlit as st
 
 def apply_global_css():
     """Apply global CSS to Streamlit app for consistent styling"""
-    # Check if this is a student user and skip CSS injection to avoid display issues
-    if st.session_state.get('user_role') == 'student':
-        return  # Don't apply CSS for students
+    # Check if this is a student or professor user and skip CSS injection to avoid display issues
+    user_role = st.session_state.get('user_role')
+    if user_role in ['student', 'professor']:
+        return  # Don't apply CSS for students and professors
     
     # Define CSS styles
     css = """
@@ -351,8 +352,9 @@ def apply_global_css():
 
 def ensure_consistent_padding():
     """Apply consistent padding to all containers"""
-    # Skip for student users to avoid CSS display issues
-    if st.session_state.get('user_role') == 'student':
+    # Skip for student and professor users to avoid CSS display issues
+    user_role = st.session_state.get('user_role')
+    if user_role in ['student', 'professor']:
         return
         
     st.markdown("""
@@ -375,8 +377,9 @@ def ensure_consistent_padding():
 
 def enforce_fixed_padding():
     """Enforce fixed padding with JavaScript for more reliability"""
-    # Skip for student users to avoid CSS display issues
-    if st.session_state.get('user_role') == 'student':
+    # Skip for student and professor users to avoid CSS display issues
+    user_role = st.session_state.get('user_role')
+    if user_role in ['student', 'professor']:
         return
         
     st.markdown("""
