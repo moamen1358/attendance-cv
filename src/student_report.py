@@ -13,7 +13,6 @@ try:
     from time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
 except ImportError:
     from .time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
-from global_css_handler import apply_global_css  # Only import what we need
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -1359,22 +1358,8 @@ def show_student_report():
         # Stop execution of student dashboard for admin users
         return
     
-    # Apply global CSS in a non-visible way
-    # Ensure CSS is applied but not shown as content
-    try:
-        apply_global_css()
-    except Exception:
-        pass  # Silently fail if CSS application has issues
-    
-    # Apply student-specific styles only once - MINIMIZE CSS INJECTION
-    if 'student_css_applied' not in st.session_state:
-        st.session_state.student_css_applied = True
-        # Minimal CSS injection to avoid display issues
-        st.markdown("<style>.block-container { padding-left: 40px !important; padding-right: 40px !important; }</style>", unsafe_allow_html=True)
-
-    # IMMEDIATELY START WITH MAIN CONTENT - NO BLANK SPACE
-    # Clear any potential spacing issues
-    st.markdown('<div style="margin-top: -20px; padding-top: 0;">', unsafe_allow_html=True)
+    # NO CSS APPLICATION FOR STUDENTS - KEEP IT CLEAN
+    # Start directly with content
     
     # Initialize session state for auto-refresh
     if 'last_refresh' not in st.session_state:
@@ -1460,9 +1445,6 @@ def show_student_report():
                     del st.session_state[key]
                 st.query_params.clear()
                 st.rerun()
-    
-    # Close the main content div
-    st.markdown('</div>', unsafe_allow_html=True)
     
     # Get schedule for today
     schedule_df = get_schedule_for_day(day_name)

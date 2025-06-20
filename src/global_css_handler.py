@@ -8,7 +8,9 @@ import streamlit as st
 
 def apply_global_css():
     """Apply global CSS to Streamlit app for consistent styling"""
-    # REMOVED session state check to ensure CSS is ALWAYS applied on every page load
+    # Check if this is a student user and skip CSS injection to avoid display issues
+    if st.session_state.get('user_role') == 'student':
+        return  # Don't apply CSS for students
     
     # Define CSS styles
     css = """
@@ -349,6 +351,10 @@ def apply_global_css():
 
 def ensure_consistent_padding():
     """Apply consistent padding to all containers"""
+    # Skip for student users to avoid CSS display issues
+    if st.session_state.get('user_role') == 'student':
+        return
+        
     st.markdown("""
     <style>
     .block-container {
@@ -369,6 +375,10 @@ def ensure_consistent_padding():
 
 def enforce_fixed_padding():
     """Enforce fixed padding with JavaScript for more reliability"""
+    # Skip for student users to avoid CSS display issues
+    if st.session_state.get('user_role') == 'student':
+        return
+        
     st.markdown("""
     <script>
     (function() {

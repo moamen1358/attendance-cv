@@ -80,10 +80,8 @@ from database_sync import sync_user_tables
 
 def show_app():
     """Main application entry point"""
-    # Apply global CSS immediately at app startup before any other code
-    from global_css_handler import apply_global_css, enforce_fixed_padding
-    apply_global_css()
-    enforce_fixed_padding()
+    # DON'T APPLY GLOBAL CSS YET - Wait to see user type first
+    # Global CSS will be applied conditionally based on user role
     
     # Ensure database consistency at startup
     from database_sync import sync_user_tables
@@ -100,12 +98,6 @@ def show_app():
     logger.info(f"Username: {st.session_state.get('username', 'None')}")
     logger.info(f"Is admin flag: {st.session_state.get('is_admin', False)}")
     logger.info(f"Is professor flag: {st.session_state.get('is_professor', False)}")
-    
-    # Import persistence manager to ensure data is maintained
-    from persistent_session_manager import PersistentSessionManager
-    session_manager = PersistentSessionManager()
-    session_manager.ensure_session_persistence()
-    session_manager.inject_session_js()
     
     # Apply consistent padding immediately at app start
     from global_css_handler import ensure_consistent_padding
@@ -367,6 +359,17 @@ def show_app():
     
     # ADMIN VIEW - Full access to all pages
     if user_role == 'admin':
+        # Apply CSS and session management for admin users only
+        from global_css_handler import apply_global_css, enforce_fixed_padding
+        apply_global_css()
+        enforce_fixed_padding()
+        
+        # Apply session persistence for admin users
+        from persistent_session_manager import PersistentSessionManager
+        session_manager = PersistentSessionManager()
+        session_manager.ensure_session_persistence()
+        session_manager.inject_session_js()
+        
         try:
             # Import all the required modules for admin users
             import admin_dashboard
@@ -548,6 +551,17 @@ def show_app():
                 
     # PROFESSOR VIEW - Only access to Reports page with no sidebar
     elif user_role == 'professor':
+        # Apply CSS and session management for professor users only
+        from global_css_handler import apply_global_css, enforce_fixed_padding
+        apply_global_css()
+        enforce_fixed_padding()
+        
+        # Apply session persistence for professor users
+        from persistent_session_manager import PersistentSessionManager
+        session_manager = PersistentSessionManager()
+        session_manager.ensure_session_persistence()
+        session_manager.inject_session_js()
+        
         # Use combined CSS + JS approach for consistent padding
         st.markdown("""
         <script>
@@ -671,10 +685,9 @@ if __name__ == "__main__":
     # This block only runs when app.py is executed directly
     st.set_page_config(layout="wide")
     
-    # CRITICAL: Import and run persistent session manager FIRST
-    from persistent_session_manager import PersistentSessionManager
-    session_manager = PersistentSessionManager()
-    session_manager.ensure_session_persistence()
+    # CRITICAL: Import and run persistent session manager FIRST (skip for students)
+    from persistent_session_manager import initialize_session_persistence
+    initialize_session_persistence()
     
     # Continue with existing code...
     # CRITICAL: Import role_session_persistence as the very first step
