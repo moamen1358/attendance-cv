@@ -14,7 +14,6 @@ try:
 except ImportError:
     from .time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
 from global_css_handler import apply_global_css  # Only import what we need
-from global_css_handler import ensure_consistent_padding
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -1360,47 +1359,22 @@ def show_student_report():
         # Stop execution of student dashboard for admin users
         return
     
-    # Ensure consistent padding at the beginning of the function
-    ensure_consistent_padding()
+    # Apply global CSS in a non-visible way
+    # Ensure CSS is applied but not shown as content
+    try:
+        apply_global_css()
+    except Exception:
+        pass  # Silently fail if CSS application has issues
     
-    # Apply global CSS - will only inject once per session
-    apply_global_css()
-    
-    # Apply student-specific styles only once
-    if 'student_css_added' not in st.session_state:
-        st.session_state.student_css_added = True
-        st.markdown("""
-        <style>
-        /* Set consistent 80px padding for student dashboard */
-        body .main .block-container,
-        .main .block-container,
-        div.block-container {
-            padding: 80px !important;
-            margin-top: 0 !important;
-        }
-        
-        /* Dashboard title styling that aligns with the username and buttons */
-        .dashboard-header {
-            display: flex;
-            align-items: center;
-            width: %;
-            margin: 0 !important;
-            padding: 0 !important;
-            font-size: 1.5rem !important;
-            color: #1E88E5 !important;
-            font-weight: bold !important;
-        }
-        
-        /* Make sure content doesn't get too close to edges on mobile */
-        @media (max-width: 768px) {
-            body .main .block-container,
-            .main .block-container,
-            div.block-container {
-                padding: 40px !important;
-            }
-        }
-        </style>
-        """, unsafe_allow_html=True)
+    # Apply student-specific styles only once - MINIMIZE CSS INJECTION
+    if 'student_css_applied' not in st.session_state:
+        st.session_state.student_css_applied = True
+        # Minimal CSS injection to avoid display issues
+        st.markdown("<style>.block-container { padding-left: 40px !important; padding-right: 40px !important; }</style>", unsafe_allow_html=True)
+
+    # IMMEDIATELY START WITH MAIN CONTENT - NO BLANK SPACE
+    # Clear any potential spacing issues
+    st.markdown('<div style="margin-top: -20px; padding-top: 0;">', unsafe_allow_html=True)
     
     # Initialize session state for auto-refresh
     if 'last_refresh' not in st.session_state:
@@ -1446,8 +1420,7 @@ def show_student_report():
     day_name = today.strftime('%A')
     current_time_obj = datetime.now().time()
     
-    # IMPROVED LAYOUT: Put title, username and buttons all in the same container
-    st.markdown('<div style="margin-top: 0; padding-top: 0;">', unsafe_allow_html=True)
+    # IMPROVED LAYOUT: Put title, username and buttons all in the same container - START IMMEDIATELY
     top_col1, top_col2 = st.columns([3, 2])
     
     # Put the dashboard title in the first column
@@ -1488,6 +1461,7 @@ def show_student_report():
                 st.query_params.clear()
                 st.rerun()
     
+    # Close the main content div
     st.markdown('</div>', unsafe_allow_html=True)
     
     # Get schedule for today
