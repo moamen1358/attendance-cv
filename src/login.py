@@ -219,6 +219,132 @@ def ensure_database_consistency():
 
 # Modify login_page function to call the sync first
 def login_page():
+    # Apply consistent styling for login page - wide layout
+    st.markdown("""
+    <style>
+    /* Wide layout for login page */
+    .main .block-container {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding: 40px 80px !important;
+    }
+    
+    /* Hide sidebar on login page */
+    [data-testid="stSidebar"] {
+        display: none !important;
+    }
+    
+    /* Force full width layout */
+    .reportview-container .main .block-container,
+    .appview-container .main .block-container,
+    div[data-testid="stAppViewContainer"] > section[data-testid="stAppViewContainer"] > div,
+    div[data-testid="stAppViewContainer"] > section > div {
+        max-width: 100% !important;
+        padding-left: 80px !important;
+        padding-right: 80px !important;
+        width: 100% !important;
+    }
+    
+    /* Title styling */
+    .stTitle h1 {
+        color: #2c3e50;
+        font-size: 2.5rem;
+        font-weight: 600;
+        margin-bottom: 40px;
+        padding-bottom: 20px;
+        border-bottom: 2px solid #3498db;
+    }
+    
+    /* Input container styling */
+    .stTextInput {
+        margin-bottom: 20px;
+    }
+    
+    /* Input field styling - wide but controlled */
+    .stTextInput > div > div > input {
+        width: 100% !important;
+        height: 50px !important;
+        border-radius: 8px !important;
+        border: 2px solid #bdc3c7 !important;
+        padding: 0 15px !important;
+        font-size: 16px !important;
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        box-sizing: border-box !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #3498db !important;
+        outline: none !important;
+        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1) !important;
+        color: #000000 !important;
+    }
+    
+    /* Ensure placeholder text is visible */
+    .stTextInput > div > div > input::placeholder {
+        color: #666666 !important;
+    }
+    
+    /* Input labels */
+    .stTextInput > label {
+        font-weight: 500 !important;
+        color: #2c3e50 !important;
+        margin-bottom: 8px !important;
+        display: block !important;
+    }
+    
+    /* Login button styling - wide */
+    .stButton {
+        margin-top: 30px;
+    }
+    
+    .stButton > button {
+        width: 100% !important;
+        height: 50px !important;
+        background-color: #3498db !important;
+        color: white !important;
+        border-radius: 8px !important;
+        border: none !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stButton > button:hover {
+        background-color: #2980b9 !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3) !important;
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0px) !important;
+    }
+    
+    /* Expander styling for user list */
+    .streamlit-expanderHeader {
+        background-color: #ecf0f1 !important;
+        border-radius: 8px !important;
+        border: 1px solid #bdc3c7 !important;
+        margin-top: 30px !important;
+    }
+    
+    /* Error/success message styling */
+    .stAlert {
+        margin-top: 20px !important;
+        border-radius: 8px !important;
+    }
+    
+    /* Ensure wide layout consistency */
+    .element-container,
+    [data-testid="stVerticalBlock"] {
+        max-width: 100% !important;
+        width: 100% !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     st.title("Login")
     
     # Sync tables before proceeding
