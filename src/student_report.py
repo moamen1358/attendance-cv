@@ -13,6 +13,7 @@ try:
     from time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
 except ImportError:
     from .time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
+from global_css_handler import apply_global_css  # Only import what we need
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -49,18 +50,20 @@ def get_student_attendance(student_name, date=None, detailed=False):
         date_end = f"{date} 23:59:59"
         
         query = """
-        SELECT * 
-        FROM attendance_records 
-        WHERE name = ? AND timestamp BETWEEN ? AND ?
-        ORDER BY timestamp DESC  # Explicitly sort by newest first
+        SELECT ar.*, sp.name as student_name
+        FROM attendance_records_enhanced ar
+        JOIN student_profiles_enhanced sp ON ar.student_id = sp.student_id
+        WHERE sp.name = ? AND ar.timestamp BETWEEN ? AND ?
+        ORDER BY ar.timestamp DESC  # Explicitly sort by newest first
         """
         df = pd.read_sql(query, conn, params=(student_name, date_start, date_end))
     else:
         query = """
-        SELECT * 
-        FROM attendance_records 
-        WHERE name = ?
-        ORDER BY timestamp DESC  # Explicitly sort by newest first
+        SELECT ar.*, sp.name as student_name
+        FROM attendance_records_enhanced ar
+        JOIN student_profiles_enhanced sp ON ar.student_id = sp.student_id
+        WHERE sp.name = ?
+        ORDER BY ar.timestamp DESC  # Explicitly sort by newest first
         """
         df = pd.read_sql(query, conn, params=(student_name,))
     
@@ -90,10 +93,11 @@ def get_schedule_for_day(day_name):
     """
     conn = get_db_connection()
     query = """
-    SELECT subject, type, start_time, end_time 
-    FROM class_schedules 
-    WHERE day = ? AND subject != ''
-    ORDER BY start_time
+    SELECT s.subject_name as subject, cs.session_type as type, cs.start_time, cs.end_time 
+    FROM class_schedules_enhanced cs
+    JOIN subjects_enhanced s ON cs.subject_id = s.subject_id
+    WHERE cs.day_of_week = ? AND s.subject_name != ''
+    ORDER BY cs.start_time
     """
     df = execute_query_df(query, (day_name,))
     conn.close()
@@ -166,7 +170,7 @@ def check_attendance(student_name, date, start_time, end_time):
     
     try:
         # Check if class_attendance table exists - if so, use it
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='class_attendance'")
+        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='class_attendance'")
         if cursor.fetchone():
             # Use the class_attendance table if it exists
             query = """
@@ -177,7 +181,7 @@ def check_attendance(student_name, date, start_time, end_time):
               AND start_time = ?
               AND end_time = ?
             """
-            cursor.execute(query, (student_name, date, start_time, end_time))
+            execute_query(query, (student_name, date, start_time, end_time))
             result = cursor.fetchone()
             
             if result is not None:
@@ -190,14 +194,15 @@ def check_attendance(student_name, date, start_time, end_time):
         # Format for SQLite date filtering
         date_start = f"{date}"
         
-        # Query the attendance_records table directly
+        # Query the attendance_records_enhanced table directly
         query = """
         SELECT COUNT(*) as count 
-        FROM attendance_records 
-        WHERE (name = ? OR student_username = ?)
-          AND date(timestamp) = ? 
+        FROM attendance_records_enhanced ar
+        JOIN student_profiles_enhanced sp ON ar.student_id = sp.student_id
+        WHERE sp.name = ? 
+          AND date(ar.timestamp) = ? 
           AND (
-              time(timestamp) BETWEEN time(?) AND time(?)
+              time(ar.timestamp) BETWEEN time(?) AND time(?)
           )
         """
         
@@ -205,17 +210,11 @@ def check_attendance(student_name, date, start_time, end_time):
         time_start = date + " " + start_time
         time_end = date + " " + end_time
         
-        cursor.execute(query, (student_name, student_name, date_start, time_start, time_end))
+        execute_query(query, (student_name, date_start, time_start, time_end))
         result = cursor.fetchone()
+        attended = result[0] > 0
         
-        # Make sure result exists before using it
-        if result is not None:
-            attended = result[0] > 0
-            return attended
-        else:
-            print(f"No attendance data found for {student_name} on {date}")
-            return False
-            
+        return attended
     except Exception as e:
         print(f"Error checking attendance: {e}")
         return False
@@ -873,23 +872,18 @@ def get_extended_attendance_history(student_name, days=30):
     start_str = f"{start_date}"
     end_str = f"{end_date}"
     
-    # First check the structure of attendance_records to identify the student name column
-    execute_query("PRAGMA table_info(attendance_records)")
+    # First check the structure of attendance_records_enhanced to identify the student name column
+    execute_query("PRAGMA table_info(attendance_records_enhanced)")
     columns = cursor.fetchall()
     column_names = [col[1] for col in columns]
     
-    # Find the student name column
-    student_name_column = None
-    possible_name_columns = ['name', 'student_name', 'student_username', 'username']
+    # For enhanced table, we'll use JOIN with student_profiles_enhanced
+    # So we don't need to check for name columns directly in attendance table
+    student_name_column = "sp.name"  # We'll always use JOIN
     
-    for col_name in possible_name_columns:
-        if col_name in column_names:
-            student_name_column = col_name
-            break
-    
-    # If we can't find a suitable column, use a default
-    if student_name_column is None:
-        st.warning("Could not identify student name column in attendance_records table. Using default.")
+    # If we can't find suitable columns, use a default approach
+    if not column_names:
+        st.warning("Could not access attendance_records_enhanced table. Using fallback.")
         student_name_column = 'student_username'  # Default based on schema
     
     # Now check if class_attendance table exists
@@ -952,15 +946,16 @@ def get_extended_attendance_history(student_name, days=30):
         # that only uses the attendance_records table with the correct column name
         print("class_attendance table doesn't exist. Using fallback query.")
         
-        # Get detection data by date from attendance_records
+        # Get detection data by date from attendance_records_enhanced
         query = f"""
         SELECT 
-            date(timestamp) as date,
-            COUNT(DISTINCT strftime('%H', timestamp)) as hours_present,
+            date(ar.timestamp) as date,
+            COUNT(DISTINCT strftime('%H', ar.timestamp)) as hours_present,
             COUNT(*) as detection_count
-        FROM attendance_records
-        WHERE {student_name_column} = ? AND date(timestamp) BETWEEN ? AND ?
-        GROUP BY date(timestamp)
+        FROM attendance_records_enhanced ar
+        JOIN student_profiles_enhanced sp ON ar.student_id = sp.student_id
+        WHERE {student_name_column} = ? AND date(ar.timestamp) BETWEEN ? AND ?
+        GROUP BY date(ar.timestamp)
         ORDER BY date
         """
         
@@ -977,8 +972,9 @@ def get_extended_attendance_history(student_name, days=30):
         if not df.empty:
             # Get class schedule info
             cursor.execute("""
-            SELECT DISTINCT subject
-            FROM class_schedules
+            SELECT DISTINCT s.subject_name
+            FROM class_schedules_enhanced cs
+            JOIN subjects_enhanced s ON cs.subject_id = s.subject_id
             LIMIT 5
             """)
             subjects = [row[0] for row in cursor.fetchall()]
@@ -1318,53 +1314,40 @@ def create_subject_bar_chart(history_df):
 # Restore dashboard title while maintaining zero spacing
 
 def show_student_report():
-    # Hide sidebar explicitly with CSS and add top padding
-    st.markdown("""
-    <style>
-    [data-testid="stSidebar"] {
-        display: none;
-    }
+    # Apply global CSS - will only inject once per session
+    apply_global_css()
     
-    /* Add top padding to the main content */
-    .main .block-container {
-        padding-top: 10px !important;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # CRITICAL ADMIN SAFETY CHECK - immediately redirect admin users
-    if st.session_state.get('user_role', '').lower() == 'admin' or 'admin' in st.session_state.get('username', '').lower():
-        st.warning("Admin users should not use the student dashboard. Redirecting to admin dashboard...")
-        
-        # Show redirect message and button
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            st.info("Please use the admin dashboard to manage the system.")
-        with col2:
-            if st.button("Go to Admin Dashboard", type="primary"):
-                # Force admin role
-                st.session_state.user_role = "admin"
-                st.session_state.current_page = "Admin Dashboard"
-                # Rerun app.py to redirect
-                from app import show_app
-                show_app()
-                st.rerun()
-        
-        # Create a more reliable redirect mechanism
+    # Apply student-specific styles only once
+    if 'student_css_added' not in st.session_state:
+        st.session_state.student_css_added = True
         st.markdown("""
-        <script>
-            // Wait a moment then redirect
-            setTimeout(function() {
-                window.location.href = "?";  // Redirect to home
-            }, 2000);
-        </script>
-        """, unsafe_allow_html=True)
+        <style>
+        /* Super aggressive top space elimination specific to student dashboard */
+        body .main .block-container,
+        .main .block-container,
+        div.block-container {
+            padding-top: 0 !important;
+            margin-top: 0 !important;
+        }
         
-        # Stop execution of student dashboard for admin users
-        return
-    
-    # NO CSS APPLICATION FOR STUDENTS - KEEP IT CLEAN
-    # Start directly with content
+        /* Dashboard title styling that aligns with the username and buttons */
+        .dashboard-header {
+            display: flex;
+            align-items: center;
+            width: %;
+            margin: 0 !important;
+            padding: 0 !important;
+        }
+        
+        .dashboard-title {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 1.5rem !important;
+            color: #1E88E5 !important;
+            font-weight: bold !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
     
     # Initialize session state for auto-refresh
     if 'last_refresh' not in st.session_state:
@@ -1410,7 +1393,8 @@ def show_student_report():
     day_name = today.strftime('%A')
     current_time_obj = datetime.now().time()
     
-    # IMPROVED LAYOUT: Put title, username and buttons all in the same container - START IMMEDIATELY
+    # IMPROVED LAYOUT: Put title, username and buttons all in the same container
+    st.markdown('<div style="margin-top: 0; padding-top: 0;">', unsafe_allow_html=True)
     top_col1, top_col2 = st.columns([3, 2])
     
     # Put the dashboard title in the first column
@@ -1451,15 +1435,10 @@ def show_student_report():
                 st.query_params.clear()
                 st.rerun()
     
+    st.markdown('</div>', unsafe_allow_html=True)
+    
     # Get schedule for today
     schedule_df = get_schedule_for_day(day_name)
-    
-    # Convert time format in schedule_df to AM/PM format before displaying anywhere
-    if not schedule_df.empty:
-        # Apply display_formatted_time to all time columns to ensure AM/PM format
-        from time_format_utils import display_formatted_time
-        schedule_df['start_time'] = schedule_df['start_time'].apply(display_formatted_time)
-        schedule_df['end_time'] = schedule_df['end_time'].apply(display_formatted_time)
     
     # Main content starts here
     
@@ -1485,20 +1464,12 @@ def show_student_report():
         # Parse times correctly handling AM/PM format
         for _, row in schedule_df.iterrows():
             try:
-                # First convert to display format
-                display_start_time = display_formatted_time(row['start_time'])
-                display_end_time = display_formatted_time(row['end_time'])
-                
-                # Update the dataframe with display versions
-                row['start_time'] = display_start_time
-                row['end_time'] = display_end_time
-                
-                # Now try to parse the display format
-                start_time_obj = datetime.strptime(display_start_time, '%I:%M %p').time()
+                # Try to parse as AM/PM format
+                start_time_obj = datetime.strptime(row['start_time'], '%I:%M %p').time()
             except ValueError:
                 try:
-                    # If display format fails, try with the original format
-                    start_time_obj = datetime.strptime(row['start_time'], '%H:%M:%S').time()
+                    # Try to parse as 24-hour format
+                    start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
                 except ValueError:
                     # Handle any other format issues
                     st.error(f"Invalid time format: {row['start_time']}")
@@ -1539,7 +1510,7 @@ def show_student_report():
             except ValueError:
                 try:
                     # Try to parse as 24-hour format
-                    start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
+                        start_time_obj = datetime.strptime(row['start_time'], '%H:%M').time()
                 except ValueError:
                     # Handle any other format issues
                     continue
@@ -2064,8 +2035,8 @@ def get_secure_student_data():
     cursor = conn.cursor()
     
     try:
-        # First check if the student_profiles table exists
-        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        # First check if the student_profiles_enhanced table exists
+        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
         if not cursor.fetchone():
             st.warning("Student profiles table not found. Some features may be limited.")
             return {
@@ -2074,18 +2045,20 @@ def get_secure_student_data():
                 'section': 'Unknown'
             }
         
-        # Check what columns are available in the student_profiles table
-        execute_query("PRAGMA table_info(student_profiles)")
+        # Check what columns are available in the student_profiles_enhanced table
+        execute_query("PRAGMA table_info(student_profiles_enhanced)")
         columns = [info[1] for info in cursor.fetchall()]
         
         # Build a flexible query based on available columns
         select_cols = []
         if "name" in columns: select_cols.append("name")
-        if "student_id" in columns: select_cols.append("student_id")
-        if "section" in columns: select_cols.append("section")
+        if "student_number" in columns: select_cols.append("student_number")
+        if "academic_year" in columns: select_cols.append("academic_year")
+        if "current_semester" in columns: select_cols.append("current_semester")
+        if "department_id" in columns: select_cols.append("department_id")
         
         if not select_cols:
-            st.warning("Required columns missing in student_profiles table.")
+            st.warning("Required columns missing in student_profiles_enhanced table.")
             return {
                 'student_name': current_user,
                 'student_id': 'Unknown',
@@ -2115,7 +2088,7 @@ def get_secure_student_data():
             }
         
         # Construct and execute query
-        query = f"SELECT {', '.join(select_cols)} FROM student_profiles WHERE {' OR '.join(where_clauses)}"
+        query = f"SELECT {', '.join(select_cols)} FROM student_profiles_enhanced WHERE {' OR '.join(where_clauses)}"
         execute_query(query, params)
         result = cursor.fetchone()
         
@@ -2130,8 +2103,8 @@ def get_secure_student_data():
         # Build result dictionary based on available columns
         student_data = {
             'student_name': result[select_cols.index("name")] if "name" in select_cols else current_user,
-            'student_id': result[select_cols.index("student_id")] if "student_id" in select_cols else 'Unknown',
-            'section': result[select_cols.index("section")] if "section" in select_cols else 'Unknown'
+            'student_id': result[select_cols.index("student_number")] if "student_number" in select_cols else 'Unknown',
+            'section': f"Year {result[select_cols.index('academic_year')]}, Semester {result[select_cols.index('current_semester')]}" if "academic_year" in select_cols and "current_semester" in select_cols else 'Unknown'
         }
         
         return student_data
@@ -2145,41 +2118,6 @@ def get_secure_student_data():
         }
     finally:
         conn.close()
-
-def ensure_student_profiles_table():
-    """Ensure the student_profiles table exists in the database."""
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    try:
-        # Check if the student_profiles table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
-        if not cursor.fetchone():
-            print("student_profiles table not found. Creating it now...")
-            cursor.execute('''
-                CREATE TABLE IF NOT EXISTS student_profiles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE NOT NULL,
-                    name TEXT NOT NULL,
-                    student_id TEXT UNIQUE,
-                    password TEXT NOT NULL,
-                    section TEXT,
-                    email TEXT,
-                    phone TEXT,
-                    last_login TIMESTAMP,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            ''')
-            conn.commit()
-            print("student_profiles table created successfully.")
-        else:
-            print("student_profiles table exists.")
-    except Exception as e:
-        print(f"Error ensuring student_profiles table: {e}")
-    finally:
-        conn.close()
-
-# Call this function at the start of the student report
-ensure_student_profiles_table()
 
 if __name__ == "__main__":
     show_student_report()

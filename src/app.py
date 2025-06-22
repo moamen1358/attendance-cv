@@ -72,8 +72,8 @@ except Exception as e:
     logger.error(f"Error during database maintenance: {e}")
 
 # Now import bootstrap tables after ensuring critical tables exist
-from bootstrap_tables import bootstrap_essential_tables
-bootstrap_essential_tables()  # Run table creation at import time
+# DISABLED: from bootstrap_tables import bootstrap_essential_tables
+# DISABLED: bootstrap_essential_tables()  # Run table creation at import time
 
 # Add import for database sync
 from database_sync import sync_user_tables

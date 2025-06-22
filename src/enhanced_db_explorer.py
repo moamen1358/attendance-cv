@@ -30,7 +30,33 @@ HIDDEN_TABLES = [
     'sqlite_master',    # SQLite schema table 
     'facial_recognition_data',  # Sensitive data table with face embeddings
     'embedding_store',     # Internal table for embeddings
-    'control_4'         # Legacy control table
+    'control_4',         # Legacy control table
+    # Hide legacy compatibility tables - these are just views
+    'attendance_records_compat',
+    'student_profiles_compat', 
+    'subjects_compat',
+    'subjects_compatible',
+    'student_profiles_view',
+    'professor_assignments_view',
+    'attendance_with_names',
+    'student_name_mapping',
+    # Hide empty legacy tables
+    'class_attendance',
+    'teacher_subjects', 
+    'professor_subject_assignments'
+]
+
+# Define priority order for enhanced tables
+PRIORITY_TABLES = [
+    'student_profiles_enhanced',
+    'user_accounts_enhanced', 
+    'subjects_enhanced',
+    'attendance_records_enhanced',
+    'class_schedules_enhanced',
+    'student_enrollments',
+    'facial_embeddings',
+    'departments',
+    'academic_terms'
 ]
 
 def hash_password(password):
@@ -87,14 +113,14 @@ def execute_query(query, params=None, fetch=False, commit=False):
     return execute_query_safe(query, params, fetch, commit)
 
 def get_tables():
-    """Get list of all tables in the database, filtering out system tables"""
+    """Get list of tables in the database, prioritizing enhanced tables and hiding legacy ones"""
     try:
         result = execute_query("SELECT name FROM sqlite_master WHERE type='table';", fetch=True)
         if not result:
             return []
         
-        # Filter out hidden tables and strip whitespace from table names
-        visible_tables = []
+        # Get all table names
+        all_tables = []
         for table in result:
             table_name = table[0]
             if (table_name and 
@@ -102,13 +128,35 @@ def get_tables():
                 table_name not in HIDDEN_TABLES and
                 table_name.strip() and
                 not table_name.isspace()):
-                visible_tables.append(table_name.strip())
+                all_tables.append(table_name.strip())
         
-        # Remove duplicates and sort alphabetically - simple and clean
-        unique_tables = sorted(list(set(visible_tables)))
+        # Remove duplicates
+        unique_tables = list(set(all_tables))
+        
+        # Separate priority tables and others
+        priority_tables_found = []
+        other_tables = []
+        
+        for table in unique_tables:
+            if table in PRIORITY_TABLES:
+                priority_tables_found.append(table)
+            else:
+                other_tables.append(table)
+        
+        # Sort priority tables by their defined order
+        sorted_priority = []
+        for priority_table in PRIORITY_TABLES:
+            if priority_table in priority_tables_found:
+                sorted_priority.append(priority_table)
+        
+        # Sort other tables alphabetically
+        other_tables.sort()
+        
+        # Combine: priority tables first, then others
+        final_tables = sorted_priority + other_tables
         
         # Final validation - ensure no empty strings
-        final_tables = [t for t in unique_tables if t and len(t) > 0]
+        final_tables = [t for t in final_tables if t and len(t) > 0]
         
         return final_tables
     except Exception as e:
@@ -139,8 +187,21 @@ def show_db_explorer():
     st.title("SQLite Database Manager")
     st.write("Manage your database tables with this interactive tool")
     
+    # Add refresh button to clear any caching issues
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("🔄 Refresh Tables", help="Refresh the table list"):
+            # Clear any cached state and force refresh
+            if 'selected_table' in st.session_state:
+                del st.session_state.selected_table
+            st.rerun()
+    
     # Initialize session state with current data - FIXED INCONSISTENCY
     current_tables = get_tables()
+    
+    # Display current table count for debugging
+    with col1:
+        st.info(f"📊 Found {len(current_tables)} tables in database")
     
     # Initialize basic session state (table selection will be handled later)
     if 'editing_row' not in st.session_state:
@@ -308,7 +369,7 @@ def show_db_explorer():
                 # First, let's check if the user_accounts table exists and has the expected structure
                 professors_query = """
                 SELECT username, full_name 
-                FROM user_accounts 
+                FROM user_accounts_enhanced 
                 WHERE role = 'professor' 
                 ORDER BY username
                 """
@@ -343,12 +404,12 @@ def show_db_explorer():
                 
                 # Get subjects
                 try:
-                    subjects_df = pd.read_sql_query("SELECT subject_id, subject_name FROM subjects ORDER BY subject_name", sqlite3.connect('attendance_system.db'))
+                    subjects_df = pd.read_sql_query("SELECT subject_id, subject_name FROM subjects_enhanced ORDER BY subject_name", sqlite3.connect('attendance_system.db'))
                     subjects = [(row['subject_id'], row['subject_name']) for _, row in subjects_df.iterrows()] if not subjects_df.empty else []
                 except Exception as e:
                     # Try alternative column name
                     try:
-                        subjects_df = pd.read_sql_query("SELECT subject_id, name FROM subjects ORDER BY name", sqlite3.connect('attendance_system.db'))
+                        subjects_df = pd.read_sql_query("SELECT subject_id, subject_name FROM subjects_enhanced ORDER BY subject_name", sqlite3.connect('attendance_system.db'))
                         subjects = [(row['subject_id'], row['name']) for _, row in subjects_df.iterrows()] if not subjects_df.empty else []
                     except Exception as e2:
                         st.error(f"Error getting subjects: {e2}")
@@ -401,17 +462,17 @@ def show_db_explorer():
                             assignments_query = """
                             SELECT a.id, a.professor_username, s.subject_name as subject_name
                             FROM professor_subject_assignments a
-                            JOIN subjects s ON a.subject_id = s.subject_id
+                            JOIN subjects_enhanced s ON a.subject_id = s.subject_id
                             ORDER BY a.professor_username, s.subject_name
                             """
                             assignments_df = pd.read_sql_query(assignments_query, sqlite3.connect('attendance_system.db'))
                         except Exception:
                             # Fallback to 'name' column
                             assignments_query = """
-                            SELECT a.id, a.professor_username, s.name as subject_name
+                            SELECT a.id, a.professor_username, s.subject_name as subject_name
                             FROM professor_subject_assignments a
-                            JOIN subjects s ON a.subject_id = s.subject_id
-                            ORDER BY a.professor_username, s.name
+                            JOIN subjects_enhanced s ON a.subject_id = s.subject_id
+                            ORDER BY a.professor_username, s.subject_name
                             """
                             assignments_df = pd.read_sql_query(assignments_query, sqlite3.connect('attendance_system.db'))
                         
@@ -482,7 +543,7 @@ def show_db_explorer():
                 
                 profile_count = pd.read_sql_query("SELECT COUNT(*) as count FROM student_profiles", conn).iloc[0]['count']
                 legacy_count = pd.read_sql_query("SELECT COUNT(*) as count FROM students", conn).iloc[0]['count']
-                user_students = pd.read_sql_query("SELECT COUNT(*) as count FROM user_accounts WHERE role = 'student'", conn).iloc[0]['count']
+                user_students = pd.read_sql_query("SELECT COUNT(*) as count FROM user_accounts_enhanced WHERE role = 'student'", conn).iloc[0]['count']
                 
                 st.metric("Student Profiles", profile_count)
                 st.metric("Legacy Students", legacy_count)

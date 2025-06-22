@@ -12,7 +12,8 @@ except ImportError:
 
 # Bootstrap essential database tables
 try:
-    from .bootstrap_tables import bootstrap_essential_tables
-    bootstrap_essential_tables()
+    # DISABLED: from .bootstrap_tables import bootstrap_essential_tables
+    # DISABLED: bootstrap_essential_tables()
+    pass
 except ImportError:
     pass

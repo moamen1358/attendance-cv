@@ -4,15 +4,13 @@ import app
 import os
 from datetime import datetime
 import sys
+import hashlib
 
 # Add utils directory to path
 sys.path.append('/home/invisa/Desktop/my_grad_streamlit')
 
 # Update imports to use direct module imports without src prefix
 from database_utils import execute_query, execute_query_df
-import hashlib
-
-# Add import for database synchronization
 from database_sync import sync_user_tables, register_user
 
 def create_connection():
@@ -38,7 +36,21 @@ def verify_credentials(username, password):
     cursor = conn.cursor()
     
     try:
-        # Check for the unified user_accounts table first (new schema)
+        # PRIORITY 1: Check enhanced user_accounts table FIRST
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts_enhanced'")
+        if cursor.fetchone():
+            # Check password with hashing for enhanced table
+            hashed_password = hashlib.sha256(password.encode()).hexdigest()
+            cursor.execute("SELECT role, student_id, professor_id FROM user_accounts_enhanced WHERE username = ? AND password = ?", 
+                         (username, hashed_password))
+            result = cursor.fetchone()
+            
+            if result:
+                role, student_id, professor_id = result
+                print(f"Enhanced login successful for {username} with role {role}")
+                return True, role
+        
+        # PRIORITY 2: Check for the unified user_accounts table (new schema)
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
         if cursor.fetchone():
             # Check password as plain text (no hashing)
@@ -92,6 +104,81 @@ def verify_credentials(username, password):
         conn.close()
     
     return False, None
+
+def verify_credentials_enhanced(username, password):
+    """Verify credentials using the enhanced database structure"""
+    
+    # PRIORITY CHECK FOR "admin" USERNAME (handles default admin user)
+    if username == "admin" and password == "admin":
+        print("Default admin login detected with default credentials")
+        return True, "admin"
+    
+    conn = sqlite3.connect('attendance_system.db')
+    cursor = conn.cursor()
+    
+    try:
+        # Check the enhanced user_accounts table
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts_enhanced'")
+        if cursor.fetchone():
+            # Check password with hashing for enhanced table
+            hashed_password = hashlib.sha256(password.encode()).hexdigest()
+            cursor.execute("SELECT role, student_id, professor_id FROM user_accounts_enhanced WHERE username = ? AND password = ?", 
+                         (username, hashed_password))
+            result = cursor.fetchone()
+            
+            if result:
+                role, student_id, professor_id = result
+                print(f"Enhanced login successful for {username} with role {role}")
+                return True, role
+        
+        # Fall back to old verify_credentials for backwards compatibility
+        return verify_credentials(username, password)
+    
+    except Exception as e:
+        st.error(f"Database error: {e}")
+        return False, None
+    finally:
+        conn.close()
+
+def get_student_info_enhanced(username):
+    """Get student information from enhanced database"""
+    conn = sqlite3.connect('attendance_system.db')
+    cursor = conn.cursor()
+    
+    try:
+        # Try enhanced table first
+        cursor.execute("""
+            SELECT sp.name, sp.student_number, sp.academic_year, sp.current_semester, 
+                   d.department_name, d.department_code
+            FROM student_profiles_enhanced sp
+            JOIN departments d ON sp.department_id = d.department_id
+            WHERE sp.username = ?
+        """, (username,))
+        
+        result = cursor.fetchone()
+        if result:
+            return {
+                'name': result[0],
+                'student_number': result[1],
+                'academic_year': result[2],
+                'current_semester': result[3],
+                'department_name': result[4],
+                'department_code': result[5]
+            }
+        
+        # Fall back to old tables
+        cursor.execute("SELECT name FROM student_profiles WHERE username = ?", (username,))
+        result = cursor.fetchone()
+        if result:
+            return {'name': result[0]}
+        
+        return None
+        
+    except Exception as e:
+        print(f"Error getting student info: {e}")
+        return None
+    finally:
+        conn.close()
 
 def get_available_users():
     """
