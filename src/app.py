@@ -415,12 +415,11 @@ def show_app():
             # Create a filtered version for the sidebar navigation (without Admin Dashboard)
             nav_pages = {k: v for k, v in all_pages.items() if k != "Admin Dashboard"}
             
-            # Set default page to Database Explorer if not already set or if was Admin Dashboard or Subject Management
+            # Set default page to Database Explorer if not already set or if invalid page
+            # Don't reset the page if it's already a valid page - fixes table selection redirect bug
             if ('current_page' not in st.session_state 
-                or st.session_state.current_page not in all_pages
-                or st.session_state.current_page == "Admin Dashboard" 
-                or st.session_state.current_page == "Subject Management"):
-                st.session_state.current_page = "Real-Time Recognition"
+                or st.session_state.current_page not in all_pages):
+                st.session_state.current_page = "Database Explorer"
             
             # Always show sidebar for admin
             with st.sidebar:
@@ -479,8 +478,9 @@ def show_app():
                 "Database Explorer": enhanced_db_explorer.show_db_explorer
             }
             
-            # Set default page to Admin Dashboard - ALWAYS for admin users
-            st.session_state.current_page = "Admin Dashboard"
+            # Set default page only if not already set - don't force reset
+            if 'current_page' not in st.session_state or st.session_state.current_page not in pages:
+                st.session_state.current_page = "Database Explorer"
             
             # Always show sidebar for admin (remove toggle button)
             with st.sidebar:

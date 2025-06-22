@@ -2,13 +2,26 @@ import streamlit as st
 import sqlite3
 import pandas as pd
 import re
+import io
 from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
+import hashlib
 # Add import for professor assignments functionality
 import importlib
 # Import time utilities for better formatting
-from time_format_utils import display_formatted_time, convert_to_db_time_format
+try:
+    from .time_format_utils import display_formatted_time, convert_to_db_time_format
+except ImportError:
+    # Fallback for when running as script
+    try:
+        from time_format_utils import display_formatted_time, convert_to_db_time_format
+    except ImportError:
+        # Define fallback functions
+        def display_formatted_time(timestamp):
+            return str(timestamp)
+        def convert_to_db_time_format(timestamp):
+            return timestamp
 
 # Define a list of tables that should be hidden from the UI
 HIDDEN_TABLES = [
@@ -19,6 +32,10 @@ HIDDEN_TABLES = [
     'embedding_store',     # Internal table for embeddings
     'control_4'         # Legacy control table
 ]
+
+def hash_password(password):
+    """Hash password using SHA-256"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
 def execute_query_safe(query, params=None, fetch=False, commit=False):
     """
@@ -77,30 +94,23 @@ def get_tables():
             return []
         
         # Filter out hidden tables and strip whitespace from table names
-        visible_tables = [table[0].strip() for table in result if table[0] not in HIDDEN_TABLES]
+        visible_tables = []
+        for table in result:
+            table_name = table[0]
+            if (table_name and 
+                isinstance(table_name, str) and 
+                table_name not in HIDDEN_TABLES and
+                table_name.strip() and
+                not table_name.isspace()):
+                visible_tables.append(table_name.strip())
         
-        # Remove any empty strings or pure whitespace strings
-        visible_tables = [t for t in visible_tables if t and not t.isspace()]
+        # Remove duplicates and sort alphabetically - simple and clean
+        unique_tables = sorted(list(set(visible_tables)))
         
-        # Remove duplicates while preserving order
-        seen = set()
-        unique_tables = []
-        for t in visible_tables:
-            if t not in seen:
-                seen.add(t)
-                unique_tables.append(t)
+        # Final validation - ensure no empty strings
+        final_tables = [t for t in unique_tables if t and len(t) > 0]
         
-        # Sort tables in logical groups
-        student_tables = [t for t in unique_tables if "student" in t.lower()]
-        attendance_tables = [t for t in unique_tables if "attend" in t.lower()]
-        subject_tables = [t for t in unique_tables if "subject" in t.lower() or "class" in t.lower()]
-        user_tables = [t for t in unique_tables if "user" in t.lower() or "account" in t.lower()]
-        other_tables = [t for t in unique_tables if t not in 
-                      student_tables + attendance_tables + subject_tables + user_tables]
-        
-        # Return tables in a logical order
-        return (student_tables + attendance_tables + subject_tables + 
-                user_tables + other_tables)
+        return final_tables
     except Exception as e:
         st.error(f"Error getting tables: {e}")
         return []
@@ -129,15 +139,18 @@ def show_db_explorer():
     st.title("SQLite Database Manager")
     st.write("Manage your database tables with this interactive tool")
     
-    # Initialize session state
-    if 'tables' not in st.session_state:
-        st.session_state.tables = get_tables()
-    if 'selected_table' not in st.session_state:
-        st.session_state.selected_table = st.session_state.tables[0] if st.session_state.tables else None
+    # Initialize session state with current data - FIXED INCONSISTENCY
+    current_tables = get_tables()
+    
+    # Initialize basic session state (table selection will be handled later)
     if 'editing_row' not in st.session_state:
         st.session_state.editing_row = None
     if 'search_term' not in st.session_state:
         st.session_state.search_term = ""
+    
+    # Ensure we're on the Database Explorer page - prevent navigation conflicts
+    if 'current_page' in st.session_state:
+        st.session_state.current_page = "Database Explorer"
     
     # Create a tab for professor assignments at the top level
     tab_main, tab_prof_assign = st.tabs(["Database Tables", "Professor Assignments"])
@@ -345,13 +358,15 @@ def show_db_explorer():
                     with st.form("manual_assignment"):
                         # Show professor selection with display names
                         selected_prof_display = st.selectbox("Select Professor:", 
-                                                           options=[p[1] for p in professors])
+                                                           options=[p[1] for p in professors],
+                                                           key="prof_assign_select")
                         # Get the actual username from the selection
                         selected_prof = next((p[0] for p in professors if p[1] == selected_prof_display), None)
                         
                         selected_subject = st.selectbox("Select Subject:", 
                                                        options=[s[0] for s in subjects],
-                                                       format_func=lambda x: next((s[1] for s in subjects if s[0] == x), "Unknown"))
+                                                       format_func=lambda x: next((s[1] for s in subjects if s[0] == x), "Unknown"),
+                                                       key="subject_assign_select")
                         
                         if st.form_submit_button("Assign Subject"):
                             if selected_prof:
@@ -406,9 +421,10 @@ def show_db_explorer():
                             # Add remove functionality
                             assignment_to_remove = st.selectbox("Select assignment to remove:", 
                                                               assignments_df['id'].tolist(),
-                                                              format_func=lambda x: f"{assignments_df[assignments_df['id']==x]['professor_username'].iloc[0]} - {assignments_df[assignments_df['id']==x]['subject_name'].iloc[0]}")
+                                                              format_func=lambda x: f"{assignments_df[assignments_df['id']==x]['professor_username'].iloc[0]} - {assignments_df[assignments_df['id']==x]['subject_name'].iloc[0]}",
+                                                              key="remove_assignment_select")
                             
-                            if st.button("Remove Assignment"):
+                            if st.button("Remove Assignment", key="remove_assignment_btn"):
                                 try:
                                     delete_query = "DELETE FROM professor_subject_assignments WHERE id = ?"
                                     execute_query(delete_query, (assignment_to_remove,), commit=True)
@@ -424,1152 +440,512 @@ def show_db_explorer():
                     st.warning("No professors or subjects found in the database.")
             except Exception as e:
                 st.error(f"Error setting up manual assignment: {e}")
-    
+        
+        # Student Table Synchronization
+        st.divider()
+        st.subheader("🔄 Student Data Synchronization")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Maintain Student Table Relationships**")
+            st.info("""
+            Keep the `students` table synchronized with:
+            • `student_profiles` (primary source)
+            • `user_accounts` where role = 'student'
+            """)
+            
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("� Setup DB Relations", help="Create proper database relationships and constraints", key="setup_db_relations_btn"):
+                    with st.spinner("Setting up database relationships..."):
+                        success, message = setup_student_table_relationships()
+                        if success:
+                            st.success(message)
+                        else:
+                            st.error(message)
+            
+            with col_b:
+                if st.button("🔄 Sync Student Tables", type="primary", help="Synchronize all student data", key="sync_student_tables_btn"):
+                    with st.spinner("Synchronizing student data..."):
+                        success, message = synchronize_students_table()
+                        if success:
+                            st.success(message)
+                        else:
+                            st.error(message)
+        
+        with col2:
+            st.write("**Current Student Overview**")
+            try:
+                # Quick stats
+                conn = sqlite3.connect('attendance_system.db')
+                
+                profile_count = pd.read_sql_query("SELECT COUNT(*) as count FROM student_profiles", conn).iloc[0]['count']
+                legacy_count = pd.read_sql_query("SELECT COUNT(*) as count FROM students", conn).iloc[0]['count']
+                user_students = pd.read_sql_query("SELECT COUNT(*) as count FROM user_accounts WHERE role = 'student'", conn).iloc[0]['count']
+                
+                st.metric("Student Profiles", profile_count)
+                st.metric("Legacy Students", legacy_count)
+                st.metric("Student Accounts", user_students)
+                
+                conn.close()
+                
+                # Show unified student data
+                if st.button("📊 View Student Relationships", help="Show all students and their connection status", key="view_student_relationships_btn"):
+                    with st.spinner("Loading student data..."):
+                        unified_df = get_unified_student_list()
+                        if not unified_df.empty:
+                            st.dataframe(
+                                unified_df[['name', 'username', 'connection_status', 'department', 'section']].head(20), 
+                                use_container_width=True
+                            )
+                            
+                            # Show connection status summary
+                            status_counts = unified_df['connection_status'].value_counts()
+                            st.write("**Connection Status Summary:**")
+                            for status, count in status_counts.items():
+                                st.write(f"• {status}: {count}")
+                        else:
+                            st.warning("No student data found")
+                
+            except Exception as e:
+                st.error(f"Could not load student statistics: {e}")
+
     with tab_main:
-        # Get fresh list of tables
-        tables = get_tables()  # Get fresh list of tables
+        # Get fresh list of tables - ALWAYS CURRENT
+        tables = get_tables()
         
         if not tables:
             st.info("No tables found in the database. Create a new table below.")
             create_new_table()
             return
-        else:
-            # Filter tables if needed
-            filtered_tables = tables
-            
-            # Deduplicate tables to avoid any potential duplicates
-            unique_filtered_tables = []
-            seen_tables = set()
-            for table in filtered_tables:
-                if table not in seen_tables:
-                    unique_filtered_tables.append(table)
-                    seen_tables.add(table)
-            
-            filtered_tables = unique_filtered_tables
-            
-            # Group tables by type for better organization
-            student_tables = [t for t in filtered_tables if "student" in t.lower()]
-            attendance_tables = [t for t in filtered_tables if "attend" in t.lower()]
-            user_tables = [t for t in filtered_tables if "user" in t.lower() or "account" in t.lower()]
-            other_tables = [t for t in filtered_tables if t not in student_tables + attendance_tables + user_tables]
-            
-            # Create a better organized dropdown list with proper optgroup
-            st.markdown("""
-            <style>
-            /* Style for dropdown with optgroups */
-            div[data-testid="stSelectbox"] ul {
-                max-height: 240px !important;
-            }
-            
-            /* Style option groups in dropdown */
-            .table-group-header {
-                font-weight: bold;
-                color: #555;
-                font-size: 0.9em;
-                padding: 5px;
-                pointer-events: none !important;
-                background-color: #f0f2f6 !important;
-                border-bottom: 1px solid #ddd;
-                margin-top: 5px;
-            }
-            
-            /* Style normal options */
-            .table-option {
-                padding-left: 10px !important;
-            }
-            </style>
-            """, unsafe_allow_html=True)
-            
-            # Create a flat list with better styling for headers
-            table_options = []
-            table_labels = []
-            is_header = []
-            
-            # Build lists for dropdown - removed headers to avoid selection issues
-            if student_tables:
-                for table in student_tables:
-                    table_options.append(table)
-                    table_labels.append(table)
-                    is_header.append(False)
-            
-            if attendance_tables:
-                for table in attendance_tables:
-                    table_options.append(table)
-                    table_labels.append(table)
-                    is_header.append(False)
-                
-            if user_tables:
-                for table in user_tables:
-                    table_options.append(table)
-                    table_labels.append(table)
-                    is_header.append(False)
-                
-            if other_tables:
-                for table in other_tables:
-                    table_options.append(table)
-                    table_labels.append(table)
-                    is_header.append(False)
-            
-           
-            current_table = st.session_state.selected_table
-            
-            # Default to first table if current selection isn't valid or if table_options is empty
-            if not table_options:
-                st.warning("No tables found in the database.")
-                return
-            
-            if current_table not in table_options and table_options:
-                current_table = table_options[0]
-                st.session_state.selected_table = current_table
-            
-            # Find index of current table in our options list
-            try:
-                default_index = table_options.index(current_table)
-            except ValueError:
-                # If not found, default to first item
-                default_index = 0
-                current_table = table_options[0]
-                st.session_state.selected_table = current_table
-            
-            # Create the dropdown for table selection - without disabled parameter
-            st.write("### Select Table")
-            selected_table = st.selectbox(
-                "Choose a table to view or edit:",
-                options=table_options,
-                index=default_index,
-                key="table_selector_fixed",
-                on_change=None
-            )
-            
-            # Handle selection - ensure session state is updated immediately
-            if selected_table != st.session_state.selected_table:
-                st.session_state.selected_table = selected_table
+        
+        # Filter and clean tables - MAXIMUM ROBUSTNESS
+        clean_tables = []
+        for table in tables:
+            if (table and 
+                isinstance(table, str) and 
+                table.strip() and 
+                not table.isspace() and 
+                len(table.strip()) > 0 and
+                table.strip() != ''):  # Extra check for empty strings
+                cleaned = table.strip()
+                if cleaned and cleaned not in clean_tables:  # Avoid duplicates inline
+                    clean_tables.append(cleaned)
+        
+        # Sort alphabetically for consistent display
+        clean_tables = sorted(clean_tables)
+        
+        # Final validation - remove any remaining empty or invalid entries
+        clean_tables = [t for t in clean_tables if t and isinstance(t, str) and len(t.strip()) > 0]
+        
+        if not clean_tables:
+            st.warning("No valid tables found in the database.")
+            create_new_table()
+            return
+        
+        # Ensure selected table is valid and exists in current list
+        if ('selected_table' not in st.session_state or 
+            not st.session_state.selected_table or 
+            st.session_state.selected_table not in clean_tables):
+            st.session_state.selected_table = clean_tables[0] if clean_tables else None
+            # Clear related state when table is reset
+            if 'editing_row' in st.session_state:
                 st.session_state.editing_row = None
+            if 'search_term' in st.session_state:
                 st.session_state.search_term = ""
-                # Force rerun to refresh the interface
-                st.rerun()
-            
-            # Check if we need to rerun (set by other components)
-            if st.session_state.get('needs_rerun', False):
-                st.session_state.needs_rerun = False
-                st.rerun()
-            
-            # Add thin separator line
-            st.markdown('<div class="compact-section-divider"></div>', unsafe_allow_html=True)
-            
-            # Check if we have a selected table
-            if st.session_state.selected_table:
-                table = st.session_state.selected_table
-                columns = get_column_names(table)
-                primary_keys = get_primary_key(table)
-                
-                # Get row count
-                try:
-                    row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
-                    row_count = row_count_result[0][0] if row_count_result else 0
-                except Exception as e:
-                    st.error(f"Error getting row count: {e}")
-                    row_count = 0
-                
-                # Table header with stats - enhanced styling
-                st.markdown(f"""
-                <div class="table-info-card">
-                    <h2 style="margin:0; color:#0277bd; display:flex; align-items:center;">
-                        <span style="margin-right:8px;">📊</span> {table}
-                    </h2>
-                    <div style="margin-top:10px; display:flex; gap:15px; color:#555;">
-                        <div><strong>Columns:</strong> {len(columns)}</div>
-                        <div><strong>Rows:</strong> {row_count}</div>
-                        <div><strong>Primary Key:</strong> {', '.join(primary_keys) if primary_keys else 'None'}</div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                # Create tabs for different operations - UPDATED to include Analytics tab
-                view_tab, add_tab, delete_tab, sql_tab, analytics_tab, manage_tab = st.tabs(["📄 View Data", "➕ Add Row", "🗑️ Delete Records", "🔍 SQL Query", "📊 Analytics", "⚙️ Database Operations"])
-                
-                # VIEW DATA TAB
-                with view_tab:
-                    # Get row count
-                    try:
-                        row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
-                        row_count = row_count_result[0][0] if row_count_result else 0
-                    except Exception as e:
-                        st.error(f"Error getting row count: {e}")
-                        row_count = 0
-                    
-                    # Simple query to get all data
-                    try:
-                        df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
-                    except Exception as e:
-                        st.error(f"Error querying data: {e}")
-                        df = pd.DataFrame()  # Empty dataframe on error
-                    
-                    # Show record count
-                    st.markdown(f"""
-                        <div style="margin:10px 0;">
-                            <div>Showing <b>{len(df)}</b> of <b>{row_count:,}</b> records</div>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Display table data
-                    if not df.empty:
-                        # Format time columns to 12-hour format before displaying
-                        df_display = df.copy()
-                        
-                        # Check if this table has time columns
-                        if 'start_time' in df.columns:
-                            df_display['start_time'] = df['start_time'].apply(display_formatted_time)
-                        if 'end_time' in df.columns:
-                            df_display['end_time'] = df['end_time'].apply(display_formatted_time)
-                        if 'time' in df.columns:
-                            df_display['time'] = df['time'].apply(display_formatted_time)
-                        
-                        st.dataframe(
-                            df_display,
-                            hide_index=True,
-                            use_container_width=True
-                        )
-                    else:
-                        st.info("No data to display.")
-                    
-                # ADD ROW TAB
-                with add_tab:
-                    # Create sub-tabs for single vs bulk operations
-                    single_tab, bulk_tab = st.tabs(["➕ Add Single Row", "📋 Bulk Operations"])
-                    
-                    with single_tab:
-                        render_add_row_form(table, columns, primary_keys)
-                    
-                    with bulk_tab:
-                        st.subheader(f"📋 Bulk Operations for {table}")
-                        
-                        # Bulk insert with CSV template
-                        st.write("**Method 1: CSV Template**")
-                        
-                        if st.button("📄 Download CSV Template"):
-                            # Create a template CSV with column headers
-                            template_data = {col: [""] for col in columns}
-                            template_df = pd.DataFrame(template_data)
-                            
-                            csv_template = template_df.to_csv(index=False)
-                            st.download_button(
-                                label="💾 Download Template",
-                                data=csv_template,
-                                file_name=f"{table}_template.csv",
-                                mime="text/csv"
-                            )
-                        
-                        # Upload and process bulk data
-                        bulk_file = st.file_uploader("Upload filled CSV template:", type=['csv'])
-                        
-                        if bulk_file is not None:
-                            try:
-                                bulk_df = pd.read_csv(bulk_file)
-                                
-                                # Validate columns
-                                missing_cols = set(columns) - set(bulk_df.columns)
-                                extra_cols = set(bulk_df.columns) - set(columns)
-                                
-                                if missing_cols:
-                                    st.warning(f"Missing columns: {', '.join(missing_cols)}")
-                                if extra_cols:
-                                    st.info(f"Extra columns (will be ignored): {', '.join(extra_cols)}")
-                                
-                                # Show preview
-                                st.write("**Preview of data to insert:**")
-                                st.dataframe(bulk_df.head(10), use_container_width=True)
-                                
-                                if st.button("📤 Insert Bulk Data", type="primary"):
-                                    try:
-                                        # Filter to only include valid columns
-                                        valid_df = bulk_df[[col for col in columns if col in bulk_df.columns]]
-                                        
-                                        # Insert data
-                                        conn = sqlite3.connect('attendance_system.db')
-                                        valid_df.to_sql(table, conn, if_exists='append', index=False)
-                                        conn.commit()
-                                        conn.close()
-                                        
-                                        st.success(f"✅ Successfully inserted {len(valid_df)} records!")
-                                        st.rerun()
-                                        
-                                    except Exception as e:
-                                        st.error(f"Bulk insert failed: {e}")
-                                        
-                            except Exception as e:
-                                st.error(f"Error processing CSV: {e}")
-                        
-                        # Manual bulk insert
-                        st.write("**Method 2: Manual Entry**")
-                        
-                        # Initialize bulk data in session state
-                        if 'bulk_rows' not in st.session_state:
-                            st.session_state.bulk_rows = 3
-                        
-                        num_rows = st.number_input("Number of rows to add:", 
-                                                  min_value=1, max_value=50, 
-                                                  value=st.session_state.bulk_rows)
-                        st.session_state.bulk_rows = num_rows
-                        
-                        with st.form("bulk_manual_form"):
-                            st.write(f"Enter data for {num_rows} rows:")
-                            
-                            bulk_data = []
-                            for row in range(num_rows):
-                                st.write(f"**Row {row + 1}:**")
-                                row_data = {}
-                                
-                                # Create columns for input fields
-                                input_cols = st.columns(min(3, len(columns)))
-                                
-                                for i, col_name in enumerate(columns):
-                                    col_idx = i % len(input_cols)
-                                    with input_cols[col_idx]:
-                                        row_data[col_name] = st.text_input(
-                                            col_name, 
-                                            key=f"bulk_{row}_{col_name}",
-                                            placeholder=f"Enter {col_name}"
-                                        )
-                                
-                                bulk_data.append(row_data)
-                            
-                            if st.form_submit_button("📤 Insert All Rows", use_container_width=True):
-                                try:
-                                    # Convert to DataFrame and insert
-                                    bulk_df = pd.DataFrame(bulk_data)
-                                    
-                                    # Remove empty rows
-                                    bulk_df = bulk_df.dropna(how='all')
-                                    
-                                    if not bulk_df.empty:
-                                        conn = sqlite3.connect('attendance_system.db')
-                                        bulk_df.to_sql(table, conn, if_exists='append', index=False)
-                                        conn.commit()
-                                        conn.close()
-                                        
-                                        st.success(f"✅ Successfully inserted {len(bulk_df)} rows!")
-                                        st.rerun()
-                                    else:
-                                        st.warning("No data to insert (all rows empty)")
-                                        
-                                except Exception as e:
-                                    st.error(f"Bulk insert failed: {e}")
-                
-                # DELETE TAB
-                with delete_tab:
-                    st.subheader(f"Delete Records from {table}")
-                    
-                    # Single record deletion
-                    st.write("#### Delete Single Record")
-                    if primary_keys:
-                        with st.form("delete_single_form"):
-                            # For each primary key, create an input field
-                            pk_values = {}
-                            for pk in primary_keys:
-                                pk_values[pk] = st.text_input(f"{pk}:", key=f"delete_pk_{pk}")
-                            
-                            delete_submitted = st.form_submit_button("Delete Record", type="primary")
-                            
-                            if delete_submitted:
-                                # Build where clause
-                                where_conditions = []
-                                delete_vals = []
-                                
-                                for pk, val in pk_values.items():
-                                    if val:  # Only include non-empty values
-                                        where_conditions.append(f"{pk} = ?")
-                                        delete_vals.append(val)
-                                
-                                if not where_conditions:
-                                    st.error("Please provide at least one primary key value")
-                                else:
-                                    # Build and execute DELETE statement
-                                    delete_stmt = f"DELETE FROM {table} WHERE " + " AND ".join(where_conditions)
-                                    
-                                    # Execute delete with confirmation
-                                    if st.checkbox("I confirm this deletion", key="confirm_single_delete"):
-                                        try:
-                                            affected_rows = execute_query(delete_stmt, tuple(delete_vals), commit=True)
-                                            st.success("Record deleted successfully!")
-                                            st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Error deleting record: {str(e)}")
-                    else:
-                        st.info("This table doesn't have a primary key. Use the bulk delete option below.")
-                    
-                    # Bulk delete option
-                    st.write("#### Delete Multiple Records")
-                    with st.form("delete_bulk_form"):
-                        where_clause = st.text_area("WHERE Clause:", placeholder=f"Example: column_name = 'value' AND other_column > 10")
-                        preview_button = st.form_submit_button("Preview Records to Delete")
-                        
-                        if preview_button and where_clause:
-                            try:
-                                # Preview what will be deleted
-                                preview_df = pd.read_sql_query(f"SELECT * FROM {table} WHERE {where_clause} LIMIT 10", sqlite3.connect('attendance_system.db'))
-                                
-                                # Get count of all records that will be deleted
-                                count_query = f"SELECT COUNT(*) FROM {table} WHERE {where_clause}"
-                                count_result = execute_query(count_query, fetch=True)
-                                total_count = count_result[0][0] if count_result else 0
-                                
-                                st.write(f"This will delete {total_count} records. Here's a preview of up to 10 records:")
-                                st.dataframe(preview_df, use_container_width=True)
-                                
-                                # Show delete button only after preview
-                                if st.checkbox("I confirm deletion of these records", key="confirm_bulk_delete"):
-                                    delete_stmt = f"DELETE FROM {table} WHERE {where_clause}"
-                                    try:
-                                        execute_query(delete_stmt, commit=True)
-                                        st.success(f"Successfully deleted {total_count} records!")
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Error during bulk delete: {str(e)}")
-                            except Exception as e:
-                                st.error(f"Error in WHERE clause: {str(e)}")
-                
-                # SQL QUERY TAB
-                with sql_tab:
-                    st.subheader("Run Custom SQL Query")
-                    query = st.text_area("Enter SQL Query:", height=100, placeholder=f"Example: SELECT * FROM {table} WHERE column_name = 'value'")
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        if st.button("🔍 Execute SELECT Query", use_container_width=True):
-                            if not query.strip():
-                                st.warning("Please enter a SQL query")
-                            elif query.strip().upper().startswith("SELECT"):
-                                try:
-                                    result_df = pd.read_sql_query(query, sqlite3.connect('attendance_system.db'))
-                                    
-                                    st.success("Query executed successfully!")
-                                    
-                                    # Process DataFrame to convert time formats
-                                    if not result_df.empty:
-                                        # Format time columns to AM/PM display format for user-friendly view
-                                        if 'start_time' in result_df.columns:
-                                            result_df['start_time'] = result_df['start_time'].apply(display_formatted_time)
-                                        if 'end_time' in result_df.columns:
-                                            result_df['end_time'] = result_df['end_time'].apply(display_formatted_time)
-                                        if 'time' in result_df.columns:
-                                            result_df['time'] = result_df['time'].apply(display_formatted_time)
-                                        
-                                        # Display the human-readable version
-                                        st.dataframe(result_df, use_container_width=True)
-                                    else:
-                                        st.info("Query returned no results.")
-                                except Exception as e:
-                                    st.error(f"Error executing query: {e}")
-                            else:
-                                st.error("Only SELECT queries are allowed with this button.")
-                    
-                    with col2:
-                        if st.button("⚠️ Execute Action Query", type="primary", use_container_width=True):
-                            if not query.strip():
-                                st.warning("Please enter a SQL query")
-                            elif query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
-                                # Show confirmation checkbox
-                                if st.checkbox("I understand this will modify the database", key="confirm_action_query"):
-                                    try:
-                                        execute_query(query, commit=True)
-                                        st.success("Query executed successfully!")
-                                        st.rerun()
-                                    except Exception as e:
-                                        st.error(f"Error executing query: {e}")
-                            else:
-                                st.error("Only INSERT, UPDATE, or DELETE queries are allowed with this button.")
-                
-                # DATABASE OPERATIONS TAB
-                with manage_tab:
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        st.subheader("Create New Table")
-                        create_new_table()
-                    
-                    with col2:
-                        st.subheader("Delete Current Table")
-                        if st.session_state.selected_table:
-                            st.warning(f"Are you sure you want to delete table '{st.session_state.selected_table}'?\nThis action cannot be undone!")
-                            confirm_name = st.text_input("Type the table name to confirm deletion:", key="confirm_delete_main")
-                            
-                            if st.button("🗑️ DELETE TABLE", type="primary", use_container_width=True):
-                                if confirm_name == st.session_state.selected_table:
-                                    execute_query(f"DROP TABLE {st.session_state.selected_table};", commit=True)
-                                    st.success(f"Table '{st.session_state.selected_table}' deleted successfully!")
-                                    st.session_state.tables = get_tables()
-                                    if st.session_state.tables:
-                                        st.session_state.selected_table = st.session_state.tables[0]
-                                    else:
-                                        st.session_state.selected_table = None
-                                    st.rerun()
-                                else:
-                                    st.error("Table name doesn't match. Deletion cancelled.")
-                        else:
-                            st.info("No table selected to delete.")
-                    
-                    with col2:
-                        st.subheader("📤 Export & Import")
-                        
-                        # Export functionality
-                        st.write("**Export Data:**")
-                        export_format = st.selectbox("Export Format:", ["CSV", "JSON", "Excel"])
-                        
-                        if st.button("📥 Export Current Table", use_container_width=True):
-                            try:
-                                # Get all data from current table
-                                export_query = f"SELECT * FROM {st.session_state.selected_table}"
-                                export_df = pd.read_sql_query(export_query, sqlite3.connect('attendance_system.db'))
-                                
-                                if export_format == "CSV":
-                                    csv_data = export_df.to_csv(index=False)
-                                    st.download_button(
-                                        label="💾 Download CSV",
-                                        data=csv_data,
-                                        file_name=f"{st.session_state.selected_table}.csv",
-                                        mime="text/csv"
-                                    )
-                                
-                                elif export_format == "JSON":
-                                    json_data = export_df.to_json(orient='records', indent=2)
-                                    st.download_button(
-                                        label="💾 Download JSON",
-                                        data=json_data,
-                                        file_name=f"{st.session_state.selected_table}.json",
-                                        mime="application/json"
-                                    )
-                                
-                                elif export_format == "Excel":
-                                    # For Excel, we need to create a buffer
-                                    from io import BytesIO
-                                    buffer = BytesIO()
-                                    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                                        export_df.to_excel(writer, sheet_name=st.session_state.selected_table, index=False)
-                                    
-                                    st.download_button(
-                                        label="💾 Download Excel",
-                                        data=buffer.getvalue(),
-                                        file_name=f"{st.session_state.selected_table}.xlsx",
-                                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                                    )
-                                
-                                st.success(f"Export prepared! Click the download button above.")
-                                
-                            except Exception as e:
-                                st.error(f"Export failed: {e}")
-                        
-                        # Import functionality
-                        st.write("**Import Data:**")
-                        uploaded_file = st.file_uploader("Choose a file to import:", 
-                                                        type=['csv', 'json', 'xlsx'])
-                        
-                        if uploaded_file is not None:
-                            try:
-                                # Read the uploaded file
-                                if uploaded_file.name.endswith('.csv'):
-                                    import_df = pd.read_csv(uploaded_file)
-                                elif uploaded_file.name.endswith('.json'):
-                                    import_df = pd.read_json(uploaded_file)
-                                elif uploaded_file.name.endswith('.xlsx'):
-                                    import_df = pd.read_excel(uploaded_file)
-                                
-                                st.write("**Preview of imported data:**")
-                                st.dataframe(import_df.head(), use_container_width=True)
-                                
-                                # Import options
-                                import_mode = st.radio("Import Mode:", 
-                                                     ["Append to existing table", "Replace table data"])
-                                
-                                if st.button("📤 Import Data", type="primary"):
-                                    conn = sqlite3.connect('attendance_system.db')
-                                    
-                                    if import_mode == "Replace table data":
-                                        # Clear existing data
-                                        conn.execute(f"DELETE FROM {st.session_state.selected_table}")
-                                    
-                                    # Insert new data
-                                    import_df.to_sql(st.session_state.selected_table, conn, 
-                                                   if_exists='append', index=False)
-                                    conn.commit()
-                                    conn.close()
-                                    
-                                    st.success(f"Successfully imported {len(import_df)} records!")
-                                    st.rerun()
-                                
-                            except Exception as e:
-                                st.error(f"Import failed: {e}")
-                        
-                        # Backup functionality
-                        st.write("**Database Backup:**")
-                        if st.button("💾 Create Database Backup", use_container_width=True):
-                            try:
-                                import shutil
-                                from datetime import datetime
-                                
-                                backup_name = f"attendance_system_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.db"
-                                shutil.copy2('attendance_system.db', backup_name)
-                                
-                                st.success(f"Backup created: {backup_name}")
-                                
-                                # Offer download of backup
-                                with open(backup_name, 'rb') as f:
-                                    st.download_button(
-                                        label="📥 Download Backup",
-                                        data=f.read(),
-                                        file_name=backup_name,
-                                        mime="application/octet-stream"
-                                    )
-                                    
-                            except Exception as e:
-                                st.error(f"Backup failed: {e}")
-    # Remove database info sidebar completely - keep empty sidebar to prevent layout issues
-    with st.sidebar:
-        # Empty sidebar
-        pass
+         # Create tabs for each table - all tables displayed as individual tabs
+        st.markdown("### Database Tables")
+        
+        # Show all tables as tabs (no pagination)
+        table_tabs = st.tabs([f"📊 {table}" for table in clean_tables])
+        
+        # Display content for each table in its respective tab
+        for i, table in enumerate(clean_tables):
+            with table_tabs[i]:
+                st.session_state.selected_table = table
+                display_table_content(table)
+        
+        return  # Exit here since we're handling all table display in tabs
 
-# Clean up the create_new_table function with better styling
-def create_new_table():
-    """Create a new table form component with enhanced styling"""
-    with st.container():
-        st.markdown('<div class="clean-form">', unsafe_allow_html=True)
-        
-        st.markdown("### Create New Table")
-        new_table_name = st.text_input("Table Name", key="new_table_name_main", placeholder="Enter a name for your new table")
-        
-        # Column definition section with improved styling
-        st.markdown("#### Define Columns")
-        st.caption("Add columns to your table structure")
-        
-        col1, col2, col3 = st.columns([3, 2, 1])
-        with col1:
-            st.markdown("**Name**")
-        with col2:
-            st.markdown("**Type**")
-        with col3:
-            st.markdown("**PK**")
-        
-        # Initialize columns list if not exists
-        if 'new_table_columns' not in st.session_state:
-            st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
-        
-        # Display column inputs
-        columns_to_add = []
-        for i, col in enumerate(st.session_state.new_table_columns):
-            col1, col2, col3, col4 = st.columns([3, 2, 1, 0.5])
-            with col1:
-                col_name = st.text_input("", value=col["name"], key=f"col_name_main_{i}")
-            with col2:
-                col_type = st.selectbox("", ["TEXT", "INTEGER", "REAL", "BLOB", "DATETIME"], 
-                                       index=["TEXT", "INTEGER", "REAL", "BLOB", "DATETIME"].index(col["type"]),
-                                       key=f"col_type_main_{i}")
-            with col3:
-                col_pk = st.checkbox("", value=col["pk"], key=f"col_pk_main_{i}")
-            with col4:
-                # Only show delete button if there's more than one column
-                if len(st.session_state.new_table_columns) > 1:
-                    if st.button("❌", key=f"del_col_main_{i}"):
-                        st.session_state.new_table_columns.pop(i)
-                        st.rerun()
-                        
-            columns_to_add.append({"name": col_name, "type": col_type, "pk": col_pk})
-        
-        # Update column definitions
-        st.session_state.new_table_columns = columns_to_add
-        
-        # Add column button with icon and better styling
-        col1, col2 = st.columns([1, 3])
-        with col1:
-            if st.button("➕ Add Column", key="add_column_main"):
-                st.session_state.new_table_columns.append({"name": "", "type": "TEXT", "pk": False})
-                st.rerun()
-        
-        # Create table button with better styling
-        if st.button("Create Table", key="create_table_main", type="primary", use_container_width=True):
-            if not new_table_name.strip():
-                st.error("Please provide a table name")
-            elif not new_table_name.replace('_', '').replace('-', '').isalnum():
-                st.error("Table name should only contain letters, numbers, underscores, and hyphens")
-            else:
-                # Check if any columns are defined and have names
-                valid_columns = [col for col in st.session_state.new_table_columns if col["name"].strip()]
-                if not valid_columns:
-                    st.error("Please define at least one column with a name")
-                else:
-                    # Build CREATE TABLE statement
-                    column_defs = []
-                    for col in valid_columns:
-                        col_name = col["name"].strip()
-                        if not col_name.replace('_', '').replace('-', '').isalnum():
-                            st.error(f"Column name '{col_name}' should only contain letters, numbers, underscores, and hyphens")
-                            break
-                        
-                        col_def = f"{col_name} {col['type']}"
-                        if col["pk"]:
-                            col_def += " PRIMARY KEY"
-                        column_defs.append(col_def)
-                    else:  # This else belongs to the for loop - executes if no break occurred
-                        if column_defs:
-                            create_stmt = f"CREATE TABLE {new_table_name} (\n" + ",\n".join(column_defs) + "\n);"
-                            
-                            # Execute create table
-                            try:
-                                # Check if table already exists
-                                existing_tables = get_tables()
-                                if new_table_name in existing_tables:
-                                    st.error(f"Table '{new_table_name}' already exists")
-                                else:
-                                    execute_query(create_stmt, commit=True)
-                                    st.success(f"Table '{new_table_name}' created successfully!")
-                                    st.session_state.tables = get_tables()
-                                    st.session_state.selected_table = new_table_name
-                                    st.session_state.new_table_columns = [{"name": "", "type": "TEXT", "pk": False}]
-                                    st.rerun()
-                            except Exception as e:
-                                st.error(f"Error creating table: {e}")
-        
-        st.markdown('</div>', unsafe_allow_html=True)
-
-def get_foreign_key_values(table_name, column_name):
-    """Get possible values for a foreign key column"""
-    conn = None
+def display_table_content(table):
+    """Display the complete content and operations for a specific table"""
+    columns = get_column_names(table)
+    primary_keys = get_primary_key(table)
+    
+    # Get row count
     try:
-        conn = sqlite3.connect('attendance_system.db')
-        cursor = conn.cursor()
-        
-        # Get foreign key info
-        cursor.execute(f"PRAGMA foreign_key_list({table_name})")
-        fk_data = cursor.fetchall()
-        
-        # Check if this column is a foreign key
-        ref_table = None
-        ref_col = None
-        
-        for fk in fk_data:
-            if fk[3] == column_name:  # [3] is the "from" column
-                ref_table = fk[2]     # [2] is the referenced table
-                ref_col = fk[4]       # [4] is the referenced column
-                break
-        
-        if not ref_table:
-            return []
-        
-        # Get values from the referenced table
-        try:
-            # First check if the table has a "name" column for better display
-            cursor.execute(f"PRAGMA table_info({ref_table})")
-            columns = [col[1] for col in cursor.fetchall()]
-            
-            if 'name' in columns:
-                # Include both ID and name for better display
-                cursor.execute(f"SELECT {ref_col}, name FROM {ref_table} ORDER BY name")
-                values = [(str(row[0]), f"{row[0]} - {row[1]}") for row in cursor.fetchall()]
-            else:
-                # Just use the referenced column value
-                cursor.execute(f"SELECT {ref_col} FROM {ref_table} ORDER BY {ref_col}")
-                values = [(str(row[0]), str(row[0])) for row in cursor.fetchall()]
-            
-            return values
-        except Exception as e:
-            st.warning(f"Error fetching foreign key values: {e}")
-            return []
+        row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
+        row_count = row_count_result[0][0] if row_count_result else 0
     except Exception as e:
-        st.error(f"Error accessing foreign key info: {e}")
-        return []
-    finally:
-        if conn:
-            conn.close()
+        st.error(f"Error getting row count: {e}")
+        row_count = 0
+    
+    # Table header with stats
+    st.markdown(f"""
+    <div class="table-info-card">
+        <h3 style="margin:0; color:#0277bd; display:flex; align-items:center;">
+            <span style="margin-right:8px;">📊</span> {table}
+        </h3>
+        <div style="margin-top:10px; display:flex; gap:15px; color:#555;">
+            <div><strong>Columns:</strong> {len(columns)}</div>
+            <div><strong>Rows:</strong> {row_count}</div>
+            <div><strong>Primary Key:</strong> {', '.join(primary_keys) if primary_keys else 'None'}</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Create tabs for different operations
+    view_tab, add_tab, delete_tab, sql_tab, analytics_tab, manage_tab = st.tabs(
+        ["📄 View Data", "➕ Add Row", "🗑️ Delete Records", "🔍 SQL Query", "📊 Analytics", "⚙️ Database Operations"]
+    )
+    
+    # VIEW DATA TAB
+    with view_tab:
+        display_view_data_section(table, columns, row_count)
+    
+    # ADD ROW TAB  
+    with add_tab:
+        display_add_row_section(table, columns, primary_keys)
+    
+    # DELETE RECORDS TAB
+    with delete_tab:
+        display_delete_records_section(table, columns, primary_keys)
+    
+    # SQL QUERY TAB
+    with sql_tab:
+        display_sql_query_section(table)
+    
+    # ANALYTICS TAB
+    with analytics_tab:
+        display_analytics_section(table, columns)
+    
+    # DATABASE OPERATIONS TAB
+    with manage_tab:
+        display_database_operations_section(table)
 
-def get_common_values(column_name):
-    """Return common values for known column types"""
-    column_name_lower = column_name.lower()
+def display_view_data_section(table, columns, row_count):
+    """Display the view data section with all original functionality"""
+    try:
+        # Simple query to get all data
+        df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
+    except Exception as e:
+        st.error(f"Error querying data: {e}")
+        df = pd.DataFrame()
     
-    # Role columns
-    if 'role' in column_name_lower:
-        return [('admin', 'Administrator'), ('user', 'Regular User'), ('student', 'Student'), ('professor', 'Professor')]
+    # Show record count
+    st.markdown(f"""
+        <div style="margin:10px 0;">
+            <div>Showing <b>{len(df)}</b> of <b>{row_count:,}</b> records</div>
+        </div>
+    """, unsafe_allow_html=True)
     
-    # Status columns
-    elif 'status' in column_name_lower:
-        return [('active', 'Active'), ('inactive', 'Inactive'), ('pending', 'Pending')]
+    # Display table data
+    if not df.empty:
+        # Create a copy for display to avoid modifying original
+        df_display = df.copy()
         
-    # Day columns
-    elif 'day' in column_name_lower:
-        days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-        return [(day, day) for day in days]
+        # Format time columns if they exist
+        time_columns = ['start_time', 'end_time', 'time', 'created_at', 'last_login']
+        for col in time_columns:
+            if col in df_display.columns:
+                try:
+                    df_display[col] = df_display[col].apply(display_formatted_time)
+                except:
+                    pass  # Keep original format if formatting fails
         
-    # Yes/No or boolean-like columns
-    elif any(x in column_name_lower for x in ['is_', 'has_', 'enable', 'active', 'visible', 'allow']):
-        return [('1', 'Yes'), ('0', 'No')]
-    
-    # No common values detected
-    return []
+        st.dataframe(df_display, use_container_width=True)
+    else:
+        st.info("No data found in this table.")
 
-# ADD ROW TAB - enhanced version
-def render_add_row_form(table, columns, primary_keys):
-    """Render an enhanced form for adding a new row with smart input fields"""
-    st.subheader(f"Add New Row to {table}")
+def display_add_row_section(table, columns, primary_keys):
+    """Display the add row section with form for new records"""
+    st.subheader(f"➕ Add New Record to {table}")
     
-    with st.form("add_row_form"):
+    # Create form for adding new row
+    with st.form(f"add_row_{table}"):
+        st.write("**Enter values for new record:**")
+        
         # Create input fields for each column
-        new_row_data = {}
+        input_values = {}
+        cols = st.columns(min(3, len(columns)))
         
-        # Create 2 columns layout for better form organization
-        col_size = 2
-        for i in range(0, len(columns), col_size):
-            cols = st.columns(min(col_size, len(columns) - i))
-            for j, col_idx in enumerate(range(i, min(i + col_size, len(columns)))):
-                col_name = columns[col_idx]
+        for i, column in enumerate(columns):
+            col_idx = i % len(cols)
+            with cols[col_idx]:
+                # Skip auto-increment primary keys
+                if column.lower() in ['id'] and column in primary_keys:
+                    st.write(f"**{column}** (auto-generated)")
+                    input_values[column] = None
+                else:
+                    input_values[column] = st.text_input(f"**{column}**", key=f"input_{table}_{column}")
+        
+        # Submit button
+        if st.form_submit_button("Add Record", type="primary"):
+            try:
+                # Filter out None values (auto-generated fields)
+                insert_data = {k: v for k, v in input_values.items() if v is not None and v != ""}
                 
-                # Get column type information
-                col_info = get_table_columns(table)[col_idx]
-                col_type = col_info[2].upper()  # [2] is the type
-                
-                with cols[j]:
-                    # Skip auto-increment primary keys
-                    if (col_name in primary_keys and len(primary_keys) == 1 and 
-                        "INTEGER" in col_type):
-                        st.text_input(col_name, value="(Auto)", disabled=True)
-                        continue
+                if insert_data:
+                    # Create INSERT query
+                    cols_str = ", ".join(insert_data.keys())
+                    placeholders = ", ".join(["?" for _ in insert_data])
+                    query = f"INSERT INTO {table} ({cols_str}) VALUES ({placeholders})"
                     
-                    # Check if this is a foreign key
-                    fk_values = get_foreign_key_values(table, col_name)
-                    if fk_values:
-                        # Add an empty option for nullable foreign keys
-                        options = [('', '-- Select Value --')] + fk_values
-                        selected = st.selectbox(
-                            col_name,
-                            options=options,
-                            format_func=lambda x: x[1],  # Display the formatted value
-                            key=f"fk_{table}_{col_name}"
-                        )
-                        new_row_data[col_name] = selected[0] if selected else None
-                        
-                    # Check for date type
-                    elif 'DATE' in col_type:
-                        value = st.date_input(
-                            col_name,
-                            value=datetime.now().date(),
-                            key=f"date_{table}_{col_name}"
-                        )
-                        new_row_data[col_name] = value
-                        
-                    # Check for time type
-                    elif 'TIME' in col_type or ('time' in col_name.lower() and 'stamp' not in col_name.lower()):
-                        # Custom 12-hour time input with AM/PM selector
-                        hour_col, minute_col, ampm_col = st.columns([1, 1, 1])
-                        
-                        with hour_col:
-                            # Create hour selector (1-12)
-                            current_hour = datetime.now().hour
-                            # Convert 24h to 12h format for default selection
-                            display_hour = current_hour % 12
-                            if display_hour == 0:
-                                display_hour = 12
-                                
-                            hour_value = st.selectbox(
-                                "Hour",
-                                options=list(range(1, 13)),  # 1-12 for 12-hour format
-                                index=display_hour-1,  # Adjust for 0-based index
-                                key=f"hour_{table}_{col_name}"
-                            )
-                            
-                        with minute_col:
-                            # Create minute selector (00, 15, 30, 45)
-                            minute_value = st.selectbox(
-                                "Minute",
-                                options=[0, 15, 30, 45],
-                                index=0,
-                                format_func=lambda x: f"{x:02d}",  # Format as "00", "15", etc.
-                                key=f"minute_{table}_{col_name}"
-                            )
-                            
-                        with ampm_col:
-                            # AM/PM selector
-                            default_index = 1 if current_hour >= 12 else 0
-                            am_pm = st.selectbox(
-                                "AM/PM",
-                                options=["AM", "PM"],
-                                index=default_index,
-                                key=f"ampm_{table}_{col_name}"
-                            )
-                        
-                        # Convert to 12-hour AM/PM format for storage
-                        if am_pm == "PM" and hour_value < 12:
-                            hour_24 = hour_value + 12
-                        elif am_pm == "AM" and hour_value == 12:
-                            hour_24 = 0
-                        else:
-                            hour_24 = hour_value
-                            
-                        # Format as 12-hour AM/PM for database storage (consistent with system)
-                        display_hour = hour_value
-                        time_str = f"{display_hour:02d}:{minute_value:02d} {am_pm}"
-                        new_row_data[col_name] = time_str
-                        
-                        # Show preview of the time
-                        st.markdown(f"**{col_name}:** {time_str}")
-                        
-                    # Check for datetime/timestamp type
-                    elif any(x in col_type for x in ['DATETIME', 'TIMESTAMP']):
-                        date_val = st.date_input(
-                            f"{col_name} (Date)",
-                            value=datetime.now().date(),
-                            key=f"dt_date_{table}_{col_name}"
-                        )
-                        time_val = st.time_input(
-                            f"{col_name} (Time)",
-                            value=datetime.now().time(),
-                            key=f"dt_time_{table}_{col_name}"
-                        )
-                        # Combine date and time
-                        combined = datetime.combine(date_val, time_val)
-                        new_row_data[col_name] = combined.strftime("%Y-%m-%d %H:%M:%S")
-                        
-                    # Check for boolean type
-                    elif 'BOOL' in col_type:
-                        value = st.checkbox(
-                            col_name,
-                            key=f"bool_{table}_{col_name}"
-                        )
-                        new_row_data[col_name] = 1 if value else 0
-                        
-                    # Check for numeric types
-                    elif any(x in col_type for x in ['INT', 'REAL', 'FLOAT', 'DOUBLE', 'DECIMAL']):
-                        if 'INT' in col_type:
-                            # Integer input
-                            value = st.number_input(
-                                col_name,
-                                step=1,
-                                key=f"int_{table}_{col_name}"
-                            )
-                        else:
-                            # Float input
-                            value = st.number_input(
-                                col_name,
-                                key=f"float_{table}_{col_name}"
-                            )
-                        new_row_data[col_name] = value
-                        
-                    # Check for common values
+                    # Execute insert
+                    result = execute_query(query, tuple(insert_data.values()), commit=True)
+                    if result is not False:
+                        st.success(f"✅ Record added successfully to {table}!")
+                        st.rerun()
                     else:
-                        common_values = get_common_values(col_name)
-                        if common_values:
-                            selected = st.selectbox(
-                                col_name,
-                                options=[('', '-- Select Value --')] + common_values,
-                                format_func=lambda x: x[1],  # Display the formatted value
-                                key=f"common_{table}_{col_name}"
-                            )
-                            new_row_data[col_name] = selected[0] if selected else None
-                        else:
-                            # Default to text input
-                            new_row_data[col_name] = st.text_input(col_name, key=f"new_{col_name}")
-        
-        submitted = st.form_submit_button("Add Row", use_container_width=True)
-        if submitted:
-            # Prepare column names and values for non-auto-increment fields
-            cols_to_insert = []
-            vals_to_insert = []
-            for col, val in new_row_data.items():
-                # Skip empty auto-increment primary keys
-                if (col in primary_keys and len(primary_keys) == 1 and 
-                    "INTEGER" in get_table_columns(table)[columns.index(col)][2].upper() and not val):
-                    continue
-                cols_to_insert.append(col)
-                vals_to_insert.append(val if val != "" else None)
-            
-            if not cols_to_insert:
-                st.error("Please provide at least one value")
-            else:
-                # Build INSERT statement
-                placeholders = ", ".join(["?"] * len(cols_to_insert))
-                insert_stmt = f"INSERT INTO {table} ({', '.join(cols_to_insert)}) VALUES ({placeholders});"
-                
-                # Execute insert
-                try:
-                    execute_query(insert_stmt, tuple(vals_to_insert), commit=True)
-                    st.success("Row added successfully!")
-                    # Clear form by resetting the page
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error adding row: {e}")
+                        st.error("Failed to add record")
+                else:
+                    st.warning("Please fill in at least one field")
+            except Exception as e:
+                st.error(f"Error adding record: {e}")
 
-class CustomTableView:
-    # ... existing code ...
-
-    def _get_filtered_data(self, where_clause="", order_by="", limit=1000, offset=0):
-        """Get data from the table with optional filtering"""
-        conn = None
-        try:
-            conn = sqlite3.connect('attendance_system.db')
-            
-            # Check if this is an attendance-related table and apply special sorting
-            is_attendance_table = any(name in self.table_name.lower() for name in ['attendance', 'class_attendance'])
-            
-            query = f"SELECT * FROM {self.table_name}"
-            
-            if where_clause:
-                query += f" WHERE {where_clause}"
-                
-            # For attendance tables, default to timestamp/date descending if no explicit order is given
-            if is_attendance_table and not order_by:
-                # Try to find date/time column for sorting
-                for time_col in ['timestamp', 'class_date', 'date', 'created_at', 'time']:
-                    cursor = conn.cursor()
-                    cursor.execute(f"PRAGMA table_info({self.table_name})")
-                    columns = [col[1] for col in cursor.fetchall()]
-                    if time_col in columns:
-                        order_by = f"{time_col} DESC"
-                        break
-            
-            # Apply order_by clause
-            if order_by:
-                query += f" ORDER BY {order_by}"
-            elif hasattr(self, 'primary_key') and self.primary_key:
-                query += f" ORDER BY {self.primary_key}"
-                
-            query += f" LIMIT {limit} OFFSET {offset}"
-            
-            df = pd.read_sql_query(query, conn)
-            
-            # Get total row count
-            count_query = f"SELECT COUNT(*) FROM {self.table_name}"
-            if where_clause:
-                count_query += f" WHERE {where_clause}"
-            
-            count_df = pd.read_sql_query(count_query, conn)
-            total_rows = count_df.iloc[0, 0] if not count_df.empty else 0
-            
-            return df, total_rows
-        except Exception as e:
-            st.error(f"Error getting filtered data: {e}")
-            return pd.DataFrame(), 0
-        finally:
-            if conn:
-                conn.close()
-
-    # ... rest of the class methods ...
-
-if __name__ == "__main__":
-    show_db_explorer()
-
-def validate_data_integrity(table_name):
-    """Perform comprehensive data integrity checks"""
-    issues = []
+def display_delete_records_section(table, columns, primary_keys):
+    """Display the delete records section"""
+    st.subheader(f"🗑️ Delete Records from {table}")
     
-    try:
-        conn = sqlite3.connect('attendance_system.db')
-        
-        # Check for NULL values in NOT NULL columns
-        columns_info = execute_query(f"PRAGMA table_info({table_name})", fetch=True)
-        for col_info in columns_info:
-            col_name, col_type, not_null = col_info[1], col_info[2], col_info[3]
-            
-            if not_null:
-                null_count_result = execute_query(
-                    f"SELECT COUNT(*) FROM {table_name} WHERE {col_name} IS NULL",
-                    fetch=True
-                )
-                null_count = null_count_result[0][0] if null_count_result else 0
-                
-                if null_count > 0:
-                    issues.append({
-                        'Type': 'NULL Constraint Violation',
-                        'Column': col_name,
-                        'Issue': f'{null_count} NULL values in NOT NULL column',
-                        'Severity': 'High'
-                    })
-        
-        # Check for duplicate primary keys
-        pk_columns = get_primary_key(table_name)
-        if pk_columns:
-            pk_list = ', '.join(pk_columns)
-            dup_query = f"""
-            SELECT {pk_list}, COUNT(*) as dup_count
-            FROM {table_name}
-            GROUP BY {pk_list}
-            HAVING COUNT(*) > 1
-            """
-            
-            dup_result = execute_query(dup_query, fetch=True)
-            if dup_result:
-                issues.append({
-                    'Type': 'Primary Key Violation',
-                    'Column': pk_list,
-                    'Issue': f'{len(dup_result)} duplicate primary key values',
-                    'Severity': 'Critical'
-                })
-        
-        # Check for foreign key violations
-        fk_info = execute_query(f"PRAGMA foreign_key_list({table_name})", fetch=True)
-        for fk in fk_info:
-            from_col, to_table, to_col = fk[3], fk[2], fk[4]
-            
-            orphan_query = f"""
-            SELECT COUNT(*) FROM {table_name} t1
-            LEFT JOIN {to_table} t2 ON t1.{from_col} = t2.{to_col}
-            WHERE t1.{from_col} IS NOT NULL AND t2.{to_col} IS NULL
-            """
-            
-            try:
-                orphan_result = execute_query(orphan_query, fetch=True)
-                orphan_count = orphan_result[0][0] if orphan_result else 0
-                
-                if orphan_count > 0:
-                    issues.append({
-                        'Type': 'Foreign Key Violation',
-                        'Column': from_col,
-                        'Issue': f'{orphan_count} orphaned records',
-                        'Severity': 'Medium'
-                    })
-            except:
-                pass  # Skip if referenced table doesn't exist
-        
-        conn.close()
-        
-    except Exception as e:
-        issues.append({
-            'Type': 'Validation Error',
-            'Column': 'N/A',
-            'Issue': f'Could not complete validation: {e}',
-            'Severity': 'Low'
-        })
+    # Warning message
+    st.warning("⚠️ **Warning:** Deleting records is permanent and cannot be undone!")
     
-    return issues
-
-def generate_schema_diagram():
-    """Generate a visual representation of the database schema"""
+    # Show current data for reference
     try:
-        import networkx as nx
-        
-        # Get all tables and their relationships
-        tables = get_tables()
-        G = nx.DiGraph()
-        
-        # Add tables as nodes
-        for table in tables:
-            G.add_node(table, node_type='table')
-        
-        # Add foreign key relationships as edges
-        for table in tables:
-            try:
-                fk_info = execute_query(f"PRAGMA foreign_key_list({table})", fetch=True)
-                for fk in fk_info:
-                    from_table = table
-                    to_table = fk[2]
-                    from_col = fk[3]
-                    to_col = fk[4]
+        df = pd.read_sql_query(f"SELECT * FROM {table} LIMIT 20;", sqlite3.connect('attendance_system.db'))
+        if not df.empty:
+            st.write("**Current records (showing first 20):**")
+            st.dataframe(df, use_container_width=True)
+            
+            # Delete options
+            delete_method = st.radio("Choose delete method:", 
+                                   ["Delete by ID", "Delete by condition", "Delete all records"],
+                                   key=f"delete_method_{table}")
+            
+            if delete_method == "Delete by ID" and primary_keys:
+                pk_column = primary_keys[0]  # Use first primary key
+                if pk_column in df.columns:
+                    record_id = st.selectbox(f"Select {pk_column} to delete:", 
+                                           options=df[pk_column].tolist(),
+                                           key=f"delete_record_{table}")
                     
-                    if to_table in tables:  # Only add if target table exists
-                        G.add_edge(from_table, to_table, 
-                                 relationship=f"{from_col} -> {to_col}")
-            except:
-                continue
-        
-        return G
-    
-    except ImportError:
-        return None
+                    if st.button("🗑️ Delete Selected Record", type="secondary", key=f"delete_selected_record_{table}"):
+                        try:
+                            query = f"DELETE FROM {table} WHERE {pk_column} = ?"
+                            result = execute_query(query, (record_id,), commit=True)
+                            if result is not False:
+                                st.success(f"✅ Record with {pk_column}={record_id} deleted!")
+                                st.rerun()
+                            else:
+                                st.error("Failed to delete record")
+                        except Exception as e:
+                            st.error(f"Error deleting record: {e}")
+            
+            elif delete_method == "Delete by condition":
+                condition = st.text_input("Enter WHERE condition (without WHERE):", 
+                                        placeholder="e.g., name = 'John' OR age > 30",
+                                        key=f"condition_input_{table}")
+                if condition and st.button("🗑️ Delete Matching Records", type="secondary", key=f"delete_matching_records_{table}"):
+                    try:
+                        query = f"DELETE FROM {table} WHERE {condition}"
+                        result = execute_query(query, commit=True)
+                        if result is not False:
+                            st.success("✅ Records deleted successfully!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete records")
+                    except Exception as e:
+                        st.error(f"Error deleting records: {e}")
+            
+            elif delete_method == "Delete all records":
+                confirm = st.text_input("Type 'DELETE ALL' to confirm:", "", key=f"confirm_delete_all_{table}")
+                if confirm == "DELETE ALL" and st.button("🗑️ Delete All Records", type="secondary", key=f"delete_all_records_{table}"):
+                    try:
+                        query = f"DELETE FROM {table}"
+                        result = execute_query(query, commit=True)
+                        if result is not False:
+                            st.success("✅ All records deleted!")
+                            st.rerun()
+                        else:
+                            st.error("Failed to delete records")
+                    except Exception as e:
+                        st.error(f"Error deleting records: {e}")
+        else:
+            st.info("No records to delete.")
     except Exception as e:
-        st.error(f"Error generating schema diagram: {e}")
-        return None
+        st.error(f"Error loading data: {e}")
+
+def display_sql_query_section(table):
+    """Display the SQL query section"""
+    st.subheader(f"🔍 SQL Query for {table}")
+    
+    # Predefined queries
+    predefined_queries = {
+        "Select All": f"SELECT * FROM {table};",
+        "Count Records": f"SELECT COUNT(*) FROM {table};",
+        "First 10 Records": f"SELECT * FROM {table} LIMIT 10;",
+        "Table Schema": f"PRAGMA table_info({table});",
+    }
+    
+    query_type = st.selectbox("Choose a predefined query or write custom:", 
+                             ["Custom"] + list(predefined_queries.keys()),
+                             key=f"query_type_{table}")
+    
+    if query_type == "Custom":
+        query = st.text_area("Enter your SQL query:", 
+                           value=f"SELECT * FROM {table} LIMIT 10;", 
+                           height=100,
+                           key=f"sql_query_{table}")
+    else:
+        query = predefined_queries[query_type]
+        st.code(query, language="sql")
+    
+    if st.button("▶️ Execute Query", key=f"execute_query_{table}"):
+        try:
+            if query.strip().upper().startswith(('SELECT', 'PRAGMA')):
+                # Read-only queries
+                result_df = pd.read_sql_query(query, sqlite3.connect('attendance_system.db'))
+                st.success("✅ Query executed successfully!")
+                st.dataframe(result_df, use_container_width=True)
+            else:
+                # Write queries
+                st.warning("⚠️ This appears to be a write operation. Use with caution!")
+                if st.checkbox("I understand this will modify the database", key=f"modify_db_confirm_{table}"):
+                    result = execute_query(query, commit=True)
+                    if result is not False:
+                        st.success("✅ Query executed successfully!")
+                    else:
+                        st.error("Query failed")
+        except Exception as e:
+            st.error(f"Query error: {e}")
+
+def display_analytics_section(table, columns):
+    """Display the analytics section"""
+    st.subheader(f"📊 Analytics for {table}")
+    
+    try:
+        df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
+        
+        if not df.empty:
+            # Basic statistics
+            st.write("**Basic Statistics:**")
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Total Records", len(df))
+            with col2:
+                st.metric("Total Columns", len(df.columns))
+            with col3:
+                null_count = df.isnull().sum().sum()
+                st.metric("Null Values", null_count)
+            
+            # Column analysis
+            if len(df.columns) > 0:
+                st.write("**Column Analysis:**")
+                selected_column = st.selectbox("Select column to analyze:", df.columns.tolist(),
+                                              key=f"analyze_column_{table}")
+                
+                if selected_column:
+                    col_data = df[selected_column]
+                    
+                    # Show column stats
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.write(f"**{selected_column} Statistics:**")
+                        st.write(f"- Unique values: {col_data.nunique()}")
+                        st.write(f"- Null values: {col_data.isnull().sum()}")
+                        st.write(f"- Data type: {col_data.dtype}")
+                    
+                    with col2:
+                        if col_data.dtype in ['int64', 'float64']:
+                            st.write(f"**Numeric Statistics:**")
+                            st.write(f"- Mean: {col_data.mean():.2f}")
+                            st.write(f"- Min: {col_data.min()}")
+                            st.write(f"- Max: {col_data.max()}")
+                    
+                    # Value counts
+                    if col_data.nunique() < 50:  # Only for columns with reasonable unique values
+                        st.write(f"**Value Distribution for {selected_column}:**")
+                        value_counts = col_data.value_counts().head(10)
+                        st.bar_chart(value_counts)
+        else:
+            st.info("No data available for analysis.")
+    except Exception as e:
+        st.error(f"Error loading analytics: {e}")
+
+def display_database_operations_section(table):
+    """Display the database operations section"""
+    st.subheader(f"⚙️ Database Operations for {table}")
+    
+    # Export data
+    st.write("**📤 Export Data**")
+    export_format = st.selectbox("Export format:", ["CSV", "JSON", "Excel"],
+                                key=f"export_format_{table}")
+    
+    if st.button("💾 Export Data", key=f"export_data_btn_{table}"):
+        try:
+            df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
+            
+            if export_format == "CSV":
+                csv_data = df.to_csv(index=False)
+                st.download_button("📥 Download CSV", csv_data, f"{table}.csv", "text/csv")
+            elif export_format == "JSON":
+                json_data = df.to_json(orient="records", indent=2)
+                st.download_button("📥 Download JSON", json_data, f"{table}.json", "application/json")
+            elif export_format == "Excel":
+                excel_buffer = io.BytesIO()
+                df.to_excel(excel_buffer, index=False)
+                excel_data = excel_buffer.getvalue()
+                st.download_button("📥 Download Excel", excel_data, f"{table}.xlsx", 
+                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+            
+            st.success("✅ Export ready for download!")
+        except Exception as e:
+            st.error(f"Export error: {e}")
+    
+    # Table operations
+    st.write("**🔧 Table Operations**")
+    
+    # Drop table (dangerous operation)
+    with st.expander("🚨 Dangerous Operations", expanded=False):
+        st.warning("⚠️ **These operations are irreversible!**")
+        
+        if st.checkbox(f"I want to delete the table '{table}'", key=f"want_delete_table_{table}"):
+            confirm_name = st.text_input("Type the table name to confirm deletion:", key=f"confirm_table_name_{table}")
+            if confirm_name == table and st.button("🗑️ DROP TABLE", type="secondary", key=f"drop_table_{table}"):
+                try:
+                    execute_query(f"DROP TABLE {table};", commit=True)
+                    st.success(f"✅ Table '{table}' deleted successfully!")
+                    st.info("🔄 Please refresh the page to see updated table list.")
+                except Exception as e:
+                    st.error(f"Error dropping table: {e}")
+            elif confirm_name and confirm_name != table:
+                st.error("Table name doesn't match. Deletion cancelled.")
+        
+        return  # Exit here since we're handling all table display in tabs
+
+def create_new_table():
+    """Placeholder for create new table functionality"""
+    st.info("Create new table functionality will be implemented")
+
+# Add the missing functions for compatibility
+def setup_student_table_relationships():
+    """Placeholder function"""
+    return True, "Function not implemented in this version"
+
+def synchronize_students_table():
+    """Placeholder function"""
+    return True, "Function not implemented in this version"
+
+def get_unified_student_list():
+    """Placeholder function"""
+    return pd.DataFrame()
+
+def create_new_table():
+    """Placeholder function for creating new tables"""
+    st.info("Create new table functionality will be implemented here")
+
+def render_add_row_form(table, columns, primary_keys):
+    """Placeholder function for adding rows"""
+    st.info("Add row functionality will be implemented here")
