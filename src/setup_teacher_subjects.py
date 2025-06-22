@@ -6,64 +6,18 @@ from database_utils import execute_query, execute_query_df
 DATABASE_PATH = 'attendance_system.db'
 
 def create_or_update_schema():
-    """Create or update the teacher_subjects table schema to ensure consistency"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
+    """Use centralized database initialization instead of local table creation"""
+    from db_init import initialize_database, check_database_integrity
     
-    try:
-        # Check if table exists and what columns it has
-        execute_query("PRAGMA table_info(teacher_subjects)")
-        columns = cursor.fetchall()
-        column_names = [col[1] for col in columns]
-        
-        if not columns:
-            # Table doesn't exist - create it
-            cursor.execute('''
-            CREATE TABLE teacher_subjects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject_id INTEGER,
-                teacher_name TEXT,
-                FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
-            )
-            ''')
-            conn.commit()
-            print("Created teacher_subjects table")
-        elif 'teacher_name' not in column_names:
-            # Table exists but needs migration - check for possible columns
-            teacher_column = None
-            for possible_col in ['teacher', 'teacher_username', 'username', 'professor']:
-                if possible_col in column_names:
-                    teacher_column = possible_col
-                    break
-            
-            # Create updated table
-            cursor.execute('''
-            CREATE TABLE teacher_subjects_new (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject_id INTEGER,
-                teacher_name TEXT,
-                FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
-            )
-            ''')
-            
-            # Migrate data if we found a matching column
-            if teacher_column and 'subject_id' in column_names:
-                cursor.execute(f'''
-                INSERT INTO teacher_subjects_new (subject_id, teacher_name)
-                SELECT subject_id, {teacher_column} FROM teacher_subjects
-                ''')
-            
-            # Replace tables
-            cursor.execute("DROP TABLE teacher_subjects")
-            cursor.execute("ALTER TABLE teacher_subjects_new RENAME TO teacher_subjects")
-            conn.commit()
-            print(f"Migrated teacher_subjects table (old field: {teacher_column})")
-        
-    except Exception as e:
-        conn.rollback()
-        print(f"Error in teacher_subjects schema update: {e}")
-    finally:
-        conn.close()
+    print("Using centralized database initialization...")
+    success = initialize_database()
+    if success:
+        check_database_integrity()
+        print("Database initialization completed successfully")
+    else:
+        print("Database initialization failed")
+    
+    return success
 
 # Initialize schema when the module is imported
 create_or_update_schema()

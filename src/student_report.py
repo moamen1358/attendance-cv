@@ -1927,75 +1927,78 @@ def create_attendance_tables():
     cursor = conn.cursor()
     
     try:
+        # DISABLED: Legacy table creation - using enhanced tables only
         # Create class_attendance table if it doesn't exist
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS class_attendance (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            student_name TEXT NOT NULL,
-            class_date DATE NOT NULL,
-            subject TEXT NOT NULL,
-            start_time TEXT NOT NULL,
-            end_time TEXT NOT NULL,
-            attended BOOLEAN NOT NULL DEFAULT 0,
-            UNIQUE(student_name, class_date, subject, start_time)
-        )
-        """)
+        # cursor.execute("""
+        # CREATE TABLE IF NOT EXISTS class_attendance (
+        #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #     student_name TEXT NOT NULL,
+        #     class_date DATE NOT NULL,
+        #     subject TEXT NOT NULL,
+        #     start_time TEXT NOT NULL,
+        #     end_time TEXT NOT NULL,
+        #     attended BOOLEAN NOT NULL DEFAULT 0,
+        #     UNIQUE(student_name, class_date, subject, start_time)
+        # )
+        # """)
         
-        conn.commit()
-        print("Created class_attendance table if it didn't exist")
+        # conn.commit()
+        print("DISABLED: Legacy table creation - using enhanced tables only")
         
+        # DISABLED: Legacy table operations
         # Check if the table was just created (no data yet)
-        execute_query("SELECT COUNT(*) FROM class_attendance")
-        count = cursor.fetchone()[0]
+        # execute_query("SELECT COUNT(*) FROM class_attendance")
+        # count = cursor.fetchone()[0]
         
-        if count == 0:
-            print("Populating class_attendance from existing data")
-            # Optionally populate the table with data from attendance_records and class_schedules
-            try:
-                cursor.execute("""
-                -- First get all scheduled classes for each day
-                WITH scheduled_classes AS (
-                    SELECT 
-                        s.subject,
-                        s.start_time,
-                        s.end_time,
-                        s.day,
-                        date(a.timestamp) as class_date,
-                        a.name as student_name
-                    FROM class_schedules s,
-                        (SELECT DISTINCT name, date(timestamp) as timestamp FROM attendance_records) a
-                    WHERE 
-                        strftime('%A', a.timestamp) = s.day
-                )
-                
-                -- Now insert records for each scheduled class, marking as attended if there's a matching log
-                INSERT OR IGNORE INTO class_attendance 
-                    (student_name, class_date, subject, start_time, end_time, attended)
-                SELECT 
-                    c.student_name,
-                    c.class_date,
-                    c.subject,
-                    c.start_time,
-                    c.end_time,
-                    EXISTS (
-                        SELECT 1 FROM attendance_records a 
-                        WHERE a.name = c.student_name 
-                        AND date(a.timestamp) = c.class_date
-                        AND time(a.timestamp) BETWEEN time(c.start_time) AND time(c.end_time)
-                    ) as attended
-                FROM scheduled_classes c
-                """)
-                conn.commit()
-                print("Populated class_attendance table with existing data")
-            except Exception as e:
-                print(f"Could not populate class_attendance: {e}")
+        # if count == 0:
+        #     print("Populating class_attendance from existing data")
+        #     # Optionally populate the table with data from attendance_records and class_schedules
+        #     try:
+        #         cursor.execute("""
+        #         -- First get all scheduled classes for each day
+        #         WITH scheduled_classes AS (
+        #             SELECT 
+        #                 s.subject,
+        #                 s.start_time,
+        #                 s.end_time,
+        #                 s.day,
+        #                 date(a.timestamp) as class_date,
+        #                 a.name as student_name
+        #             FROM class_schedules s,
+        #                 (SELECT DISTINCT name, date(timestamp) as timestamp FROM attendance_records) a
+        #             WHERE 
+        #                 strftime('%A', a.timestamp) = s.day
+        #         )
+        #         
+        #         -- Now insert records for each scheduled class, marking as attended if there's a matching log
+        #         INSERT OR IGNORE INTO class_attendance 
+        #             (student_name, class_date, subject, start_time, end_time, attended)
+        #         SELECT 
+        #             c.student_name,
+        #             c.class_date,
+        #             c.subject,
+        #             c.start_time,
+        #             c.end_time,
+        #             EXISTS (
+        #                 SELECT 1 FROM attendance_records a 
+        #                 WHERE a.name = c.student_name 
+        #                 AND date(a.timestamp) = c.class_date
+        #                 AND time(a.timestamp) BETWEEN time(c.start_time) AND time(c.end_time)
+        #             ) as attended
+        #         FROM scheduled_classes c
+        #         """)
+        #         conn.commit()
+        #         print("Populated class_attendance table with existing data")
+        #     except Exception as e:
+        #         print(f"Could not populate class_attendance: {e}")
     except Exception as e:
-        print(f"Error creating class_attendance table: {e}")
+        print(f"Error in legacy table operations (disabled): {e}")
     finally:
         conn.close()
 
+# DISABLED: Legacy table creation
 # Call the table creation function when the module is imported
-create_attendance_tables()
+# create_attendance_tables()
 
 def get_student_details(student_name):
     """Get student details including section information"""
@@ -2038,7 +2041,7 @@ def get_secure_student_data():
         # First check if the student_profiles_enhanced table exists
         execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
         if not cursor.fetchone():
-            st.warning("Student profiles table not found. Some features may be limited.")
+            st.info("✅ Using enhanced student profiles table structure.")
             return {
                 'student_name': current_user,
                 'student_id': 'Unknown',

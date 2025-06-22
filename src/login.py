@@ -50,8 +50,8 @@ def verify_credentials(username, password):
                 print(f"Enhanced login successful for {username} with role {role}")
                 return True, role
         
-        # PRIORITY 2: Check for the unified user_accounts table (new schema)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
+        # PRIORITY 2: Check for the unified user_accounts_enhanced table (new schema)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts_enhanced'")
         if cursor.fetchone():
             # Check password as plain text (no hashing)
             cursor.execute("SELECT password, role FROM user_accounts_enhanced WHERE username = ?", (username,))
@@ -189,8 +189,8 @@ def get_available_users():
     cursor = conn.cursor()
     
     try:
-        # Use the unified user_accounts table (new schema)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
+        # Use the unified user_accounts_enhanced table (new schema)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts_enhanced'")
         if cursor.fetchone():
             # Get all users with their roles from the unified table
             cursor.execute("SELECT username, role FROM user_accounts_enhanced")
@@ -199,8 +199,8 @@ def get_available_users():
         # Fallback to legacy tables if needed
         users = []
         
-        # Check student_profiles table
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        # Check student_profiles_enhanced table
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
         if cursor.fetchone():
             cursor.execute("SELECT name, 'student' FROM student_profiles_enhanced")
             users.extend(cursor.fetchall())
@@ -226,8 +226,8 @@ def get_user_section(username):
     cursor = conn.cursor()
     
     try:
-        # First check if student_profiles table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        # First check if student_profiles_enhanced table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
         if not cursor.fetchone():
             # Table doesn't exist, return default value
             return "Unassigned"
@@ -244,7 +244,7 @@ def get_user_section(username):
         conn.close()
 
 def check_required_tables():
-    """Check if all required database tables exist"""
+    """Check if all required database tables exist - Updated for enhanced tables"""
     conn = create_connection()
     cursor = conn.cursor()
     tables = {}
@@ -255,18 +255,27 @@ def check_required_tables():
         all_tables = [row[0] for row in cursor.fetchall()]
         print(f"All tables in database: {all_tables}")
         
-        # Check for essential tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('user_accounts', 'student_profiles', 'professor_profiles', 'login_logs')")
+        # Check for enhanced tables (new structure)
+        cursor.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name IN (
+                'user_accounts_enhanced', 
+                'student_profiles_enhanced', 
+                'professor_profiles', 
+                'login_logs'
+            )
+        """)
         existing_tables = {row[0] for row in cursor.fetchall()}
-        print(f"Required tables found: {existing_tables}")
+        print(f"Enhanced tables found: {existing_tables}")
         
+        # Update table existence mapping to use enhanced tables
         tables = {
-            'user_accounts': 'user_accounts' in existing_tables,
-            'student_profiles': 'student_profiles' in existing_tables,
+            'user_accounts': 'user_accounts_enhanced' in existing_tables,
+            'student_profiles': 'student_profiles_enhanced' in existing_tables,
             'professor_profiles': 'professor_profiles' in existing_tables,
             'login_logs': 'login_logs' in existing_tables
         }
-        print(f"Table existence check results: {tables}")
+        print(f"Enhanced table existence check results: {tables}")
         
     except Exception as e:
         print(f"Error checking tables: {e}")
@@ -446,12 +455,12 @@ def login_page():
         tables = check_required_tables()
         if not tables.get('student_profiles', False):
             db_path = os.path.abspath('attendance_system.db')
-            st.warning(f"Student profiles table not found. Some features may be limited. Database path: {db_path}")
-            print(f"WARNING: student_profiles table not found after fix attempt. Database path: {db_path}")
+            st.warning(f"Student profiles table not found (looking for student_profiles_enhanced). Some features may be limited. Database path: {db_path}")
+            print(f"WARNING: student_profiles_enhanced table not found after fix attempt. Database path: {db_path}")
     
     # Check if other essential tables are missing
     if not tables.get('user_accounts', False):
-        st.error("User accounts table not found. Login functionality may be unavailable.")
+        st.error("User accounts table not found (looking for user_accounts_enhanced). Login functionality may be unavailable.")
     
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")

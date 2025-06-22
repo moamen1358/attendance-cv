@@ -94,30 +94,35 @@ def ensure_subjects_table_compatibility():
     cursor = conn.cursor()
     
     try:
+        # DISABLED: Legacy table creation - using enhanced tables only
         # Check if subjects table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
-        if not cursor.fetchone():
-            # Create the subjects table if it doesn't exist
-            cursor.execute('''
-            CREATE TABLE subjects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                course_code TEXT,
-                credit_hours INTEGER DEFAULT 3,
-                description TEXT
-            )
-            ''')
-            conn.commit()
-            print("Created subjects table with standard schema")
-            return True
+        # cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
+        # if not cursor.fetchone():
+        #     # Create the subjects table if it doesn't exist
+        #     cursor.execute('''
+        #     CREATE TABLE subjects (
+        #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #         name TEXT NOT NULL,
+        #         course_code TEXT,
+        #         credit_hours INTEGER DEFAULT 3,
+        #         description TEXT
+        #     )
+        #     ''')
+        #     conn.commit()
+        #     print("Created subjects table with standard schema")
+        #     return True
+        
+        print("DISABLED: Legacy table operations - using enhanced tables only")
+        return False
             
+        # DISABLED: Legacy schema checks
         # Check current schema
-        cursor.execute("PRAGMA table_info(subjects)")
-        columns = {col[1].lower(): col[1] for col in cursor.fetchall()}
+        # cursor.execute("PRAGMA table_info(subjects)")
+        # columns = {col[1].lower(): col[1] for col in cursor.fetchall()}
         
         # Check if both id and subject_id exist
-        has_id = 'id' in columns
-        has_subject_id = 'subject_id' in columns
+        # has_id = 'id' in columns
+        # has_subject_id = 'subject_id' in columns
         
         # Check if both name and subject_name exist
         has_name = 'name' in columns
@@ -167,42 +172,44 @@ def ensure_subjects_table_compatibility():
         conn.close()
 
 def ensure_professor_assignments_table():
-    """Create the professor_subject_assignments table if it doesn't exist"""
+    """DISABLED: Legacy table creation - using enhanced tables only"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
     try:
+        # DISABLED: Legacy table operations
         # First ensure subjects table has compatible column naming
-        ensure_subjects_table_compatibility()
+        # ensure_subjects_table_compatibility()
         
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS professor_subject_assignments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            professor_username TEXT NOT NULL,
-            subject_id INTEGER NOT NULL,
-            assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(professor_username, subject_id)
-        )
-        """)
+        # cursor.execute("""
+        # CREATE TABLE IF NOT EXISTS professor_subject_assignments (
+        #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #     professor_username TEXT NOT NULL,
+        #     subject_id INTEGER NOT NULL,
+        #     assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        #     UNIQUE(professor_username, subject_id)
+        # )
+        # """)
         
+        # DISABLED: Legacy view creation
         # Create a compatibility view for the assignments table
-        cursor.execute("""
-        CREATE VIEW IF NOT EXISTS professor_assignments_view AS
-        SELECT 
-            psa.id, 
-            psa.professor_username, 
-            psa.subject_id,
-            s.name AS subject_name, 
-            psa.assigned_date
-        FROM professor_subject_assignments psa
-        LEFT JOIN subjects s ON psa.subject_id = s.id
-        """)
+        # cursor.execute("""
+        # CREATE VIEW IF NOT EXISTS professor_assignments_view AS
+        # SELECT 
+        #     psa.id, 
+        #     psa.professor_username, 
+        #     psa.subject_id,
+        #     s.name AS subject_name, 
+        #     psa.assigned_date
+        # FROM professor_subject_assignments psa
+        # LEFT JOIN subjects s ON psa.subject_id = s.id
+        # """)
         
-        conn.commit()
-        print("Ensured professor_subject_assignments table exists")
-        return True
+        # conn.commit()
+        print("DISABLED: Legacy table/view creation - using enhanced tables only")
+        return False
     except Exception as e:
-        print(f"Error creating professor_subject_assignments table: {e}")
+        print(f"Error in legacy table operations (disabled): {e}")
         return False
     finally:
         conn.close()
@@ -359,42 +366,45 @@ def sync_teacher_subject_assignments():
     cursor = conn.cursor()
     
     try:
+        # DISABLED: Legacy table creation - using enhanced tables only
         # Make sure tables exist
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS professor_subject_assignments (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            professor_username TEXT NOT NULL,
-            subject_id INTEGER NOT NULL,
-            assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(professor_username, subject_id)
-        )
-        """)
+        # cursor.execute("""
+        # CREATE TABLE IF NOT EXISTS professor_subject_assignments (
+        #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #     professor_username TEXT NOT NULL,
+        #     subject_id INTEGER NOT NULL,
+        #     assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        #     UNIQUE(professor_username, subject_id)
+        # )
+        # """)
         
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS teacher_subjects (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            subject_id INTEGER,
-            teacher_name TEXT,
-            UNIQUE(subject_id, teacher_name)
-        )
-        """)
+        # cursor.execute("""
+        # CREATE TABLE IF NOT EXISTS teacher_subjects (
+        #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #     subject_id INTEGER,
+        #     teacher_name TEXT,
+        #     UNIQUE(subject_id, teacher_name)
+        # )
+        # """)
         
+        # DISABLED: Legacy synchronization
         # Sync from teacher_subjects to professor_subject_assignments
-        cursor.execute("""
-        INSERT OR IGNORE INTO professor_subject_assignments (professor_username, subject_id)
-        SELECT teacher_name, subject_id FROM teacher_subjects
-        """)
+        # cursor.execute("""
+        # INSERT OR IGNORE INTO professor_subject_assignments (professor_username, subject_id)
+        # SELECT teacher_name, subject_id FROM teacher_subjects
+        # """)
         
         # Sync from professor_subject_assignments to teacher_subjects
-        cursor.execute("""
-        INSERT OR IGNORE INTO teacher_subjects (teacher_name, subject_id)
-        SELECT professor_username, subject_id FROM professor_subject_assignments
-        """)
+        # cursor.execute("""
+        # INSERT OR IGNORE INTO teacher_subjects (teacher_name, subject_id)
+        # SELECT professor_username, subject_id FROM professor_subject_assignments
+        # """)
         
-        conn.commit()
+        # conn.commit()
+        print("DISABLED: Legacy table synchronization - using enhanced tables only")
     except Exception as e:
-        print(f"Error syncing subject assignments: {e}")
-        conn.rollback()
+        print(f"Error in legacy operations (disabled): {e}")
+        # conn.rollback()
     finally:
         conn.close()
 
@@ -467,14 +477,14 @@ def ensure_subjects_table_schema():
         if not cursor.fetchone():
             # Create the subjects table if it doesn't exist
             cursor.execute('''
-            CREATE TABLE subjects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                name TEXT NOT NULL,
-                course_code TEXT,
-                credit_hours INTEGER DEFAULT 3,
-                description TEXT
-            )
-            ''')
+            # CREATE TABLE subjects (
+            #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+            #     name TEXT NOT NULL,
+            #     course_code TEXT,
+            #     credit_hours INTEGER DEFAULT 3,
+            #     description TEXT
+            # )
+            # ''')
             conn.commit()
             print("Created subjects table with standard schema")
             return True
@@ -517,7 +527,7 @@ def ensure_student_profiles_compatibility():
         
         # ULTRA FORCE CREATE:
         # First check if ANY student table exists in the database
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='student_profiles' OR name='students')")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND (name='student_profiles_enhanced' OR name='students')")
         existing_table = cursor.fetchone()
         
         if existing_table:
@@ -624,20 +634,20 @@ def get_attendance_records_schema():
                 break
         
         if not table_name:
-            # No attendance table found, create it with standard schema
-            print("No attendance records table found. Creating standard table...")
-            cursor.execute("""
-            CREATE TABLE attendance_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT NOT NULL,  -- Changed primary column to username
-                name TEXT,               -- Keep name as secondary column 
-                student_name TEXT,       -- Keep student_name for compatibility
-                timestamp TIMESTAMP NOT NULL,
-                confidence REAL DEFAULT 1.0,
-                device_id TEXT,
-                day_of_week TEXT
-            )
-            """)
+            # LEGACY: No attendance table found, create it with standard schema (DISABLED)
+            print("LEGACY: No attendance records table found - using centralized initialization")
+            # cursor.execute("""
+            # CREATE TABLE attendance_records (
+            #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+            #     username TEXT NOT NULL,  -- Changed primary column to username
+            #     name TEXT,               -- Keep name as secondary column 
+            #     student_name TEXT,       -- Keep student_name for compatibility
+            #     timestamp TIMESTAMP NOT NULL,
+            #     confidence REAL DEFAULT 1.0,
+            #     device_id TEXT,
+            #     day_of_week TEXT
+            # )
+            # """)
             conn.commit()
             table_name = 'attendance_records'
         

@@ -96,25 +96,29 @@ def show_assignment_form():
             from src.database_utils import sync_teacher_subject_assignments
             sync_teacher_subject_assignments()
             
-            # Ensure both tables exist with the right structure
-            execute_query("""
-                CREATE TABLE IF NOT EXISTS professor_subject_assignments (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    professor_username TEXT,
-                    subject_id INTEGER,
-                    assigned_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(professor_username, subject_id)
-                )
-            """)
+            # LEGACY: Ensure both tables exist with the right structure (DISABLED)
+            # Using centralized database initialization instead
+            from db_init import initialize_database
+            initialize_database()
             
-            execute_query("""
-                CREATE TABLE IF NOT EXISTS teacher_subjects (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    subject_id INTEGER,
-                    teacher_name TEXT,
-                    UNIQUE(subject_id, teacher_name)
-                )
-            """)
+            # execute_query("""
+            #     CREATE TABLE IF NOT EXISTS professor_subject_assignments (
+            #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+            #         professor_username TEXT,
+            #         subject_id INTEGER,
+            #         assigned_date DATETIME DEFAULT CURRENT_TIMESTAMP,
+            #         UNIQUE(professor_username, subject_id)
+            #     )
+            # """)
+            
+            # execute_query("""
+            #     CREATE TABLE IF NOT EXISTS teacher_subjects (
+            #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+            #         subject_id INTEGER,
+            #         teacher_name TEXT,
+            #         UNIQUE(subject_id, teacher_name)
+            #     )
+            # """)
             
             # Insert assignments - now with explicit transaction to ensure consistency
             conn = sqlite3.connect('attendance_system.db')

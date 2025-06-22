@@ -16,7 +16,7 @@ def check_student_profiles_exists():
     try:
         conn = sqlite3.connect('attendance_system.db')
         cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
         exists = cursor.fetchone() is not None
         conn.close()
         return exists
@@ -63,10 +63,10 @@ def create_student_profiles_table():
 
 # Override warning function to intercept and fix the student profiles warning
 def patched_warning(text, *args, **kwargs):
-    if text == "Student profiles table not found. Some features may be limited.":
-        print("Intercepted student profiles warning! Attempting to fix...")
+    if "Student profiles table not found" in text:
+        print("Intercepted student profiles warning! Using enhanced tables...")
         
-        # Check if table exists first
+        # Check if enhanced table exists instead
         if not check_student_profiles_exists():
             # Try to create it
             if create_student_profiles_table():

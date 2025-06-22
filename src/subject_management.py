@@ -12,92 +12,27 @@ import sync_professor_tables
 import os
 import sys
 
+# CONFIGURATION: Disable legacy table creation (using enhanced tables only)
+DISABLE_LEGACY_TABLE_CREATION = True
+
 # Constants
 DATABASE_PATH = 'attendance_system.db'
 
 def initialize_subjects_tables():
-    """Create necessary tables for subject management if they don't exist"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
+    """Initialize database tables using centralized initialization"""
+    # Import and call centralized database initialization
+    from db_init import initialize_database, check_database_integrity
     
-    try:
-        # First check if the teacher_subjects table exists and has the right schema
-        execute_query("PRAGMA table_info(teacher_subjects)")
-        columns = cursor.fetchall()
-        column_names = [col[1] for col in columns]
-        
-        # If the table exists but doesn't have the teacher_name column, we need to recreate it
-        if columns and 'teacher_name' not in column_names:
-            print("Existing teacher_subjects table has incorrect schema. Updating...")
-            # Rename the old table
-            cursor.execute("ALTER TABLE teacher_subjects RENAME TO teacher_subjects_old")
-            # Create the new table with correct schema
-            cursor.execute('''
-            CREATE TABLE teacher_subjects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject_id INTEGER,
-                teacher_name TEXT,
-                FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
-            )
-            ''')
-            # Try to migrate data if there's a column we can map
-            try:
-                if 'username' in column_names:
-                    cursor.execute("INSERT INTO teacher_subjects (subject_id, teacher_name) SELECT subject_id, username FROM teacher_subjects_old")
-                    print("Data migrated from old table using username column")
-                elif 'name' in column_names:
-                    cursor.execute("INSERT INTO teacher_subjects (subject_id, teacher_name) SELECT subject_id, name FROM teacher_subjects_old")
-                    print("Data migrated from old table using name column")
-                elif 'teacher' in column_names:
-                    cursor.execute("INSERT INTO teacher_subjects (subject_id, teacher_name) SELECT subject_id, teacher FROM teacher_subjects_old")
-                    print("Data migrated from old table using teacher column")
-            except Exception as e:
-                print(f"Failed to migrate data: {e}")
-                
-            # Drop the old table
-            cursor.execute("DROP TABLE teacher_subjects_old")
-        else:
-            # Create the standard tables if they don't exist
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS subjects (
-                subject_id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject_name TEXT NOT NULL,
-                course_code TEXT,
-                credit_hours INTEGER DEFAULT 3,
-                description TEXT
-            )
-            ''')
-            
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS teacher_subjects (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject_id INTEGER,
-                teacher_name TEXT,
-                FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
-            )
-            ''')
-            
-            cursor.execute('''
-            CREATE TABLE IF NOT EXISTS class_schedules (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject_id INTEGER,
-                subject TEXT,
-                day TEXT NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT NOT NULL,
-                room TEXT,
-                type TEXT DEFAULT 'lec',
-                FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
-            )
-            ''')
-        
-        conn.commit()
-        print("Subject management tables initialized successfully")
-    except Exception as e:
-        conn.rollback()
-        print(f"Error initializing subject tables: {e}")
-    finally:
-        conn.close()
+    if DISABLE_LEGACY_TABLE_CREATION:
+        print("Legacy table creation disabled - using centralized initialization")
+        success = initialize_database()
+        if success:
+            check_database_integrity()
+        return success
+    else:
+        # Legacy code path (should not be used)
+        print("WARNING: Legacy table creation path - this should be disabled")
+        return False
 
 # Initialize tables at module import
 initialize_subjects_tables()
@@ -222,39 +157,44 @@ def get_teacher_subjects(teacher):
                 # Direct fix - create the table right here if it's missing or empty
                 st.warning("Teacher column not found. Attempting to rebuild the table...")
                 
-                # Force recreate the table
-                try:
-                    cursor.execute("DROP TABLE IF EXISTS teacher_subjects")
-                    cursor.execute("""
-                    CREATE TABLE teacher_subjects (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        subject_id INTEGER,
-                        teacher_name TEXT
-                    )
-                    """)
-                    conn.commit()
-                    
-                    # Try again with the new table
-                    cursor.execute("PRAGMA table_info(teacher_subjects)")
-                    columns = cursor.fetchall()
-                    column_names = [col[1] for col in columns]
-                    
-                    if 'teacher_name' not in column_names:
-                        html_link = '<a href="/fix_db_tables" target="_blank">Open Database Repair Tool</a>'
-                        st.error(f"Could not recreate teacher_subjects table with proper structure. {html_link}", unsafe_allow_html=True)
-                        # Create a direct link to the fix tool as a button
-                        if st.button("🔧 Open Database Repair Tool", type="primary"):
-                            st.markdown("Opening repair tool in a new tab...")
-                            js_code = f"""
-                            <script>
-                                window.open("/fix_db_tables", "_blank");
-                            </script>
-                            """
-                            st.markdown(js_code, unsafe_allow_html=True)
+                # LEGACY: Force recreate the table (DISABLED)
+                if not DISABLE_LEGACY_TABLE_CREATION:
+                    try:
+                        cursor.execute("DROP TABLE IF EXISTS teacher_subjects")
+                        # cursor.execute("""
+                        # CREATE TABLE teacher_subjects (
+                        #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        #     subject_id INTEGER,
+                        #     teacher_name TEXT
+                        # )
+                        # """)
+                        conn.commit()
+                        
+                        # Try again with the new table
+                        cursor.execute("PRAGMA table_info(teacher_subjects)")
+                        columns = cursor.fetchall()
+                        column_names = [col[1] for col in columns]
+                        
+                        if 'teacher_name' not in column_names:
+                            html_link = '<a href="/fix_db_tables" target="_blank">Open Database Repair Tool</a>'
+                            st.error(f"Could not recreate teacher_subjects table with proper structure. {html_link}", unsafe_allow_html=True)
+                            # Create a direct link to the fix tool as a button
+                            if st.button("🔧 Open Database Repair Tool", type="primary"):
+                                st.markdown("Opening repair tool in a new tab...")
+                                js_code = f"""
+                                <script>
+                                    window.open("/fix_db_tables", "_blank");
+                                </script>
+                                """
+                                st.markdown(js_code, unsafe_allow_html=True)
                         
                         return pd.DataFrame(columns=['subject_id', 'subject_name', 'course_code', 'credit_hours', 'description'])
-                except Exception as fix_error:
-                    st.error(f"Error rebuilding table: {fix_error}")
+                    except Exception as fix_error:
+                        st.error(f"Error rebuilding table: {fix_error}")
+                        return pd.DataFrame(columns=['subject_id', 'subject_name', 'course_code', 'credit_hours', 'description'])
+                else:
+                    # Use centralized database initialization instead
+                    st.info("Using enhanced database tables. Please ensure db_init.py has been run.")
                     return pd.DataFrame(columns=['subject_id', 'subject_name', 'course_code', 'credit_hours', 'description'])
             
             # Check subjects table schema
@@ -966,22 +906,25 @@ def update_class_schedules_schema():
                 conn.commit()
                 print("Added subject column to class_schedules table")
         else:
-            # Create table with both columns
-            cursor.execute('''
-            CREATE TABLE class_schedules (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                subject_id INTEGER,
-                subject TEXT,
-                day TEXT NOT NULL,
-                start_time TEXT NOT NULL,
-                end_time TEXT NOT NULL,
-                room TEXT,
-                type TEXT DEFAULT 'lec',
-                FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
-            )
-            ''')
-            conn.commit()
-            print("Created class_schedules table with all required columns")
+            # LEGACY: Create table with both columns (DISABLED)
+            if not DISABLE_LEGACY_TABLE_CREATION:
+                # cursor.execute('''
+                # CREATE TABLE class_schedules (
+                #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                #     subject_id INTEGER,
+                #     subject TEXT,
+                #     day TEXT NOT NULL,
+                #     start_time TEXT NOT NULL,
+                #     end_time TEXT NOT NULL,
+                #     room TEXT,
+                #     type TEXT DEFAULT 'lec',
+                #     FOREIGN KEY (subject_id) REFERENCES subjects(subject_id)
+                # )
+                # ''')
+                conn.commit()
+                print("LEGACY: Created class_schedules table with all required columns")
+            else:
+                print("LEGACY: Table creation disabled - using centralized initialization")
             
     except Exception as e:
         conn.rollback()

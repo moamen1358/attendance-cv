@@ -87,11 +87,14 @@ def show_app():
     from database_sync import sync_user_tables
     sync_user_tables()
     
-    # Ensure database is initialized at application start
+    # Ensure database is initialized at application start using centralized initialization
     if 'database_initialized' not in st.session_state:
-        from login import initialize_database
-        logger.info("Initializing database from app.py")
-        st.session_state.database_initialized = initialize_database()
+        from db_init import initialize_database, check_database_integrity
+        logger.info("Initializing database using centralized db_init.py")
+        success = initialize_database()
+        if success:
+            check_database_integrity()
+        st.session_state.database_initialized = success
     
     # Debug user role to help diagnose issues
     logger.info(f"User role detected: {st.session_state.get('user_role', 'None')}")
@@ -122,13 +125,13 @@ def show_app():
     except Exception as e:
         logger.error(f"Error loading student profiles compatibility module: {e}")
     
-    # Extra verification - directly check if table exists now
+    # Extra verification - directly check if enhanced table exists now
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     try:
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
         table_exists = cursor.fetchone() is not None
-        logger.info(f"FINAL CHECK: student_profiles table {'exists' if table_exists else 'STILL MISSING'}")
+        logger.info(f"FINAL CHECK: student_profiles_enhanced table {'exists' if table_exists else 'STILL MISSING'}")
         
         # DISABLED: Old table creation
         # if not table_exists:
@@ -284,11 +287,11 @@ def show_app():
             from database_utils import ensure_student_profiles_compatibility
             ensure_student_profiles_compatibility()
             
-            # Now check for the table or view
+            # Now check for the enhanced table or view
             cursor.execute("""
                 SELECT name FROM sqlite_master 
                 WHERE (type='table' OR type='view') 
-                AND (name='student_profiles' OR name='student_profiles_view' OR name='students')
+                AND (name='student_profiles_enhanced' OR name='student_profiles_view' OR name='students')
             """)
             result = cursor.fetchone()
             
