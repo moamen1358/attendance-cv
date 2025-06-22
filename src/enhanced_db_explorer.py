@@ -529,49 +529,6 @@ def show_db_explorer():
                 
                 # VIEW DATA TAB
                 with view_tab:
-                    # Enhanced search controls
-                    st.subheader("🔍 Advanced Search & Filters")
-                    
-                    # Create expandable search section
-                    with st.expander("🔧 Advanced Search Options", expanded=False):
-                        col1, col2 = st.columns(2)
-                        
-                        with col1:
-                            # Column-specific search
-                            search_column = st.selectbox("Search in specific column:", 
-                                                       ["All Columns"] + columns)
-                            search_operator = st.selectbox("Search operator:", 
-                                                         ["Contains", "Equals", "Starts with", "Ends with", "Greater than", "Less than"])
-                        
-                        with col2:
-                            # Date range filter for date columns
-                            date_columns = [col for col in columns if any(keyword in col.lower() for keyword in ['date', 'time', 'created', 'updated'])]
-                            if date_columns:
-                                date_filter_col = st.selectbox("Filter by date column:", 
-                                                             ["No date filter"] + date_columns)
-                                if date_filter_col != "No date filter":
-                                    col_date1, col_date2 = st.columns(2)
-                                    with col_date1:
-                                        start_date = st.date_input("From date:")
-                                    with col_date2:
-                                        end_date = st.date_input("To date:")
-                    
-                    # Main search control
-                    search_col1, search_col2 = st.columns([3, 1])
-                    
-                    with search_col1:
-                        search_term = st.text_input("🔍 Search:", value=st.session_state.search_term,
-                                                  placeholder="Enter search term...")
-                        if search_term != st.session_state.search_term:
-                            st.session_state.search_term = search_term
-                            st.rerun()
-                    
-                    with search_col2:
-                        # Quick filter buttons
-                        if st.button("🗑️ Clear", use_container_width=True):
-                            st.session_state.search_term = ""
-                            st.rerun()
-                    
                     # Get row count
                     try:
                         row_count_result = execute_query(f"SELECT COUNT(*) FROM {table};", fetch=True)
@@ -580,38 +537,21 @@ def show_db_explorer():
                         st.error(f"Error getting row count: {e}")
                         row_count = 0
                     
-                    # Build query without pagination limits
+                    # Simple query to get all data
                     try:
-                        if st.session_state.search_term:
-                            # Build search condition for each column
-                            search_conditions = []
-                            for col in columns:
-                                search_conditions.append(f"{col} LIKE ?")
-                            
-                            # Combine conditions with OR (removed LIMIT and OFFSET)
-                            search_query = f"SELECT * FROM {table} WHERE " + " OR ".join(search_conditions)
-                            
-                            # Prepare search parameters
-                            search_params = [f"%{st.session_state.search_term}%"] * len(columns)
-                            
-                            # Execute search query
-                            df = pd.read_sql_query(search_query, sqlite3.connect('attendance_system.db'), params=search_params)
-                        else:
-                            # Simple query without pagination
-                            df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
+                        df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
                     except Exception as e:
                         st.error(f"Error querying data: {e}")
                         df = pd.DataFrame()  # Empty dataframe on error
                     
-                    # Show record count with filter info
-                    showing = len(df)
+                    # Show record count
                     st.markdown(f"""
                         <div style="margin:10px 0;">
-                            <div>Showing <b>{showing}</b> of <b>{row_count:,}</b> records {f"(filtered)" if st.session_state.search_term else ""}</div>
+                            <div>Showing <b>{len(df)}</b> of <b>{row_count:,}</b> records</div>
                         </div>
                     """, unsafe_allow_html=True)
                     
-                    # Display table data with edit functionality
+                    # Display table data
                     if not df.empty:
                         # Format time columns to 12-hour format before displaying
                         df_display = df.copy()
@@ -624,79 +564,11 @@ def show_db_explorer():
                         if 'time' in df.columns:
                             df_display['time'] = df['time'].apply(display_formatted_time)
                         
-                        edited_df = st.data_editor(
+                        st.dataframe(
                             df_display,
                             hide_index=True,
-                            use_container_width=True,
-                            num_rows="fixed",
-                            key="data_editor"
+                            use_container_width=True
                         )
-                        
-                        # Detect changes and update database
-                        if st.button("💾 Check for Changes", use_container_width=True):
-                            # Compare original and edited data
-                            changes_detected = False
-                            
-                            try:
-                                # Convert time columns back to original format for comparison
-                                df_compare = df.copy()
-                                edited_compare = edited_df.copy()
-                                
-                                # Revert time formatting for comparison
-                                time_columns = ['start_time', 'end_time', 'time']
-                                for time_col in time_columns:
-                                    if time_col in df_compare.columns:
-                                        # edited_df has formatted times, convert back for comparison
-                                        # This is tricky - we need to detect if values actually changed
-                                        pass  # Skip this complex comparison for now
-                                
-                                # Simple comparison - check if dataframes are different
-                                if not df_display.equals(edited_df):
-                                    changes_detected = True
-                                
-                                if changes_detected:
-                                    st.success("Changes detected! Click 'Save Changes' to apply them.")
-                                    
-                                    if st.button("💾 Save Changes", type="primary", use_container_width=True):
-                                        try:
-                                            # Find the changed rows
-                                            for index, row in edited_df.iterrows():
-                                                original_row = df_display.iloc[index]
-                                                if not original_row.equals(row):
-                                                    # Get primary key value for this row
-                                                    pk_values = {}
-                                                    for pk in primary_keys:
-                                                        pk_values[pk] = df.iloc[index][pk]
-                                                    
-                                                    # Build UPDATE statement
-                                                    update_cols = []
-                                                    update_vals = []
-                                                    
-                                                    for col in columns:
-                                                        if str(original_row[col]) != str(row[col]):
-                                                            update_cols.append(f"{col} = ?")
-                                                            update_vals.append(row[col])
-                                                    
-                                                    if update_cols:  # Only update if there are changes
-                                                        # Add WHERE clause parameters
-                                                        where_conditions = []
-                                                        for pk, val in pk_values.items():
-                                                            where_conditions.append(f"{pk} = ?")
-                                                            update_vals.append(val)
-                                                        
-                                                        update_stmt = f"UPDATE {table} SET " + ", ".join(update_cols) + " WHERE " + " AND ".join(where_conditions)
-                                                        
-                                                        # Execute update
-                                                        execute_query(update_stmt, tuple(update_vals), commit=True)
-                                                        
-                                            st.success("Data updated successfully!")
-                                            st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Error updating data: {e}")
-                                else:
-                                    st.info("No changes detected.")
-                            except Exception as e:
-                                st.error(f"Error checking for changes: {e}")
                     else:
                         st.info("No data to display.")
                     
