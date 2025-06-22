@@ -54,7 +54,7 @@ def get_student_subjects(student_id):
         # Get enrolled subjects through enhanced tables
         cursor.execute("""
             SELECT DISTINCT se.subject_id, se.subject_name, se.course_code, se.credit_hours, 
-                   se.description, se.semester, cs.room, cs.day_of_week, cs.start_time, cs.end_time,
+                   se.description, se.semester, cs.room_number as room, cs.day_of_week, cs.start_time, cs.end_time,
                    en.status, en.grade, 
                    COALESCE(att.attendance_percentage, 0) as attendance_percentage
             FROM student_enrollments en

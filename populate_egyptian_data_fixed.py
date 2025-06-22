@@ -227,7 +227,7 @@ def populate_egyptian_data():
         
         print(f"   Added {len(assignments)} teacher-subject assignments")
         
-        # 6. CLASS SCHEDULES
+        # 6. CLASS SCHEDULES (Realistic daily distribution)
         print("\n📅 Creating Class Schedules...")
         
         days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday']  # Egyptian work week
@@ -242,29 +242,49 @@ def populate_egyptian_data():
         rooms = [f'A{i}' for i in range(101, 106)] + [f'B{i}' for i in range(201, 206)] + [f'C{i}' for i in range(301, 306)]
         
         schedules = []
-        used_combinations = set()
         
-        for assignment in assignments:
-            teacher_id, subject_id = assignment[0], assignment[1]
+        # Select first 5 subjects for focused schedule
+        main_subjects = assignments[:5]
+        
+        # Create a realistic weekly schedule with different times each day
+        schedule_plan = [
+            # (subject_index, day, time_slot_index, class_type)
+            (0, 'Sunday', 0, 'Lecture'),      # Subject 1: Sunday 08:00-09:30
+            (1, 'Sunday', 1, 'Lecture'),      # Subject 2: Sunday 09:45-11:15
+            (2, 'Sunday', 2, 'Lecture'),      # Subject 3: Sunday 11:30-13:00
             
-            # Create 1-2 weekly sessions for each teacher-subject pair
-            for _ in range(random.randint(1, 2)):
-                attempts = 0
-                while attempts < 10:  # Avoid infinite loop
-                    day = random.choice(days)
-                    start_time, end_time = random.choice(time_slots)
-                    room = random.choice(rooms)
-                    
-                    # Check for conflicts
-                    combo = (teacher_id, day, start_time)
-                    if combo not in used_combinations:
-                        used_combinations.add(combo)
-                        schedules.append((
-                            subject_id, teacher_id, day, start_time, end_time, room,
-                            'Lecture', 'A', '2024-2025', '1', 'active'
-                        ))
-                        break
-                    attempts += 1
+            (0, 'Monday', 1, 'Tutorial'),     # Subject 1: Monday 09:45-11:15
+            (1, 'Monday', 2, 'Tutorial'),     # Subject 2: Monday 11:30-13:00
+            (3, 'Monday', 3, 'Lecture'),      # Subject 4: Monday 13:30-15:00
+            
+            (2, 'Tuesday', 0, 'Tutorial'),    # Subject 3: Tuesday 08:00-09:30
+            (3, 'Tuesday', 1, 'Tutorial'),    # Subject 4: Tuesday 09:45-11:15
+            (4, 'Tuesday', 2, 'Lecture'),     # Subject 5: Tuesday 11:30-13:00
+            
+            (0, 'Wednesday', 2, 'Lab'),       # Subject 1: Wednesday 11:30-13:00
+            (1, 'Wednesday', 3, 'Lab'),       # Subject 2: Wednesday 13:30-15:00
+            (2, 'Wednesday', 4, 'Lab'),       # Subject 3: Wednesday 15:15-16:45
+            
+            (3, 'Thursday', 0, 'Lab'),        # Subject 4: Thursday 08:00-09:30
+            (4, 'Thursday', 1, 'Tutorial'),   # Subject 5: Thursday 09:45-11:15
+            (4, 'Thursday', 3, 'Lab'),        # Subject 5: Thursday 13:30-15:00
+        ]
+        
+        for plan in schedule_plan:
+            subject_idx, day, time_idx, class_type = plan
+            
+            # Make sure we don't go out of bounds
+            if subject_idx < len(main_subjects):
+                assignment = main_subjects[subject_idx]
+                teacher_id, subject_id = assignment[0], assignment[1]
+                
+                start_time, end_time = time_slots[time_idx]
+                room = rooms[(subject_idx * 3 + time_idx) % len(rooms)]  # Distribute rooms
+                
+                schedules.append((
+                    subject_id, teacher_id, day, start_time, end_time, room,
+                    class_type, 'A', '2024-2025', '1', 'active'
+                ))
         
         for schedule in schedules:
             cursor.execute("""
@@ -274,7 +294,7 @@ def populate_egyptian_data():
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             """, schedule)
         
-        print(f"   Added {len(schedules)} class schedules")
+        print(f"   Added {len(schedules)} class schedules with realistic time distribution")
         
         # 7. USER ACCOUNTS (Password = Username)
         print("\n🔐 Creating User Accounts (Password = Username)...")
@@ -348,30 +368,20 @@ def populate_egyptian_data():
         
         print(f"   Added {len(students)} student profiles")
         
-        # 9. STUDENT ENROLLMENTS
+        # 9. STUDENT ENROLLMENTS (All students in main 5 subjects)
         print("\n📝 Creating Student Enrollments...")
         
+        # Get the main 5 subjects from our focused schedule
+        main_subject_ids = list(set([schedule[0] for schedule in schedules[:5]]))
+        
         enrollments = []
-        for student_id, name, _ in students[:15]:  # Enroll first 15 students
-            # Get student's department
-            cursor.execute("SELECT department, year FROM students_enhanced WHERE student_id = ?", (student_id,))
-            student_dept, student_year = cursor.fetchone()
-            
-            # Find subjects for their department and year
-            cursor.execute("SELECT subject_id FROM subjects_enhanced WHERE department = ? AND year <= ?", 
-                         (student_dept, student_year))
-            available_subjects = cursor.fetchall()
-            
-            # Enroll in 2-4 subjects
-            if available_subjects:
-                num_enrollments = min(random.randint(2, 4), len(available_subjects))
-                enrolled_subjects = random.sample(available_subjects, num_enrollments)
-                
-                for (subject_id,) in enrolled_subjects:
-                    enrollments.append((
-                        student_id, subject_id, '2024-2025', 1, 
-                        'enrolled', date.today()
-                    ))
+        # Enroll ALL students in the main 5 subjects for comprehensive attendance tracking
+        for student_id, name, _ in students:
+            for subject_id in main_subject_ids:
+                enrollments.append((
+                    student_id, subject_id, '2024-2025', 1, 
+                    'enrolled', date.today()
+                ))
         
         for enrollment in enrollments:
             cursor.execute("""
@@ -381,45 +391,201 @@ def populate_egyptian_data():
             """, enrollment)
         
         print(f"   Added {len(enrollments)} student enrollments")
+        print(f"   All {len(students)} students enrolled in {len(main_subject_ids)} main subjects")
         
-        # 10. ATTENDANCE RECORDS
-        print("\n✅ Creating Sample Attendance Records...")
+        # 10. ENHANCED ATTENDANCE RECORDS (Realistic patterns for visualization)
+        print("\n✅ Creating Enhanced Sample Attendance Records...")
         
-        # Generate attendance for the past 3 months
+        # Generate attendance for the past 3 months with realistic patterns
         start_date = date.today() - timedelta(days=90)
+        end_date = date.today()
+        
+        # Get all active class schedules with detailed info
+        cursor.execute("""
+            SELECT cs.subject_id, cs.teacher_id, cs.day_of_week, cs.start_time, cs.end_time,
+                   s.subject_name, cs.class_type
+            FROM class_schedules_enhanced cs
+            JOIN subjects_enhanced s ON cs.subject_id = s.subject_id
+            WHERE cs.status = 'active'
+            ORDER BY cs.day_of_week, cs.start_time
+        """)
+        active_schedules = cursor.fetchall()
+        
+        # Get all enrolled students
+        cursor.execute("""
+            SELECT DISTINCT se.student_id, se.subject_id, st.name
+            FROM student_enrollments_enhanced se
+            JOIN students_enhanced st ON se.student_id = st.student_id
+            WHERE se.status = 'enrolled'
+        """)
+        enrolled_students = cursor.fetchall()
+        
+        print(f"   Generating enhanced attendance for {len(enrolled_students)} enrollments across {len(active_schedules)} schedules")
         
         attendance_records = []
-        for enrollment in enrollments:
-            student_id, subject_id = enrollment[0], enrollment[1]
-            
-            # Get teacher for this subject
-            cursor.execute("SELECT teacher_id FROM teacher_subjects_enhanced WHERE subject_id = ? LIMIT 1", 
-                         (subject_id,))
-            teacher_result = cursor.fetchone()
-            if not teacher_result:
-                continue
-            teacher_id = teacher_result[0]
-            
-            # Generate 15-20 attendance records per enrollment
-            for _ in range(random.randint(15, 20)):
-                attendance_date = start_date + timedelta(days=random.randint(0, 89))
-                status = random.choices(['present', 'absent', 'late', 'excused'], 
-                                      weights=[70, 15, 10, 5])[0]
+        days_mapping = {'Sunday': 6, 'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3, 'Friday': 4, 'Saturday': 5}
+        
+        # Create student reliability profiles for realistic patterns
+        student_profiles = {}
+        for student_id, _, student_name in enrolled_students:
+            if student_id not in student_profiles:
+                # Create different student types for variety
+                profile_type = random.choice(['excellent', 'good', 'average', 'poor'])
                 
-                attendance_records.append((
-                    student_id, subject_id, teacher_id, attendance_date,
-                    f"{random.randint(8, 16):02d}:{random.randint(0, 59):02d}:00",
-                    status, 'system', None, '2024-2025', '1', 'A'
-                ))
+                if profile_type == 'excellent':
+                    base_attendance = 0.92  # 92% attendance
+                    variation = 0.05
+                elif profile_type == 'good':
+                    base_attendance = 0.82  # 82% attendance
+                    variation = 0.08
+                elif profile_type == 'average':
+                    base_attendance = 0.72  # 72% attendance
+                    variation = 0.12
+                else:  # poor
+                    base_attendance = 0.55  # 55% attendance
+                    variation = 0.15
+                
+                # Add day-of-week preferences (some students struggle with Monday/Sunday)
+                day_preferences = {
+                    'Sunday': random.uniform(0.8, 1.2),    # Sunday factor
+                    'Monday': random.uniform(0.7, 1.1),    # Monday blues
+                    'Tuesday': random.uniform(0.9, 1.1),   # Mid-week stability
+                    'Wednesday': random.uniform(0.9, 1.1), # Mid-week stability
+                    'Thursday': random.uniform(0.8, 1.0),  # End of week fatigue
+                }
+                
+                # Add time-of-day preferences (early morning vs afternoon)
+                time_preferences = {
+                    '08:00': random.uniform(0.7, 1.0),  # Early morning struggles
+                    '09:45': random.uniform(0.9, 1.1),  # Good time
+                    '11:30': random.uniform(1.0, 1.1),  # Peak time
+                    '13:30': random.uniform(0.8, 1.0),  # Post-lunch dip
+                    '15:15': random.uniform(0.7, 0.9),  # Late afternoon fatigue
+                }
+                
+                student_profiles[student_id] = {
+                    'name': student_name,
+                    'type': profile_type,
+                    'base_attendance': base_attendance,
+                    'variation': variation,
+                    'day_preferences': day_preferences,
+                    'time_preferences': time_preferences
+                }
         
-        cursor.executemany("""
-            INSERT INTO attendance_records_enhanced 
-            (student_id, subject_id, teacher_id, attendance_date, attendance_time, 
-             status, marked_by, notes, academic_year, semester, section, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-        """, attendance_records)
+        # For each day in the past 3 months
+        current_date = start_date
+        while current_date <= end_date:
+            weekday = current_date.weekday()
+            
+            # Add seasonal effects (better attendance at start of semester)
+            days_from_start = (current_date - start_date).days
+            seasonal_factor = 1.0 - (days_from_start / 180) * 0.1  # Slight decline over time
+            
+            # Add weather/holiday effects (random occasional drops)
+            random_factor = 1.0
+            if random.random() < 0.05:  # 5% chance of bad weather/event
+                random_factor = random.uniform(0.7, 0.9)
+            
+            # Find schedules for this weekday
+            for schedule in active_schedules:
+                subject_id, teacher_id, day_of_week, start_time, end_time, subject_name, class_type = schedule
+                schedule_weekday = days_mapping.get(day_of_week, 0)
+                
+                # If this schedule is for today's weekday
+                if weekday == schedule_weekday:
+                    # Find all students enrolled in this subject
+                    subject_students = [
+                        (student_id, student_name) for student_id, enroll_subject_id, student_name 
+                        in enrolled_students if enroll_subject_id == subject_id
+                    ]
+                    
+                    # Generate attendance for each student
+                    for student_id, student_name in subject_students:
+                        profile = student_profiles[student_id]
+                        
+                        # Calculate attendance probability based on multiple factors
+                        base_prob = profile['base_attendance']
+                        day_factor = profile['day_preferences'].get(day_of_week, 1.0)
+                        time_factor = profile['time_preferences'].get(start_time, 1.0)
+                        
+                        # Combine all factors
+                        attendance_prob = base_prob * day_factor * time_factor * seasonal_factor * random_factor
+                        attendance_prob = max(0.0, min(1.0, attendance_prob))  # Clamp to 0-1
+                        
+                        # Determine status based on probability
+                        rand = random.random()
+                        if rand < attendance_prob * 0.85:  # 85% of attendance_prob = present
+                            status = 'present'
+                            # Present students arrive on time or slightly early/late
+                            time_offset = random.randint(-5, 10)
+                        elif rand < attendance_prob * 0.95:  # Next 10% = late
+                            status = 'late'
+                            # Late students arrive 5-25 minutes after start
+                            time_offset = random.randint(5, 25)
+                        elif rand < attendance_prob * 0.98:  # Next 3% = excused
+                            status = 'excused'
+                            time_offset = 0  # No specific time for excused
+                        else:  # Remaining = absent
+                            status = 'absent'
+                            time_offset = 0  # No time recorded for absent
+                        
+                        # Generate realistic attendance time
+                        if status in ['present', 'late']:
+                            base_hour = int(start_time.split(':')[0])
+                            base_minute = int(start_time.split(':')[1])
+                            
+                            # Calculate actual attendance time
+                            total_minutes = base_hour * 60 + base_minute + time_offset
+                            actual_hour = (total_minutes // 60) % 24
+                            actual_minute = total_minutes % 60
+                            attendance_time = f"{actual_hour:02d}:{actual_minute:02d}:00"
+                        else:
+                            attendance_time = None
+                        
+                        # Add notes for non-present statuses
+                        notes = None
+                        if status == 'late':
+                            notes = f"Arrived {time_offset} minutes late"
+                        elif status == 'excused':
+                            excuses = ['Medical appointment', 'Family emergency', 'Official university business', 'Religious observance']
+                            notes = random.choice(excuses)
+                        elif status == 'absent':
+                            notes = 'Unexcused absence'
+                        
+                        attendance_records.append((
+                            student_id, subject_id, teacher_id, current_date,
+                            attendance_time, status, 'system', notes,
+                            '2024-2025', '1', 'A'
+                        ))
+            
+            current_date += timedelta(days=1)
         
-        print(f"   Added {len(attendance_records)} attendance records")
+        # Insert all attendance records in batches for better performance
+        print(f"   Inserting {len(attendance_records)} attendance records...")
+        batch_size = 100
+        for i in range(0, len(attendance_records), batch_size):
+            batch = attendance_records[i:i + batch_size]
+            cursor.executemany("""
+                INSERT INTO attendance_records_enhanced 
+                (student_id, subject_id, teacher_id, attendance_date, attendance_time, 
+                 status, marked_by, notes, academic_year, semester, section, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            """, batch)
+        
+        # Calculate and display statistics
+        total_records = len(attendance_records)
+        present_count = sum(1 for r in attendance_records if r[5] == 'present')
+        late_count = sum(1 for r in attendance_records if r[5] == 'late')
+        absent_count = sum(1 for r in attendance_records if r[5] == 'absent')
+        excused_count = sum(1 for r in attendance_records if r[5] == 'excused')
+        
+        print(f"   ✅ Added {total_records} enhanced attendance records")
+        print(f"   📊 Distribution: Present={present_count} ({present_count/total_records*100:.1f}%), " +
+              f"Late={late_count} ({late_count/total_records*100:.1f}%), " +
+              f"Absent={absent_count} ({absent_count/total_records*100:.1f}%), " +
+              f"Excused={excused_count} ({excused_count/total_records*100:.1f}%)")
+        print(f"   🎯 Realistic patterns: Student profiles, day preferences, time factors, seasonal effects")
+        print(f"   📈 Perfect for visualization: Weekly/daily trends, time analysis, student comparison")
         
         # 11. ATTENDANCE SESSIONS
         print("\n🏫 Creating Attendance Sessions...")

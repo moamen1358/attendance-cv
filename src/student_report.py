@@ -104,14 +104,15 @@ def get_schedule_for_day(day_name):
     query = """
     SELECT 
         s.subject_name as subject, 
-        'lecture' as type, 
+        cs.class_type as type, 
         cs.start_time, 
         cs.end_time,
-        cs.room,
-        cs.professor_name
+        cs.room_number as room,
+        t.name as professor_name
     FROM class_schedules_enhanced cs
     JOIN subjects_enhanced s ON cs.subject_id = s.subject_id
-    WHERE cs.day_of_week = ? AND s.subject_name != ''
+    JOIN teachers_enhanced t ON cs.teacher_id = t.teacher_id
+    WHERE cs.day_of_week = ? AND s.subject_name != '' AND cs.status = 'active'
     ORDER BY cs.start_time
     """
     df = execute_query_df(query, (day_name,))
