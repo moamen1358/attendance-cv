@@ -39,10 +39,10 @@ def sync_user_tables():
         
         # 3. Ensure students in user_accounts have student_profiles entries
         cursor.execute("""
-        INSERT OR IGNORE INTO student_profiles (username, name, password)
+        INSERT OR IGNORE INTO student_profiles_enhanced (username, name, password)
         SELECT ua.username, ua.username, ua.password
-        FROM user_accounts ua
-        WHERE ua.role = 'student' AND ua.username NOT IN (SELECT username FROM student_profiles)
+        FROM user_accounts_enhanced ua
+        WHERE ua.role = 'student' AND ua.username NOT IN (SELECT username FROM student_profiles_enhanced)
         """)
         changes += cursor.rowcount
         
@@ -50,7 +50,7 @@ def sync_user_tables():
         cursor.execute("""
         INSERT OR IGNORE INTO professor_profiles (username, name, password)
         SELECT ua.username, ua.username, ua.password
-        FROM user_accounts ua
+        FROM user_accounts_enhanced ua
         WHERE ua.role = 'professor' AND ua.username NOT IN (SELECT username FROM professor_profiles)
         """)
         changes += cursor.rowcount

@@ -54,7 +54,7 @@ def verify_credentials(username, password):
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
         if cursor.fetchone():
             # Check password as plain text (no hashing)
-            cursor.execute("SELECT password, role FROM user_accounts WHERE username = ?", (username,))
+            cursor.execute("SELECT password, role FROM user_accounts_enhanced WHERE username = ?", (username,))
             result = cursor.fetchone()
             
             if result:
@@ -74,7 +74,7 @@ def verify_credentials(username, password):
         
         # Check in student_profiles table if it exists
         if 'student_profiles' in tables:
-            cursor.execute("SELECT password FROM student_profiles WHERE name = ? OR username = ?", (username, username))
+            cursor.execute("SELECT password FROM student_profiles_enhanced WHERE name = ? OR username = ?", (username, username))
             result = cursor.fetchone()
             if result and result[0] == password:
                 return True, "student"
@@ -87,7 +87,7 @@ def verify_credentials(username, password):
                 return True, "professor"
             
         # Default development credentials (only if no user accounts exist)
-        cursor.execute("SELECT COUNT(*) FROM user_accounts")
+        cursor.execute("SELECT COUNT(*) FROM user_accounts_enhanced")
         count = cursor.fetchone()[0]
         
         if count == 0:
@@ -167,7 +167,7 @@ def get_student_info_enhanced(username):
             }
         
         # Fall back to old tables
-        cursor.execute("SELECT name FROM student_profiles WHERE username = ?", (username,))
+        cursor.execute("SELECT name FROM student_profiles_enhanced WHERE username = ?", (username,))
         result = cursor.fetchone()
         if result:
             return {'name': result[0]}
@@ -193,7 +193,7 @@ def get_available_users():
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts'")
         if cursor.fetchone():
             # Get all users with their roles from the unified table
-            cursor.execute("SELECT username, role FROM user_accounts")
+            cursor.execute("SELECT username, role FROM user_accounts_enhanced")
             return cursor.fetchall()
         
         # Fallback to legacy tables if needed
@@ -202,7 +202,7 @@ def get_available_users():
         # Check student_profiles table
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
         if cursor.fetchone():
-            cursor.execute("SELECT name, 'student' FROM student_profiles")
+            cursor.execute("SELECT name, 'student' FROM student_profiles_enhanced")
             users.extend(cursor.fetchall())
         
         # Check professor_profiles table
@@ -233,7 +233,7 @@ def get_user_section(username):
             return "Unassigned"
             
         # Table exists, so query it
-        cursor.execute("SELECT section FROM student_profiles WHERE name = ? OR username = ?", (username, username))
+        cursor.execute("SELECT section FROM student_profiles_enhanced WHERE name = ? OR username = ?", (username, username))
         result = cursor.fetchone()
         
         return result[0] if result and result[0] else "Unassigned"
@@ -644,7 +644,7 @@ def fix_attendance_table_schema():
                         UPDATE attendance_records 
                         SET name = (
                             SELECT sp.name 
-                            FROM student_profiles sp 
+                            FROM student_profiles_enhanced sp 
                             WHERE sp.username = attendance_records.student_username
                         )
                         WHERE name IS NULL
@@ -714,52 +714,55 @@ def initialize_database():
             print(f"ERROR: Database connection failed: {e}")
             raise e
             
+        # DISABLED: Legacy table creation - using enhanced tables only
         # Create user_accounts table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS user_accounts (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE,
-                password TEXT,
-                role TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        # cursor.execute('''
+        #     CREATE TABLE IF NOT EXISTS user_accounts (
+        #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #         username TEXT UNIQUE,
+        #         password TEXT,
+        #         role TEXT,
+        #         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        #     )
+        # ''')
         
+        # DISABLED: Legacy table creation - using enhanced tables only
         # Create student_profiles table - Remove DROP statement to avoid losing data
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS student_profiles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                name TEXT NOT NULL,
-                student_id TEXT UNIQUE,
-                password TEXT NOT NULL,
-                section TEXT,
-                email TEXT,
-                phone TEXT,
-                last_login TIMESTAMP,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        # cursor.execute('''
+        #     CREATE TABLE IF NOT EXISTS student_profiles (
+        #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #         username TEXT UNIQUE NOT NULL,
+        #         name TEXT NOT NULL,
+        #         student_id TEXT UNIQUE,
+        #         password TEXT NOT NULL,
+        #         section TEXT,
+        #         email TEXT,
+        #         phone TEXT,
+        #         last_login TIMESTAMP,
+        #         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        #     )
+        # ''')
         
         conn.commit()
-        print("Ensured student_profiles table exists.")
+        print("DISABLED: Legacy table creation - using enhanced tables only")
         
+        # DISABLED: Legacy table verification
         # Verify the student_profiles table was created
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
-        result = cursor.fetchone()
-        if result:
-            print("student_profiles table exists after creation")
-            
-            # Now check if we need to update student accounts for consistency
-            cursor.execute("SELECT username, name FROM student_profiles")
-            students = cursor.fetchall()
-            
-            if students:
-                print(f"Found {len(students)} students in student_profiles")
-            else:
-                print("No students found in student_profiles table, will add defaults if needed")
-        else:
-            print("ERROR: student_profiles table creation failed")
+        # cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        # result = cursor.fetchone()
+        # if result:
+        #     print("student_profiles table exists after creation")
+        #     
+        #     # Now check if we need to update student accounts for consistency
+        #     cursor.execute("SELECT username, name FROM student_profiles")
+        #     students = cursor.fetchall()
+        #     
+        #     if students:
+        #         print(f"Found {len(students)} students in student_profiles")
+        #     else:
+        #         print("No students found in student_profiles table, will add defaults if needed")
+        # else:
+        #     print("ERROR: student_profiles table creation failed")
             
         # Get all tables to debug
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
@@ -767,66 +770,70 @@ def initialize_database():
         table_names = [t[0] for t in all_tables]
         print(f"All tables in database: {table_names}")
         
+        # DISABLED: Legacy table creation - using enhanced tables only
         # Create professor_profiles table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS professor_profiles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE,
-                name TEXT,
-                password TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        # cursor.execute('''
+        #     CREATE TABLE IF NOT EXISTS professor_profiles (
+        #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #         username TEXT UNIQUE,
+        #         name TEXT,
+        #         password TEXT,
+        #         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        #     )
+        # ''')
         
+        # DISABLED: Legacy table creation - using enhanced tables only
         # Create login_logs table
-        cursor.execute('''
-            CREATE TABLE IF NOT EXISTS login_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT,
-                login_time TIMESTAMP,
-                ip_address TEXT,
-                status TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
+        # cursor.execute('''
+        #     CREATE TABLE IF NOT EXISTS login_logs (
+        #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #         username TEXT,
+        #         login_time TIMESTAMP,
+        #         ip_address TEXT,
+        #         status TEXT,
+        #         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        # )
+        # ''')
         
+        # DISABLED: Legacy table operations
         # Check if we need to add default users
-        cursor.execute("SELECT COUNT(*) FROM user_accounts")
-        count = cursor.fetchone()[0]
+        # cursor.execute("SELECT COUNT(*) FROM user_accounts")
+        # count = cursor.fetchone()[0]
         
-        if count == 0:
-            # Add default admin, student, and professor accounts
-            cursor.execute("INSERT INTO user_accounts (username, password, role) VALUES (?, ?, ?)", 
-                          ('admin', 'admin123', 'admin'))
-            cursor.execute("INSERT INTO user_accounts (username, password, role) VALUES (?, ?, ?)", 
-                          ('student', 'student123', 'student'))
-            cursor.execute("INSERT INTO user_accounts (username, password, role) VALUES (?, ?, ?)", 
-                          ('professor', 'professor123', 'professor'))
-            
-            # Add to student_profiles
-            cursor.execute("INSERT INTO student_profiles (username, name, student_id, password, section) VALUES (?, ?, ?, ?, ?)",
-                          ('student', 'Default Student', 'STU001', 'student123', 'A'))
-            
-            # Add to professor_profiles
-            cursor.execute("INSERT INTO professor_profiles (username, name, password) VALUES (?, ?, ?)",
-                          ('professor', 'Default Professor', 'professor123'))
+        # if count == 0:
+        #     # Add default admin, student, and professor accounts
+        #     cursor.execute("INSERT INTO user_accounts (username, password, role) VALUES (?, ?, ?)", 
+        #                   ('admin', 'admin123', 'admin'))
+        #     cursor.execute("INSERT INTO user_accounts (username, password, role) VALUES (?, ?, ?)", 
+        #                   ('student', 'student123', 'student'))
+        #     cursor.execute("INSERT INTO user_accounts (username, password, role) VALUES (?, ?, ?)", 
+        #                   ('professor', 'professor123', 'professor'))
+        #     
+        #     # Add to student_profiles
+        #     cursor.execute("INSERT INTO student_profiles (username, name, student_id, password, section) VALUES (?, ?, ?, ?, ?)",
+        #                   ('student', 'Default Student', 'STU001', 'student123', 'A'))
+        #     
+        #     # Add to professor_profiles
+        #     cursor.execute("INSERT INTO professor_profiles (username, name, password) VALUES (?, ?, ?)",
+        #                   ('professor', 'Default Professor', 'professor123'))
             
         conn.commit()
-        print("Database initialized successfully")
+        print("Database operations completed - using enhanced tables only")
         
         # Double-check tables after initialization
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = [row[0] for row in cursor.fetchall()]
         print(f"Tables after initialization: {tables}")
         
+        # DISABLED: Legacy schema fixes
         # Fix any schema issues
-        fix_student_profile_schema()
+        # fix_student_profile_schema()
         
         # Fix attendance tables schema issues
         fix_attendance_table_schema()
         
         # Ensure we have at least one student account
-        cursor.execute("SELECT COUNT(*) FROM student_profiles")
+        cursor.execute("SELECT COUNT(*) FROM student_profiles_enhanced")
         student_count = cursor.fetchone()[0]
         
         if student_count == 0:

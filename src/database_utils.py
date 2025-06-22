@@ -263,7 +263,7 @@ def get_professors_list():
     conn = sqlite3.connect('attendance_system.db')
     query = """
     SELECT username, COALESCE(name, username) as name
-    FROM user_accounts ua
+    FROM user_accounts_enhanced ua
     LEFT JOIN professor_profiles pp ON ua.username = pp.username
     WHERE ua.role = 'professor'
     ORDER BY name
@@ -273,7 +273,7 @@ def get_professors_list():
         df = pd.read_sql(query, conn)
     except:
         # Fallback query if join fails
-        query = "SELECT username, username as name FROM user_accounts WHERE role = 'professor'"
+        query = "SELECT username, username as name FROM user_accounts_enhanced WHERE role = 'professor'"
         df = pd.read_sql(query, conn)
     finally:
         conn.close()
@@ -288,8 +288,8 @@ def get_students_list():
     conn = sqlite3.connect('attendance_system.db')
     query = """
     SELECT username, COALESCE(name, username) as name, section
-    FROM user_accounts ua
-    LEFT JOIN student_profiles sp ON ua.username = sp.username
+    FROM user_accounts_enhanced ua
+    LEFT JOIN student_profiles_enhanced sp ON ua.username = sp.username
     WHERE ua.role = 'student'
     ORDER BY name
     """
@@ -298,7 +298,7 @@ def get_students_list():
         df = pd.read_sql(query, conn)
     except:
         # Fallback query if join fails
-        query = "SELECT username, username as name, '' as section FROM user_accounts WHERE role = 'student'"
+        query = "SELECT username, username as name, '' as section FROM user_accounts_enhanced WHERE role = 'student'"
         df = pd.read_sql(query, conn)
     finally:
         conn.close()
@@ -532,21 +532,22 @@ def ensure_student_profiles_compatibility():
                 conn.commit()
                 print(f"Created student_profiles view pointing to {source_table}")
         else:
+            # DISABLED: Legacy table creation - using enhanced tables only
             # No student table exists at all, create it directly
-            cursor.execute("""
-            CREATE TABLE student_profiles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE,
-                name TEXT,
-                student_id TEXT,
-                section TEXT,
-                email TEXT,
-                phone TEXT,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-            """)
-            conn.commit()
-            print("Created student_profiles table from scratch")
+            # cursor.execute("""
+            # CREATE TABLE student_profiles (
+            #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+            #     username TEXT UNIQUE,
+            #     name TEXT,
+            #     student_id TEXT,
+            #     section TEXT,
+            #     email TEXT,
+            #     phone TEXT,
+            #     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            # )
+            # """)
+            # conn.commit()
+            print("DISABLED: Legacy table creation - using enhanced tables only")
             
             # Add a default user record
             try:
@@ -567,7 +568,7 @@ def ensure_student_profiles_compatibility():
         
         # Always create the view for maximum compatibility
         cursor.execute("DROP VIEW IF EXISTS student_profiles_view")
-        cursor.execute("CREATE VIEW student_profiles_view AS SELECT * FROM student_profiles")
+        cursor.execute("CREATE VIEW student_profiles_view AS SELECT * FROM student_profiles_enhanced")
         conn.commit()
         print("Created student_profiles_view")
             
@@ -577,20 +578,21 @@ def ensure_student_profiles_compatibility():
             print("SUCCESS: student_profiles table exists!")
             return True
         else:
+            # DISABLED: Legacy table creation - using enhanced tables only
             # One last attempt - create the table directly
-            cursor.execute("""
-            CREATE TABLE student_profiles (
-                id INTEGER PRIMARY KEY,
-                username TEXT,
-                name TEXT,
-                student_id TEXT,
-                section TEXT
-            )
-            """)
-            cursor.execute("INSERT INTO student_profiles (username, name) VALUES ('emergency', 'Emergency User')")
-            conn.commit()
-            print("EMERGENCY: Created minimal student_profiles table")
-            return True
+            # cursor.execute("""
+            # CREATE TABLE student_profiles (
+            #     id INTEGER PRIMARY KEY,
+            #     username TEXT,
+            #     name TEXT,
+            #     student_id TEXT,
+            #     section TEXT
+            # )
+            # """)
+            # cursor.execute("INSERT INTO student_profiles (username, name) VALUES ('emergency', 'Emergency User')")
+            # conn.commit()
+            print("DISABLED: Legacy table creation - using enhanced tables only")
+            return False
                 
     except Exception as e:
         print(f"Critical error in student profiles compatibility: {e}")

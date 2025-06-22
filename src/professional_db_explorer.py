@@ -28,7 +28,7 @@ def show_professional_dashboard():
     
     with col1:
         conn = get_db_connection()
-        students_count = conn.execute("SELECT COUNT(*) FROM student_profiles").fetchone()[0]
+        students_count = conn.execute("SELECT COUNT(*) FROM student_profiles_enhanced").fetchone()[0]
         st.metric("Total Students", students_count)
         conn.close()
     
@@ -70,7 +70,7 @@ def show_student_management():
                 sp.phone,
                 COUNT(sc.class_id) as enrolled_classes,
                 AVG(sc.attendance_percentage) as avg_attendance
-            FROM student_profiles sp
+            FROM student_profiles_enhanced sp
             LEFT JOIN student_classes sc ON sp.id = sc.student_id AND sc.status = 'enrolled'
             GROUP BY sp.id
             ORDER BY sp.name
@@ -312,7 +312,7 @@ def show_attendance_management():
                 COUNT(ar.attendance_id) as total_sessions,
                 SUM(CASE WHEN ar.status = 'present' THEN 1 ELSE 0 END) as present_count,
                 ROUND(AVG(CASE WHEN ar.status = 'present' THEN 100.0 ELSE 0.0 END), 2) as attendance_rate
-            FROM student_profiles sp
+            FROM student_profiles_enhanced sp
             LEFT JOIN attendance_records_new ar ON sp.id = ar.student_id
             GROUP BY sp.id
             HAVING total_sessions > 0
@@ -410,7 +410,7 @@ def main():
     cursor = conn.cursor()
     
     # Database stats
-    cursor.execute("SELECT COUNT(*) FROM student_profiles")
+    cursor.execute("SELECT COUNT(*) FROM student_profiles_enhanced")
     total_students = cursor.fetchone()[0]
     
     cursor.execute("SELECT COUNT(*) FROM classes WHERE status = 'active'")

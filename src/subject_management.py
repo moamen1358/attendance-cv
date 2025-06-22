@@ -169,7 +169,7 @@ def get_all_subjects():
 def get_teachers():
     """Get all teachers from the database"""
     conn = get_db_connection()
-    query = "SELECT username FROM user_accounts WHERE role = 'professor'"
+    query = "SELECT username FROM user_accounts_enhanced WHERE role = 'professor'"
     df = execute_query_df(query)
     conn.close()
     return df['username'].tolist()

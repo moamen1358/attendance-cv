@@ -97,11 +97,31 @@ def execute_query_safe(query, params=None, fetch=False, commit=False):
         return result
     except sqlite3.Error as e:
         # Add query info to error message
-        error_msg = f"SQLite error: {e}\nQuery: {query}\nParams: {params}"
-        if 'st' in globals():
-            st.error(error_msg)
-        else:
+        error_msg = f"SQLite error: {e}\nQuery: {query[:100]}{'...' if len(query) > 100 else ''}"
+        if params:
+            error_msg += f"\nParams: {params}"
+        
+        # Show error in Streamlit if available
+        try:
+            if 'st' in globals():
+                st.error(f"Database Error: {e}")
+            else:
+                print(error_msg)
+        except:
             print(error_msg)
+            
+        return None if fetch else False
+    except Exception as e:
+        # Handle non-SQLite errors
+        error_msg = f"Unexpected error: {e}\nQuery: {query[:100]}{'...' if len(query) > 100 else ''}"
+        try:
+            if 'st' in globals():
+                st.error(f"Unexpected Error: {e}")
+            else:
+                print(error_msg)
+        except:
+            print(error_msg)
+            
         return None if fetch else False
     finally:
         if conn:
@@ -541,7 +561,7 @@ def show_db_explorer():
                 # Quick stats
                 conn = sqlite3.connect('attendance_system.db')
                 
-                profile_count = pd.read_sql_query("SELECT COUNT(*) as count FROM student_profiles", conn).iloc[0]['count']
+                profile_count = pd.read_sql_query("SELECT COUNT(*) as count FROM student_profiles_enhanced", conn).iloc[0]['count']
                 legacy_count = pd.read_sql_query("SELECT COUNT(*) as count FROM students", conn).iloc[0]['count']
                 user_students = pd.read_sql_query("SELECT COUNT(*) as count FROM user_accounts_enhanced WHERE role = 'student'", conn).iloc[0]['count']
                 
@@ -971,18 +991,67 @@ def display_database_operations_section(table):
     # Drop table (dangerous operation)
     with st.expander("🚨 Dangerous Operations", expanded=False):
         st.warning("⚠️ **These operations are irreversible!**")
+        st.info("💡 **Tip**: Make sure to backup your data before dropping tables!")
         
         if st.checkbox(f"I want to delete the table '{table}'", key=f"want_delete_table_{table}"):
             confirm_name = st.text_input("Type the table name to confirm deletion:", key=f"confirm_table_name_{table}")
-            if confirm_name == table and st.button("🗑️ DROP TABLE", type="secondary", key=f"drop_table_{table}"):
-                try:
-                    execute_query(f"DROP TABLE {table};", commit=True)
-                    st.success(f"✅ Table '{table}' deleted successfully!")
-                    st.info("🔄 Please refresh the page to see updated table list.")
-                except Exception as e:
-                    st.error(f"Error dropping table: {e}")
-            elif confirm_name and confirm_name != table:
-                st.error("Table name doesn't match. Deletion cancelled.")
+            
+            if confirm_name and confirm_name != table:
+                st.error("❌ Table name doesn't match. Please type the exact table name.")
+            elif confirm_name == table:
+                st.success("✅ Table name confirmed!")
+                
+                if st.button("🗑️ DROP TABLE", type="secondary", key=f"drop_table_{table}"):
+                    with st.spinner(f"Dropping table '{table}'..."):
+                        try:
+                            # Use direct SQLite connection for DROP operations
+                            conn = sqlite3.connect('attendance_system.db')
+                            cursor = conn.cursor()
+                            
+                            # Check if table exists first
+                            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+                            table_exists = cursor.fetchone()
+                            
+                            if table_exists:
+                                # Enable foreign keys temporarily to check for dependencies
+                                cursor.execute("PRAGMA foreign_keys = ON")
+                                
+                                # Try to drop the table
+                                cursor.execute(f"DROP TABLE `{table}`")
+                                conn.commit()
+                                
+                                # Verify the table was dropped
+                                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (table,))
+                                still_exists = cursor.fetchone()
+                                
+                                if not still_exists:
+                                    st.success(f"✅ Table '{table}' has been successfully deleted!")
+                                    st.balloons()
+                                    
+                                    # Clear the form
+                                    if f"want_delete_table_{table}" in st.session_state:
+                                        del st.session_state[f"want_delete_table_{table}"]
+                                    if f"confirm_table_name_{table}" in st.session_state:
+                                        del st.session_state[f"confirm_table_name_{table}"]
+                                    
+                                    st.info("🔄 Refreshing page to update table list...")
+                                    st.rerun()
+                                else:
+                                    st.error(f"❌ Table '{table}' still exists after DROP command!")
+                            else:
+                                st.error(f"❌ Table '{table}' does not exist!")
+                                
+                        except sqlite3.IntegrityError as e:
+                            st.error(f"❌ Cannot drop table due to foreign key constraints: {e}")
+                        except sqlite3.OperationalError as e:
+                            st.error(f"❌ Operational error: {e}")
+                        except sqlite3.Error as e:
+                            st.error(f"❌ SQLite error: {e}")
+                        except Exception as e:
+                            st.error(f"❌ Unexpected error: {e}")
+                        finally:
+                            if 'conn' in locals():
+                                conn.close()
         
         return  # Exit here since we're handling all table display in tabs
 

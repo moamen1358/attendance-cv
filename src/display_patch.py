@@ -28,18 +28,19 @@ def create_student_profiles_table():
     try:
         conn = sqlite3.connect('attendance_system.db')
         cursor = conn.cursor()
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS student_profiles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE,
-            name TEXT,
-            student_id TEXT,
-            section TEXT,
-            email TEXT,
-            phone TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
+        # DISABLED: Legacy table creation - using enhanced tables only
+        # cursor.execute("""
+        # CREATE TABLE IF NOT EXISTS student_profiles (
+        #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #     username TEXT UNIQUE,
+        #     name TEXT,
+        #     student_id TEXT,
+        #     section TEXT,
+        #     email TEXT,
+        #     phone TEXT,
+        #     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        # )
+        # """)
         
         # Try to add current user or default user
         try:

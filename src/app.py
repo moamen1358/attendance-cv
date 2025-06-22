@@ -130,18 +130,19 @@ def show_app():
         table_exists = cursor.fetchone() is not None
         logger.info(f"FINAL CHECK: student_profiles table {'exists' if table_exists else 'STILL MISSING'}")
         
-        if not table_exists:
-            logger.info("EMERGENCY: Creating student_profiles table as last resort")
-            cursor.execute("""
-            CREATE TABLE IF NOT EXISTS student_profiles (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT,
-                name TEXT,
-                student_id TEXT,
-                section TEXT
-            )
-            """)
-            conn.commit()
+        # DISABLED: Old table creation
+        # if not table_exists:
+        #     logger.info("EMERGENCY: Creating student_profiles table as last resort")
+        #     cursor.execute("""
+        #     CREATE TABLE IF NOT EXISTS student_profiles (
+        #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        #         username TEXT,
+        #         name TEXT,
+        #         student_id TEXT,
+        #         section TEXT
+        #     )
+        #     """)
+        #     conn.commit()
     except Exception as e:
         logger.error(f"Error in final table check: {e}")
     finally:
@@ -245,28 +246,37 @@ def show_app():
         cursor = conn.cursor()
         
         if user_role == 'student':
-            # CRITICAL FIX: First create the table directly if needed - most aggressive approach
+            # DISABLED: Old table creation
+            # try:
+            #     cursor.execute("""
+            #     CREATE TABLE IF NOT EXISTS student_profiles (
+            #         id INTEGER PRIMARY KEY AUTOINCREMENT,
+            #         username TEXT UNIQUE,
+            #         name TEXT,
+            #         student_id TEXT,
+            #         section TEXT,
+            #         email TEXT,
+            #         phone TEXT,
+            #         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            #     )
+            #     """)
+            #     
+            #     # Insert current user if not exists
+            #     cursor.execute("""
+            #     INSERT OR IGNORE INTO student_profiles (username, name) 
+            #     VALUES (?, ?)
+            #     """, (username, username))
+            #     conn.commit()
+            #     logger.info(f"Created or ensured student_profiles table exists with user {username}")
+            
+            # Use enhanced tables instead
             try:
-                cursor.execute("""
-                CREATE TABLE IF NOT EXISTS student_profiles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE,
-                    name TEXT,
-                    student_id TEXT,
-                    section TEXT,
-                    email TEXT,
-                    phone TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """)
-                
-                # Insert current user if not exists
-                cursor.execute("""
-                INSERT OR IGNORE INTO student_profiles (username, name) 
-                VALUES (?, ?)
-                """, (username, username))
-                conn.commit()
-                logger.info(f"Created or ensured student_profiles table exists with user {username}")
+                # Check if user exists in enhanced table
+                cursor.execute("SELECT student_id FROM student_profiles_enhanced WHERE username = ?", (username,))
+                if not cursor.fetchone():
+                    logger.info(f"Student {username} not found in enhanced table")
+                else:
+                    logger.info(f"Student {username} found in enhanced table")
             except Exception as e:
                 logger.error(f"Initial table creation error: {e}")
                 
@@ -283,25 +293,25 @@ def show_app():
             result = cursor.fetchone()
             
             if not result:
-                # !!! FIX: Create the table here instead of showing warning !!!
-                logger.info("Student profiles table not found in check. Creating it now as last resort.")
-                cursor.execute("""
-                CREATE TABLE student_profiles (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    username TEXT UNIQUE,
-                    name TEXT,
-                    student_id TEXT,
-                    section TEXT,
-                    email TEXT,
-                    phone TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-                """)
-                cursor.execute("""
-                INSERT OR IGNORE INTO student_profiles (username, name, student_id, section) 
-                VALUES (?, ?, ?, ?)
-                """, (username, username, username, 'Default'))
-                conn.commit()
+                # DISABLED: Legacy table creation - using enhanced tables only
+                logger.warning("Legacy student_profiles table check - this should not be needed with enhanced tables")
+                # cursor.execute("""
+                # CREATE TABLE student_profiles (
+                #     id INTEGER PRIMARY KEY AUTOINCREMENT,
+                #     username TEXT UNIQUE,
+                #     name TEXT,
+                #     student_id TEXT,
+                #     section TEXT,
+                #     email TEXT,
+                #     phone TEXT,
+                #     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                # )
+                # """)
+                # cursor.execute("""
+                # INSERT OR IGNORE INTO student_profiles (username, name, student_id, section) 
+                # VALUES (?, ?, ?, ?)
+                # """, (username, username, username, 'Default'))
+                # conn.commit()
                 
                 # Set default values in session state
                 st.session_state['current_user']['student_id'] = username
@@ -534,7 +544,7 @@ def show_app():
                 # Display all users from the database
                 conn = sqlite3.connect(DATABASE_PATH)
                 try:
-                    users_df = execute_query_df("SELECT username, role FROM user_accounts ORDER BY role, username")
+                    users_df = execute_query_df("SELECT username, role FROM user_accounts_enhanced ORDER BY role, username")
                     st.dataframe(users_df)
                 except Exception as e:
                     st.error(f"Error loading users: {e}")
@@ -668,28 +678,30 @@ if __name__ == "__main__":
         st.session_state.is_admin = True
         logger.info(f"Set admin role based on username: {st.query_params['username']}")
     
+    # DISABLED: Legacy table setup
     # Setup admin tables to ensure they exist
-    try:
-        from setup_admin_tables import setup_admin_tables
-        setup_admin_tables()
-    except Exception as e:
-        logger.warning(f"Warning: Could not set up admin tables: {e}")
+    # try:
+    #     from setup_admin_tables import setup_admin_tables
+    #     setup_admin_tables()
+    # except Exception as e:
+    #     logger.warning(f"Warning: Could not set up admin tables: {e}")
     
+    # DISABLED: Legacy table setup
     # Setup student tables to ensure they exist
-    try:
-        from setup_student_tables import setup_student_tables
-        # Run in non-interactive mode (not asking for sample data)
-        conn = sqlite3.connect(DATABASE_PATH)
-        cursor = conn.cursor()
-        
-        # Check if student_profiles exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
-        if not cursor.fetchone():
-            logger.info("Creating student_profiles table...")
-            setup_student_tables()
-        conn.close()
-    except Exception as e:
-        logger.warning(f"Warning: Could not set up student tables: {e}")
+    # try:
+    #     from setup_student_tables import setup_student_tables
+    #     # Run in non-interactive mode (not asking for sample data)
+    #     conn = sqlite3.connect(DATABASE_PATH)
+    #     cursor = conn.cursor()
+    #     
+    #     # Check if student_profiles exists
+    #     cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+    #     if not cursor.fetchone():
+    #         logger.info("Creating student_profiles table...")
+    #         setup_student_tables()
+    #     conn.close()
+    # except Exception as e:
+    #     logger.warning(f"Warning: Could not set up student tables: {e}")
     
     if 'logged_in' not in st.session_state:
         st.session_state.logged_in = False
