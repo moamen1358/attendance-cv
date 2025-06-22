@@ -15,8 +15,17 @@ except ImportError:
     from .time_format_utils import convert_to_ampm_format, normalize_time_format, time_between
 from global_css_handler import apply_global_css  # Only import what we need
 
+# Import centralized database initialization
+try:
+    from db_init import initialize_database, check_database_integrity
+except ImportError:
+    from .db_init import initialize_database, check_database_integrity
+
 # Constants
 DATABASE_PATH = 'attendance_system.db'
+
+# Initialize database tables on import
+initialize_database()
 
 # Remove the initial CSS block that's being duplicated
 # CSS will now be applied from global_css_handler.py

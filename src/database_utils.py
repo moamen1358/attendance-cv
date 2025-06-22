@@ -8,6 +8,15 @@ DATABASE_PATH = 'attendance_system.db'
 # Add import for database sync - using direct import
 from database_sync import sync_user_tables
 
+# Import centralized database initialization
+try:
+    from db_init import initialize_database, check_database_integrity
+except ImportError:
+    from .db_init import initialize_database, check_database_integrity
+
+# Initialize database tables on import
+initialize_database()
+
 def get_db_connection():
     """Get a connection to the database"""
     return sqlite3.connect(DATABASE_PATH)
