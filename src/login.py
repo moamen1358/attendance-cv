@@ -30,19 +30,43 @@ def verify_credentials(username, password):
     """Verify credentials using enhanced table structure"""
     
     # PRIORITY CHECK FOR "admin" USERNAME (handles default admin user)
-    if username == "admin" and password == "admin":
+    if username == "admin" and password in ["admin", "admin123"]:
         print("Default admin login detected with default credentials")
         return True, "admin"
-    
-    # Special handling for usernames containing "admin" (optional)
-    if "admin" in username.lower():
-        print(f"Potential admin user detected: {username}")
     
     conn = sqlite3.connect('attendance_system.db')
     cursor = conn.cursor()
     
     try:
-        # PRIORITY 1: Check user_accounts_enhanced table FIRST (has plain text password)
+        # PRIORITY 1: Check users_enhanced table (our main user table)
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users_enhanced'")
+        if cursor.fetchone():
+            # Try both SHA256 and MD5 hashes for compatibility
+            sha256_hash = hashlib.sha256(password.encode()).hexdigest()
+            md5_hash = hashlib.md5(password.encode()).hexdigest()
+            
+            cursor.execute("SELECT password_hash, role, full_name FROM users_enhanced WHERE username = ? AND status = 'active'", (username,))
+            result = cursor.fetchone()
+            
+            if result:
+                stored_hash, role, full_name = result
+                print(f"Found user {username} ({full_name}) in users_enhanced with role {role}")
+                print(f"Stored hash: {stored_hash[:20]}... (length: {len(stored_hash)})")
+                print(f"SHA256 hash: {sha256_hash[:20]}... | MD5 hash: {md5_hash[:20]}...")
+                
+                # Check both SHA256 (64 chars) and MD5 (32 chars) for compatibility
+                if stored_hash == sha256_hash or stored_hash == md5_hash:
+                    print(f"Enhanced login successful for {username} with role {role}")
+                    # Update last login
+                    cursor.execute("UPDATE users_enhanced SET last_login = CURRENT_TIMESTAMP WHERE username = ?", (username,))
+                    conn.commit()
+                    return True, role
+                else:
+                    print(f"Password hash mismatch for user {username}")
+            else:
+                print(f"User {username} not found in users_enhanced or account inactive")
+        
+        # PRIORITY 2: Check user_accounts_enhanced table (legacy compatibility)
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts_enhanced'")
         if cursor.fetchone():
             cursor.execute("SELECT password, role FROM user_accounts_enhanced WHERE username = ?", (username,))
@@ -54,66 +78,25 @@ def verify_credentials(username, password):
                 
                 # Direct comparison of passwords (plain text)
                 if stored_password == password:
-                    # Additional check: Ensure any admin user gets admin role 
-                    if username.lower() == "admin" or "admin" in username.lower() or role.lower() == "admin":
-                        print(f"Admin user {username} authenticated with role override")
-                        return True, "admin"
                     print(f"User {username} authenticated successfully with role {role}")
                     return True, role
                 else:
                     print(f"Password mismatch for user {username}")
         
-        # PRIORITY 2: Check users_enhanced table (has password_hash)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users_enhanced'")
-        if cursor.fetchone():
-            # Check password with hashing for users_enhanced table
-            hashed_password = hashlib.sha256(password.encode()).hexdigest()
-            cursor.execute("SELECT password_hash, role FROM users_enhanced WHERE username = ?", (username,))
-            result = cursor.fetchone()
-            
-            if result:
-                stored_hash, role = result
-                print(f"Found user {username} in users_enhanced with role {role}")
-                
-                if stored_hash == hashed_password:
-                    print(f"Enhanced login successful for {username} with role {role}")
-                    return True, role
-                else:
-                    print(f"Password hash mismatch for user {username}")
-        
-        # PRIORITY 3: Check student_profiles_enhanced table
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
-        if cursor.fetchone():
-            cursor.execute("SELECT username FROM student_profiles_enhanced WHERE (name = ? OR username = ?)", (username, username))
-            result = cursor.fetchone()
-            if result:
-                print(f"Found student {username} in student_profiles_enhanced")
-                # For students, we'll check if the username exists and use default password
-                if password == "student" or password == username:
-                    return True, "student"
-        
-        # PRIORITY 4: Check professor_profiles table
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='professor_profiles'")
-        if cursor.fetchone():
-            cursor.execute("SELECT password FROM professor_profiles WHERE username = ?", (username,))
-            result = cursor.fetchone()
-            if result and result[0] == password:
-                print(f"Professor {username} authenticated via professor_profiles")
-                return True, "professor"
-            
-        # Default development credentials (fallback)
-        print(f"Checking default credentials for {username}")
-        if username == "admin" and password == "admin":
+        # PRIORITY 3: Default development credentials (fallback)
+        print(f"Checking fallback credentials for {username}")
+        if username == "admin" and password in ["admin", "admin123"]:
             return True, "admin"
-        elif username == "teacher" and password == "teacher":
-            return True, "professor"
-        elif username == "student" and password == "student":
+        elif username == "teacher" and password in ["teacher", "teacher123"]:
+            return True, "teacher"
+        elif username == "student" and password in ["student", "student123"]:
             return True, "student"
         
         print(f"No matching credentials found for {username}")
         return False, None
     
     except Exception as e:
+        print(f"Database error during authentication: {e}")
         st.error(f"Database error: {e}")
     finally:
         conn.close()
@@ -456,7 +439,29 @@ def login_page():
     </style>
     """, unsafe_allow_html=True)
     
-    st.title("Login")
+    st.title("🇪🇬 Egyptian University Attendance System")
+    
+    # Display sample Egyptian credentials
+    with st.expander("📋 Sample Login Credentials", expanded=False):
+        st.markdown("""
+        ### 🔐 Test Accounts (Egyptian Sample Data)
+        
+        **👨‍💼 Administrator:**
+        - Username: `admin` | Password: `admin123`
+        - Username: `dean` | Password: `admin123`
+        
+        **👨‍🏫 Teachers:**
+        - Username: `ahmed.hassan.mohamed` | Password: `teacher123`
+        - Username: `fatma.ali.ibrahim` | Password: `teacher123`
+        - Username: `mohamed.omar.khalil` | Password: `teacher123`
+        
+        **👨‍🎓 Students:**
+        - Username: `ahmed.mohamed.hassan` | Password: `student123`
+        - Username: `fatma.ali.ibrahim.student` | Password: `student123`
+        - Username: `mohamed.omar.khalil.student` | Password: `student123`
+        
+        *All sample data uses authentic Egyptian names and university context*
+        """)
     
     # Sync tables before proceeding
     ensure_database_consistency()
