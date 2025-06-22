@@ -292,52 +292,113 @@ def show_db_explorer():
             
             # Get professors from user_accounts
             try:
-                professors_df = pd.read_sql_query("SELECT username FROM user_accounts WHERE role = 'professor' ORDER BY username", sqlite3.connect('attendance_system.db'))
-                professors = professors_df['username'].tolist() if not professors_df.empty else []
+                # First, let's check if the user_accounts table exists and has the expected structure
+                professors_query = """
+                SELECT username, full_name 
+                FROM user_accounts 
+                WHERE role = 'professor' 
+                ORDER BY username
+                """
+                professors_df = pd.read_sql_query(professors_query, sqlite3.connect('attendance_system.db'))
+                
+                if not professors_df.empty:
+                    # Create a list of professors with both username and full_name if available
+                    if 'full_name' in professors_df.columns and not professors_df['full_name'].isna().all():
+                        professors = [(row['username'], f"{row['full_name']} ({row['username']})") for _, row in professors_df.iterrows()]
+                    else:
+                        professors = [(row['username'], row['username']) for _, row in professors_df.iterrows()]
+                else:
+                    professors = []
+                    st.warning("No professors found in user_accounts table with role 'professor'")
+                
+            except Exception as e:
+                st.error(f"Error getting professors: {e}")
+                # Fallback: try to get from professor_profiles table if it exists
+                try:
+                    professors_query_fallback = """
+                    SELECT username, name 
+                    FROM professor_profiles 
+                    ORDER BY username
+                    """
+                    professors_df = pd.read_sql_query(professors_query_fallback, sqlite3.connect('attendance_system.db'))
+                    professors = [(row['username'], f"{row['name']} ({row['username']})") for _, row in professors_df.iterrows()] if not professors_df.empty else []
+                    if professors:
+                        st.info("Using professor_profiles table as fallback")
+                except:
+                    professors = []
+                    st.error("Could not find professors in either user_accounts or professor_profiles tables")
                 
                 # Get subjects
-                subjects_df = pd.read_sql_query("SELECT subject_id, name FROM subjects ORDER BY name", sqlite3.connect('attendance_system.db'))
-                subjects = [(row['subject_id'], row['name']) for _, row in subjects_df.iterrows()] if not subjects_df.empty else []
+                try:
+                    subjects_df = pd.read_sql_query("SELECT subject_id, subject_name FROM subjects ORDER BY subject_name", sqlite3.connect('attendance_system.db'))
+                    subjects = [(row['subject_id'], row['subject_name']) for _, row in subjects_df.iterrows()] if not subjects_df.empty else []
+                except Exception as e:
+                    # Try alternative column name
+                    try:
+                        subjects_df = pd.read_sql_query("SELECT subject_id, name FROM subjects ORDER BY name", sqlite3.connect('attendance_system.db'))
+                        subjects = [(row['subject_id'], row['name']) for _, row in subjects_df.iterrows()] if not subjects_df.empty else []
+                    except Exception as e2:
+                        st.error(f"Error getting subjects: {e2}")
+                        subjects = []
                 
                 if professors and subjects:
                     with st.form("manual_assignment"):
-                        selected_prof = st.selectbox("Select Professor:", professors)
+                        # Show professor selection with display names
+                        selected_prof_display = st.selectbox("Select Professor:", 
+                                                           options=[p[1] for p in professors])
+                        # Get the actual username from the selection
+                        selected_prof = next((p[0] for p in professors if p[1] == selected_prof_display), None)
+                        
                         selected_subject = st.selectbox("Select Subject:", 
                                                        options=[s[0] for s in subjects],
                                                        format_func=lambda x: next((s[1] for s in subjects if s[0] == x), "Unknown"))
                         
                         if st.form_submit_button("Assign Subject"):
-                            try:
-                                # Check if assignment already exists
-                                check_query = """
-                                SELECT id FROM professor_subject_assignments 
-                                WHERE professor_username = ? AND subject_id = ?
-                                """
-                                result = execute_query(check_query, (selected_prof, selected_subject), fetch=True)
-                                
-                                if result:
-                                    st.info("This assignment already exists.")
-                                else:
-                                    # Create new assignment
-                                    insert_query = """
-                                    INSERT INTO professor_subject_assignments 
-                                    (professor_username, subject_id) VALUES (?, ?)
+                            if selected_prof:
+                                try:
+                                    # Check if assignment already exists
+                                    check_query = """
+                                    SELECT id FROM professor_subject_assignments 
+                                    WHERE professor_username = ? AND subject_id = ?
                                     """
-                                    execute_query(insert_query, (selected_prof, selected_subject), commit=True)
-                                    st.success("Subject assigned successfully!")
-                            except Exception as e:
-                                st.error(f"Error assigning subject: {e}")
+                                    result = execute_query(check_query, (selected_prof, selected_subject), fetch=True)
+                                    
+                                    if result:
+                                        st.info("This assignment already exists.")
+                                    else:
+                                        # Create new assignment
+                                        insert_query = """
+                                        INSERT INTO professor_subject_assignments 
+                                        (professor_username, subject_id) VALUES (?, ?)
+                                        """
+                                        execute_query(insert_query, (selected_prof, selected_subject), commit=True)
+                                        st.success("Subject assigned successfully!")
+                                except Exception as e:
+                                    st.error(f"Error assigning subject: {e}")
+                            else:
+                                st.error("Please select a valid professor.")
                     
                     # Show current assignments
                     st.subheader("Current Assignments")
                     try:
-                        assignments_query = """
-                        SELECT a.id, a.professor_username, s.name as subject_name
-                        FROM professor_subject_assignments a
-                        JOIN subjects s ON a.subject_id = s.subject_id
-                        ORDER BY a.professor_username, s.name
-                        """
-                        assignments_df = pd.read_sql_query(assignments_query, sqlite3.connect('attendance_system.db'))
+                        # Try different column names for subjects
+                        try:
+                            assignments_query = """
+                            SELECT a.id, a.professor_username, s.subject_name as subject_name
+                            FROM professor_subject_assignments a
+                            JOIN subjects s ON a.subject_id = s.subject_id
+                            ORDER BY a.professor_username, s.subject_name
+                            """
+                            assignments_df = pd.read_sql_query(assignments_query, sqlite3.connect('attendance_system.db'))
+                        except Exception:
+                            # Fallback to 'name' column
+                            assignments_query = """
+                            SELECT a.id, a.professor_username, s.name as subject_name
+                            FROM professor_subject_assignments a
+                            JOIN subjects s ON a.subject_id = s.subject_id
+                            ORDER BY a.professor_username, s.name
+                            """
+                            assignments_df = pd.read_sql_query(assignments_query, sqlite3.connect('attendance_system.db'))
                         
                         if not assignments_df.empty:
                             st.dataframe(assignments_df)
