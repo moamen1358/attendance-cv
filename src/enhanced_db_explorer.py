@@ -371,6 +371,7 @@ def show_db_explorer():
         if not tables:
             st.info("No tables found in the database. Create a new table below.")
             create_new_table()
+            return
         else:
             # Create a compact table filter
             col1, col2 = st.columns([4, 1])
@@ -460,12 +461,17 @@ def show_db_explorer():
                     table_labels.append(table)
                     is_header.append(False)
             
-            # Get current selected table or default to first available
+           
             current_table = st.session_state.selected_table
             
-            # Default to first table if current selection isn't valid
+            # Default to first table if current selection isn't valid or if table_options is empty
+            if not table_options:
+                st.warning("No tables found in the database.")
+                return
+            
             if current_table not in table_options and table_options:
                 current_table = table_options[0]
+                st.session_state.selected_table = current_table
             
             # Find index of current table in our options list
             try:
@@ -473,13 +479,15 @@ def show_db_explorer():
             except ValueError:
                 # If not found, default to first item
                 default_index = 0
+                current_table = table_options[0]
+                st.session_state.selected_table = current_table
             
             # Create the dropdown for table selection - without disabled parameter
             st.write("### Select Table")
             selected_table = st.selectbox(
                 "Choose a table to view or edit:",
-                options=filtered_tables,
-                index=filtered_tables.index(current_table) if current_table in filtered_tables else 0,
+                options=table_options,
+                index=default_index,
                 key="table_selector_fixed",
                 on_change=None
             )
