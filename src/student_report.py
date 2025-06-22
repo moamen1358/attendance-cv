@@ -93,7 +93,13 @@ def get_schedule_for_day(day_name):
     """
     conn = get_db_connection()
     query = """
-    SELECT s.subject_name as subject, cs.session_type as type, cs.start_time, cs.end_time 
+    SELECT 
+        s.subject_name as subject, 
+        'lecture' as type, 
+        cs.start_time, 
+        cs.end_time,
+        cs.room,
+        cs.professor_name
     FROM class_schedules_enhanced cs
     JOIN subjects_enhanced s ON cs.subject_id = s.subject_id
     WHERE cs.day_of_week = ? AND s.subject_name != ''
@@ -872,8 +878,8 @@ def get_extended_attendance_history(student_name, days=30):
     start_str = f"{start_date}"
     end_str = f"{end_date}"
     
-    # First check the structure of attendance_records_enhanced to identify the student name column
-    execute_query("PRAGMA table_info(attendance_records_enhanced)")
+    # First check if the attendance_records_enhanced table exists and get its structure
+    cursor.execute("PRAGMA table_info(attendance_records_enhanced)")
     columns = cursor.fetchall()
     column_names = [col[1] for col in columns]
     
@@ -881,13 +887,16 @@ def get_extended_attendance_history(student_name, days=30):
     # So we don't need to check for name columns directly in attendance table
     student_name_column = "sp.name"  # We'll always use JOIN
     
-    # If we can't find suitable columns, use a default approach
-    if not column_names:
+    # Check if the table has the expected structure
+    if not columns:
         st.warning("Could not access attendance_records_enhanced table. Using fallback.")
         student_name_column = 'student_username'  # Default based on schema
+    else:
+        # Table exists and has columns, proceed with enhanced logic
+        pass  # Continue with normal processing
     
     # Now check if class_attendance table exists
-    execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='class_attendance'")
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='class_attendance'")
     class_attendance_exists = cursor.fetchone() is not None
     
     if class_attendance_exists:
@@ -2041,7 +2050,6 @@ def get_secure_student_data():
         # First check if the student_profiles_enhanced table exists
         execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
         if not cursor.fetchone():
-            st.info("✅ Using enhanced student profiles table structure.")
             return {
                 'student_name': current_user,
                 'student_id': 'Unknown',
