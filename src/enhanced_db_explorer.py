@@ -373,20 +373,8 @@ def show_db_explorer():
             create_new_table()
             return
         else:
-            # Create a compact table filter
-            col1, col2 = st.columns([4, 1])
-            with col1:
-                filter_term = st.text_input("🔍 Filter:", key="table_filter", placeholder="Type to filter tables")
-            with col2:
-                st.markdown("<div style='height: 32px;'></div>", unsafe_allow_html=True)  # Empty space to align with input
-                total_tables = len(tables)
-                st.caption(f"{total_tables} tables")
-            
             # Filter tables if needed
-            if filter_term:
-                filtered_tables = [t for t in tables if filter_term.lower() in t.lower()]
-            else:
-                filtered_tables = tables
+            filtered_tables = tables
             
             # Deduplicate tables to avoid any potential duplicates
             unique_filtered_tables = []
