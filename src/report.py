@@ -1314,9 +1314,19 @@ def show_report():
         subject_id = subject_result[0]
         
         # Get attendance statistics for this specific subject
+        # First get enrolled students count
+        cursor.execute("""
+            SELECT COUNT(DISTINCT student_id) as enrolled_students
+            FROM student_enrollments_enhanced
+            WHERE subject_id = ? AND status IN ('enrolled', 'active')
+        """, (subject_id,))
+        
+        enrolled_result = cursor.fetchone()
+        total_students = enrolled_result[0] if enrolled_result else 0
+        
+        # Then get attendance statistics from actual attendance records
         cursor.execute("""
             SELECT 
-                COUNT(DISTINCT student_id) as total_students,
                 COUNT(CASE WHEN status = 'present' THEN 1 END) as present_count,
                 COUNT(*) as total_records,
                 ROUND(COUNT(CASE WHEN status = 'present' THEN 1 END) * 100.0 / COUNT(*), 1) as attendance_rate
@@ -1326,52 +1336,56 @@ def show_report():
         
         stats = cursor.fetchone()
         if stats:
-            total_students, present_count, total_records, attendance_rate = stats
+            present_count, total_records, attendance_rate = stats
+        else:
+            present_count, total_records, attendance_rate = 0, 0, 0
             
-            # Modern dashboard metrics
-            st.markdown("""
-            <div class="professor-card stats-card">
-                <h2 style="margin: 0 0 20px 0; font-size: 1.5rem;">📊 Class Overview</h2>
+        # Handle case where there are no attendance records yet
+        if total_records == 0:
+            attendance_rate = 0
+        
+        # Modern dashboard metrics
+        st.markdown("""
+        <div class="professor-card stats-card">
+            <h2 style="margin: 0 0 20px 0; font-size: 1.5rem;">📊 Class Overview</h2>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Display metrics in a clean grid with modern cards
+        metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
+        
+        with metric_col1:
+            st.markdown(f"""
+            <div class="metric-card students">
+                <p class="metric-number">{total_students or 0}</p>
+                <p class="metric-label">👥 Students</p>
             </div>
             """, unsafe_allow_html=True)
-            
-            # Display metrics in a clean grid with modern cards
-            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
-            
-            with metric_col1:
-                st.markdown(f"""
-                <div class="metric-card students">
-                    <p class="metric-number">{total_students or 0}</p>
-                    <p class="metric-label">👥 Students</p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with metric_col2:
-                st.markdown(f"""
-                <div class="metric-card attendance">
-                    <p class="metric-number">{present_count or 0}</p>
-                    <p class="metric-label">✅ Present</p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with metric_col3:
-                st.markdown(f"""
-                <div class="metric-card">
-                    <p class="metric-number">{total_records or 0}</p>
-                    <p class="metric-label">📅 Total Classes</p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            with metric_col4:
-                rate_color = "#2ecc71" if (attendance_rate or 0) >= 75 else "#f39c12" if (attendance_rate or 0) >= 60 else "#e74c3c"
-                st.markdown(f"""
-                <div class="metric-card rate" style="border-left-color: {rate_color};">
-                    <p class="metric-number" style="color: {rate_color};">{attendance_rate or 0}%</p>
-                    <p class="metric-label">📊 Rate</p>
-                </div>
-                """, unsafe_allow_html=True)
-            
-            # Enhanced performance indicator
+        
+        with metric_col2:
+            st.markdown(f"""
+            <div class="metric-card attendance">
+                <p class="metric-number">{present_count or 0}</p>
+                <p class="metric-label">✅ Present</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with metric_col3:
+            st.markdown(f"""
+            <div class="metric-card">
+                <p class="metric-number">{total_records or 0}</p>
+                <p class="metric-label">📅 Total Classes</p>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with metric_col4:
+            rate_color = "#2ecc71" if (attendance_rate or 0) >= 75 else "#f39c12" if (attendance_rate or 0) >= 60 else "#e74c3c"
+            st.markdown(f"""
+            <div class="metric-card rate" style="border-left-color: {rate_color};">
+                <p class="metric-number" style="color: {rate_color};">{attendance_rate or 0}%</p>
+                <p class="metric-label">📊 Rate</p>
+            </div>
+            """, unsafe_allow_html=True)
             attendance_rate = attendance_rate or 0
         # Add some breathing space at the bottom
         st.markdown("<br>", unsafe_allow_html=True)
@@ -1412,7 +1426,7 @@ def show_report():
             SELECT DISTINCT s.student_id, s.name 
             FROM students_enhanced s
             JOIN student_enrollments_enhanced se ON s.student_id = se.student_id
-            WHERE se.subject_id = ?
+            WHERE se.subject_id = ? AND se.status IN ('enrolled', 'active')
             ORDER BY s.name
         """, (subject_id,))
         
