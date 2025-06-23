@@ -1467,7 +1467,7 @@ def show_report():
             """, unsafe_allow_html=True)
             
             st.markdown("### 👥 Student & Class Information")
-            col1, col2, col3 = st.columns(3)
+            col1, col2, col3, col4 = st.columns(4)
             
             with col1:
                 # Student selection dropdown
@@ -1492,6 +1492,23 @@ def show_report():
                 )
             
             with col3:
+                # Time selection dropdown
+                st.markdown("**🕐 Class Hour**")
+                time_options = [
+                    "08:00", "09:00", "10:00", "11:00", "12:00",
+                    "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"
+                ]
+                selected_time_str = st.selectbox(
+                    "",
+                    options=time_options,
+                    index=1,  # Default to 09:00
+                    key="manual_time_select",
+                    help="Select the class hour"
+                )
+                # Convert to time object for database
+                selected_time = datetime.strptime(selected_time_str, "%H:%M").time()
+            
+            with col4:
                 # Status selection
                 st.markdown("**📊 Attendance Status**")
                 attendance_status = st.selectbox(
@@ -1508,57 +1525,6 @@ def show_report():
                 )
             
             st.markdown("---")
-            
-            # Enhanced time and notes section with better styling
-            st.markdown("""
-            <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); 
-                        padding: 20px; border-radius: 10px; margin: 15px 0;
-                        border: 1px solid #dee2e6;">
-                <h4 style="color: #495057; margin: 0 0 15px 0; display: flex; align-items: center;">
-                    ⏰ Time & Additional Information
-                </h4>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            col4, col5 = st.columns(2)
-            with col4:
-                # Initialize default time in session state if not exists
-                if "default_class_time" not in st.session_state:
-                    st.session_state.default_class_time = datetime.strptime("09:00", "%H:%M").time()
-                
-                # Class time input with enhanced styling
-                st.markdown("""
-                <div style="background: #fff; padding: 15px; border-radius: 8px; 
-                           border: 1px solid #e3e6ea; margin-bottom: 10px;">
-                    <strong style="color: #495057;">🕒 Class Time</strong>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                attendance_time = st.time_input(
-                    "Select time:",
-                    value=st.session_state.default_class_time,
-                    key="manual_time_select",
-                    help="Set the exact time for this attendance record"
-                )
-            
-            with col5:
-                st.markdown("""
-                <div style="background: #fff; padding: 15px; border-radius: 8px; 
-                           border: 1px solid #e3e6ea; margin-bottom: 10px;">
-                    <strong style="color: #495057;">📝 Notes (Optional)</strong>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                notes = st.text_area(
-                    "",
-                    placeholder="Add any notes about this attendance record...",
-                    key="manual_notes_input",
-                    height=100,
-                    help="Optional notes about the attendance record"
-                )
-            
-            st.markdown("---")
-            
             
             # Enhanced submit button section
             st.markdown("---")
@@ -1590,8 +1556,8 @@ def show_report():
                 
                 if st.button("📝 Add Attendance Record", type="primary", use_container_width=True, key="submit_manual_entry"):
                     try:
-                        # Convert time to string format for SQLite compatibility
-                        attendance_time_str = attendance_time.strftime("%H:%M:%S")
+                        # Use the selected time from dropdown
+                        attendance_time_str = selected_time.strftime("%H:%M:%S")
                         
                         # Check if record already exists for this student, subject, and date
                         cursor.execute("""
@@ -1605,10 +1571,10 @@ def show_report():
                             # Update existing record
                             cursor.execute("""
                                 UPDATE attendance_records_enhanced 
-                                SET status = ?, attendance_time = ?, notes = ?, 
+                                SET status = ?, attendance_time = ?, 
                                     marked_by = ?, created_at = CURRENT_TIMESTAMP
                                 WHERE id = ?
-                            """, (attendance_status, attendance_time_str, notes, username, existing_record[0]))
+                            """, (attendance_status, attendance_time_str, username, existing_record[0]))
                             
                             # Enhanced success message
                             st.markdown(f"""
@@ -1639,10 +1605,10 @@ def show_report():
                             cursor.execute("""
                                 INSERT INTO attendance_records_enhanced 
                                 (student_id, subject_id, teacher_id, attendance_date, attendance_time, 
-                                 status, marked_by, notes, academic_year, semester, created_at)
-                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                                 status, marked_by, academic_year, semester, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                             """, (selected_student_id, subject_id, teacher_id, selected_date, 
-                                 attendance_time_str, attendance_status, username, notes, '2024-2025', 'Fall'))
+                                 attendance_time_str, attendance_status, username, '2024-2025', 'Fall'))
                             
                             # Enhanced success message
                             st.markdown(f"""
@@ -1680,9 +1646,8 @@ def show_report():
                             <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px; color: #1565c0;">
                                 <strong>Student:</strong> <span>{selected_student_display.split(' (')[0]}</span>
                                 <strong>Date:</strong> <span>{selected_date.strftime('%B %d, %Y')}</span>
-                                <strong>Time:</strong> <span>{attendance_time.strftime('%I:%M %p')}</span>
+                                <strong>Time:</strong> <span>{selected_time.strftime('%I:%M %p')}</span>
                                 <strong>Status:</strong> <span>{attendance_status.title()} {{'✅' if attendance_status == 'present' else '❌' if attendance_status == 'absent' else '🕐' if attendance_status == 'late' else '📋'}}</span>
-                                {f"<strong>Notes:</strong> <span>{notes}</span>" if notes else ""}
                             </div>
                         </div>
                         """, unsafe_allow_html=True)
