@@ -1456,18 +1456,6 @@ def show_report():
         if enrolled_students:
             # Manual entry form - properly wrapped
             with st.form("manual_attendance_form", clear_on_submit=True):
-                # Add styled form container
-                st.markdown("""
-                <div style="
-                    background: white;
-                    padding: 30px;
-                    border-radius: 15px;
-                    box-shadow: 0 4px 20px rgba(0,0,0,0.1);
-                    border: 1px solid #e9ecef;
-                    margin: 20px 0;
-                ">
-                """, unsafe_allow_html=True)
-            
                 st.markdown("### 👥 Student & Class Information")
                 
                 # Add custom CSS for better colors
@@ -1554,26 +1542,6 @@ def show_report():
                     )
                 
                     st.markdown("</div>", unsafe_allow_html=True)
-                
-                # Enhanced submit button section
-                st.markdown("""
-                <div style="
-                    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
-                    padding: 25px;
-                    border-radius: 15px;
-                    margin: 25px 0;
-                    border: 1px solid #dee2e6;
-                    box-shadow: 0 4px 15px rgba(0,0,0,0.08);
-                    text-align: center;
-                ">
-                    <h4 style="
-                        color: #495057;
-                        margin-bottom: 20px;
-                        font-weight: 600;
-                        text-align: center;
-                    ">🎯 Ready to Record Attendance?</h4>
-                </div>
-                """, unsafe_allow_html=True)
                 
                 col_submit1, col_submit2, col_submit3 = st.columns([2, 3, 2])
                 with col_submit2:
@@ -1797,9 +1765,6 @@ def show_report():
                             """, unsafe_allow_html=True)
                             conn.rollback()
                 
-                st.markdown("</div>", unsafe_allow_html=True)
-                
-                # Close the styled form container
                 st.markdown("</div>", unsafe_allow_html=True)
                 
             # End of manual attendance form
