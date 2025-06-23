@@ -612,7 +612,7 @@ def get_monthly_attendance_trends(start_date=None, end_date=None, teacher_subjec
     query = f"""
     SELECT 
         strftime('%Y-%m', ar.attendance_date) as month,
-        COUNT(DISTINCT s.name) as active_students,
+        COUNT(DISTINCT ar.student_id) as active_students,
         COUNT(*) as total_classes,
         COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) as attended_classes,
         COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) * 100.0 / COUNT(*) as attendance_rate
@@ -1030,138 +1030,111 @@ def show_report():
     finally:
         conn.close()
     
-    # Auto-assign a subject if none found
-    if assigned_subjects is None or assigned_subjects.empty:
-        st.warning("No subjects assigned to you. Please contact an administrator.")
+    # Get teacher's subjects using the enhanced function
+    subjects_list = get_teacher_subjects(username)
+    
+    # Check if teacher has assigned subjects
+    if not subjects_list:
+        st.error("❌ No subjects assigned to you. Please contact an administrator.")
         
-        # Add auto-assign button
-        if st.button("🔄 Assign Default Subject", key="auto_assign"):
-            try:
-                conn = sqlite3.connect(DATABASE_PATH)
-                cursor = conn.cursor()
-                
-                # First check if subjects_enhanced table exists and has data
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects_enhanced'")
-                if cursor.fetchone():
-                    # Get first available subject
-                    cursor.execute("SELECT * FROM subjects_enhanced LIMIT 1")
-                    subject = cursor.fetchone()
-                    
-                    if subject:
-                        # Get the column index for ID
-                        cursor.execute("PRAGMA table_info(subjects_enhanced)")
-                        columns = {col[1].lower(): idx for idx, col in enumerate(cursor.fetchall())}
-                        id_idx = columns.get('subject_id', columns.get('id', 0))
-                        subject_id = subject[id_idx]
-                        
-                        # LEGACY: Create assignment tables if they don't exist (DISABLED)
-                        # Using centralized database initialization instead
-                        from db_init import initialize_database
-                        initialize_database()
-                        
-                        # cursor.execute("""
-                        # CREATE TABLE IF NOT EXISTS professor_subject_assignments (
-                        #     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        #     professor_username TEXT NOT NULL,
-                        #     subject_id INTEGER NOT NULL,
-                        #     assigned_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        #     UNIQUE(professor_username, subject_id)
-                        # )
-                        # """)
-                        
-                        # cursor.execute("""
-                        # CREATE TABLE IF NOT EXISTS teacher_subjects (
-                        #     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        #     subject_id INTEGER,
-                        #     teacher_name TEXT,
-                        #     UNIQUE(subject_id, teacher_name)
-                        # )
-                        # """)
-                        
-                        # Assign this subject to the current teacher using enhanced tables
-                        # First get the teacher_id for this username
-                        cursor.execute("""
-                        SELECT teacher_id FROM teachers_enhanced 
-                        WHERE employee_id = ? OR name = ?
-                        """, (username, username))
-                        
-                        teacher_result = cursor.fetchone()
-                        if teacher_result:
-                            teacher_id = teacher_result[0]
-                            
-                            # Insert into teacher_subjects_enhanced
-                            cursor.execute("""
-                            INSERT OR IGNORE INTO teacher_subjects_enhanced 
-                            (teacher_id, subject_id, academic_year, semester, status)
-                            VALUES (?, ?, '2024-2025', '1', 'active')
-                            """, (teacher_id, subject_id))
-                        else:
-                            st.warning(f"Could not find teacher record for username: {username}")
-                        
-                        conn.commit()
-                        st.success("Default subject assigned successfully! Refreshing...")
-                        time.sleep(1)
-                        st.rerun()
-                    else:
-                        st.error("No subjects found in database. Please create subjects first.")
-                else:
-                    st.error("Subjects_enhanced table does not exist. Database may need repair.")
-            except Exception as e:
-                st.error(f"Error auto-assigning subject: {e}")
-            finally:
-                if 'conn' in locals():
-                    conn.close()
+        # Show available subjects for reference
+        conn = sqlite3.connect(DATABASE_PATH)
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT subject_name, course_code FROM subjects_enhanced ORDER BY subject_name")
+            all_subjects = cursor.fetchall()
             
-            # Also show repair tool link
-            st.markdown("If issues persist, use the database repair tool: ")
-            if st.button("🔧 Repair Database Schema"):
-                from src.database_maintenance import show_schema_repair_tool
-                show_schema_repair_tool()
-            
-            return  # Exit function early
+            if all_subjects:
+                st.info("📚 Available subjects in the system:")
+                for subject_name, course_code in all_subjects[:10]:  # Show first 10
+                    st.write(f"• {subject_name} ({course_code})")
+                if len(all_subjects) > 10:
+                    st.write(f"... and {len(all_subjects) - 10} more subjects")
+        except Exception as e:
+            st.error(f"Error loading subjects: {e}")
+        finally:
+            conn.close()
+        
+        return
     
-    # Rest of the function continues with assigned subjects displayed...
-    
-    # Display assigned subjects in a nice format
-    st.subheader("Your Assigned Subjects")
-    
-    # Safety check to ensure assigned_subjects is not None and not empty
-    if assigned_subjects is not None and not assigned_subjects.empty:
-        # Create a better looking display for subjects
-        for i, subject in assigned_subjects.iterrows():
-            with st.container():
-                # Enhanced card with gradient background, better shadows and styling
-                st.markdown(f"""
-                <div style="padding: 18px; border-radius: 8px; margin-bottom: 15px; 
-                          background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%); 
-                          border-left: 5px solid #3f51b5; box-shadow: 0 3px 10px rgba(0,0,0,0.08);">
-                    <h3 style="margin-top: 0; color: #3f51b5; font-weight: 600;">{subject['subject_name']}</h3>
-                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
-                    <div>
-                        <p style="color: #555; margin: 4px 0;"><strong style="color: #333;">Course Code:</strong> 
-                            <span style="color: {('#666' if subject['course_code'] == 'N/A' else '#333')};">
-                                {subject['course_code']}
-                            </span>
-                        </p>
-                        <p style="color: #555; margin: 4px 0;"><strong style="color: #333;">Credit Hours:</strong> {subject['credit_hours']}</p>
-                    </div>
-                    <div>
-                        <p style="color: #555; margin: 4px 0;"><strong style="color: #333;">Schedule:</strong> 
-                            <span style="color: #777; font-style: italic;">
-                                {subject['schedule'] if not pd.isna(subject['schedule']) else "No schedule set"}
-                            </span>
-                        </p>
-                        <p style="color: #555; margin: 4px 0;"><strong style="color: #333;">Room:</strong> 
-                            <span style="color: #777; font-style: italic;">
-                                {subject['room'] if not pd.isna(subject['room']) else "No room assigned"}
-                            </span>
-                        </p>
-                    </div>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
+    # Since teachers now have only one subject, get the primary subject
+    primary_subject = subjects_list[0]
+    if '(' in primary_subject:
+        subject_name = primary_subject.split('(')[0].strip()
+        subject_code = primary_subject.split('(')[1].replace(')', '').strip()
     else:
-        # Show message when no subjects are assigned
+        subject_name = primary_subject
+        subject_code = ""
+    
+    # Display teacher's assigned subject prominently
+    st.success(f"📚 **Your Assigned Subject:** {subject_name} ({subject_code})")
+    st.markdown("---")
+    
+    # Now get specific statistics for this teacher's subject
+    conn = sqlite3.connect(DATABASE_PATH)
+    try:
+        # Get subject_id for the teacher's assigned subject
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT subject_id FROM subjects_enhanced 
+            WHERE subject_name = ?
+        """, (subject_name,))
+        
+        subject_result = cursor.fetchone()
+        if not subject_result:
+            st.error(f"Subject '{subject_name}' not found in database")
+            return
+        
+        subject_id = subject_result[0]
+        
+        # Get attendance statistics for this specific subject
+        cursor.execute("""
+            SELECT 
+                COUNT(DISTINCT student_id) as total_students,
+                COUNT(CASE WHEN status = 'present' THEN 1 END) as present_count,
+                COUNT(*) as total_records,
+                ROUND(COUNT(CASE WHEN status = 'present' THEN 1 END) * 100.0 / COUNT(*), 1) as attendance_rate
+            FROM attendance_records_enhanced
+            WHERE subject_id = ?
+        """, (subject_id,))
+        
+        stats = cursor.fetchone()
+        if stats:
+            total_students, present_count, total_records, attendance_rate = stats
+            
+            # Display key metrics for this subject
+            st.subheader("📊 Subject Statistics")
+            
+            col1, col2, col3, col4 = st.columns(4)
+            
+            with col1:
+                st.metric(
+                    label="Total Students", 
+                    value=total_students or 0
+                )
+            
+            with col2:
+                st.metric(
+                    label="Total Classes", 
+                    value=total_records or 0
+                )
+            
+            with col3:
+                st.metric(
+                    label="Present Count", 
+                    value=present_count or 0
+                )
+            
+            with col4:
+                st.metric(
+                    label="Attendance Rate", 
+                    value=f"{attendance_rate or 0}%"
+                )
+        
+    except Exception as e:
+        st.error(f"Error getting subject statistics: {e}")
+    finally:
+        conn.close()
         st.info("📚 No subjects are currently assigned to you. Please contact the administrator to assign subjects.")
         
         # Add a helpful button for troubleshooting
@@ -1261,15 +1234,17 @@ def show_report():
     username = st.session_state.get('username', '')
     user_role = st.session_state.get('user_role', '')
     
-    # Get teacher's subjects
-    teacher_subjects = ["All Subjects"]
-    if user_role == 'admin' or user_role == 'professor':
+    # Get teacher's subjects - for new one-subject-per-teacher system
+    teacher_subjects = []
+    if user_role == 'admin':
+        teacher_subjects = ["All Subjects"]
+    elif user_role == 'professor':
         subjects_list = get_teacher_subjects(username)
-        # Fix: Check if the list is empty, not using DataFrame .empty property
-        if not subjects_list:
-            teacher_subjects = ["All Subjects"]
+        if subjects_list:
+            # Teachers now have only one subject - use it directly
+            teacher_subjects = subjects_list  # Don't add "All Subjects"
         else:
-            teacher_subjects = ["All Subjects"] + subjects_list
+            teacher_subjects = []
     
     # REMOVED: st.write(f"Viewing attendance data for: **<span class='username-text'>{username}</span>**", unsafe_allow_html=True)
     # REMOVED: st.write(f"Subjects: {', '.join([s for s in teacher_subjects if s != 'All Subjects'])}")
@@ -1340,10 +1315,13 @@ def show_report():
         st.header("Attendance Summary Statistics")
         
         # Get overall attendance metrics - filtered by teacher subjects
+        overall_stats = get_teacher_overall_stats(start_date_str, end_date_str, teacher_subjects)
         monthly_trends = get_monthly_attendance_trends(start_date_str, end_date_str, teacher_subjects=teacher_subjects)
-        total_attended = monthly_trends['attended_classes'].sum() if not monthly_trends.empty else 0
-        total_classes = monthly_trends['total_classes'].sum() if not monthly_trends.empty else 0
-        overall_rate = total_attended / total_classes * 100 if total_classes > 0 else 0
+        
+        total_students = overall_stats.get('total_students', 0)
+        total_attended = overall_stats.get('attended_classes', 0)
+        total_classes = overall_stats.get('total_classes', 0)
+        overall_rate = overall_stats.get('attendance_rate', 0)
         
         # Create a row with two columns for overall metrics and gauge chart
         col1, col2 = st.columns([3, 2])
@@ -1355,7 +1333,7 @@ def show_report():
             # Create a nice metric row
             metric_cols = st.columns(3)
             with metric_cols[0]:
-                st.metric("Total Students", monthly_trends['active_students'].max() if not monthly_trends.empty else 0)
+                st.metric("Total Students", total_students)
             with metric_cols[1]:
                 st.metric("Classes Attended", f"{total_attended}/{total_classes}")
             with metric_cols[2]:
@@ -1762,3 +1740,73 @@ def show_report():
                         st.error("Failed to record attendance")
                 except Exception as e:
                     st.error(f"Error recording attendance: {e}")
+
+def get_teacher_overall_stats(start_date=None, end_date=None, teacher_subjects=None):
+    """Get overall attendance statistics for a teacher's subjects"""
+    conn = get_db_connection()
+    
+    # Prepare conditions and parameters
+    conditions = []
+    params = []
+    
+    if start_date:
+        conditions.append("ar.attendance_date >= ?")
+        params.append(start_date)
+    
+    if end_date:
+        conditions.append("ar.attendance_date <= ?")
+        params.append(end_date)
+    
+    # Add filter for teacher's subjects
+    if teacher_subjects and "All Subjects" not in teacher_subjects:
+        # Extract subject names from teacher_subjects (they may include course codes)
+        subject_names = []
+        for subject in teacher_subjects:
+            if "(" in subject and ")" in subject:
+                # Extract just the subject name part before the parentheses
+                subject_name = subject.split(" (")[0].strip()
+            else:
+                subject_name = subject.strip()
+            subject_names.append(subject_name)
+        
+        placeholders = ", ".join(["?"] * len(subject_names))
+        conditions.append(f"sub.subject_name IN ({placeholders})")
+        params.extend(subject_names)
+    
+    # Build WHERE clause
+    where_clause = " AND ".join(conditions)
+    if where_clause:
+        where_clause = "WHERE " + where_clause
+    
+    # Query for overall statistics
+    query = f"""
+    SELECT 
+        COUNT(DISTINCT ar.student_id) as total_students,
+        COUNT(*) as total_classes,
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) as attended_classes,
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) * 100.0 / COUNT(*) as attendance_rate
+    FROM attendance_records_enhanced ar
+    JOIN students_enhanced s ON ar.student_id = s.student_id
+    JOIN subjects_enhanced sub ON ar.subject_id = sub.subject_id
+    {where_clause}
+    """
+    
+    # Execute query
+    result = conn.execute(query, params).fetchone()
+    conn.close()
+    
+    # Return as dictionary
+    if result:
+        return {
+            'total_students': result[0] or 0,
+            'total_classes': result[1] or 0,
+            'attended_classes': result[2] or 0,
+            'attendance_rate': round(result[3] or 0, 1)
+        }
+    else:
+        return {
+            'total_students': 0,
+            'total_classes': 0,
+            'attended_classes': 0,
+            'attendance_rate': 0
+        }
