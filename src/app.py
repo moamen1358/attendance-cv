@@ -219,8 +219,8 @@ def show_app():
         st.query_params["logged_in"] = "True"
         logger.info(f"Setting admin role in session and query params for user {username}")
     
-    # FORCE PROFESSOR ROLE for any professor username for fallback protection
-    elif user_role.lower() == "professor" or st.session_state.get('is_professor', False):
+    # FORCE PROFESSOR ROLE for any professor/teacher username for fallback protection
+    elif user_role.lower() in ["professor", "teacher"] or st.session_state.get('is_professor', False):
         user_role = "professor"
         st.session_state.user_role = "professor"
         st.session_state.is_professor = True
@@ -229,7 +229,7 @@ def show_app():
         st.query_params["user_role"] = "professor"
         st.query_params["username"] = username
         st.query_params["logged_in"] = "True"
-        logger.info(f"Setting professor role in session and query params for user {username}")
+        logger.info(f"Setting professor role in session and query params for user {username} (original role: {user_role})")
     
     # Debug info for admin login issues
     if username == "admin" and user_role != "admin":
@@ -590,8 +590,8 @@ def show_app():
                     st.success("Session state reset (except login information)")
                     st.rerun()
                 
-    # PROFESSOR VIEW - Only access to Reports page with no sidebar
-    elif user_role == 'professor':
+    # PROFESSOR/TEACHER VIEW - Only access to Reports page with no sidebar
+    elif user_role in ['professor', 'teacher']:
         # Skip CSS and session management for professor users to avoid display issues
         
         # IMPROVED LAYOUT: Put title, username and buttons all in the same container - MATCHING STUDENT LAYOUT

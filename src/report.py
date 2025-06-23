@@ -7,6 +7,7 @@ from datetime import datetime, timedelta
 import sqlite3
 import io
 import sys
+import time
 
 # Add utils directory to path
 sys.path.append('/home/invisa/Desktop/my_grad_streamlit')
@@ -33,23 +34,60 @@ def get_attendance_data(start_date=None, end_date=None, student_name=None, limit
     cursor = conn.cursor()
     
     try:
-        # First check if the attendance_log table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='attendance_log'")
-        if not cursor.fetchone():
-            # Table doesn't exist - try attendance_records as fallback
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='attendance_records'")
-            if cursor.fetchone():
-                table_name = 'attendance_records'
-            else:
-                # Neither table exists
-                return pd.DataFrame(columns=['name', 'timestamp', 'date', 'time'])
+        # First check if the attendance_records_enhanced table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='attendance_records_enhanced'")
+        if cursor.fetchone():
+            table_name = 'attendance_records_enhanced'
         else:
-            table_name = 'attendance_log'
+            # Fallback to old tables if enhanced table doesn't exist
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='attendance_log'")
+            if cursor.fetchone():
+                table_name = 'attendance_log'
+            else:
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='attendance_records'")
+                if cursor.fetchone():
+                    table_name = 'attendance_records'
+                else:
+                    # No attendance tables exist
+                    return pd.DataFrame(columns=['name', 'timestamp', 'date', 'time'])
         
-        # Get schema mapping to handle column name differences
-        schema = get_attendance_records_schema()
-        student_col = schema['student_name']
-        timestamp_col = schema['timestamp']
+        # Handle different table structures
+        if table_name == 'attendance_records_enhanced':
+            # Enhanced table structure with foreign keys
+            query = f"""
+            SELECT 
+                s.name,
+                ar.attendance_date || ' ' || COALESCE(ar.attendance_time, '00:00:00') as timestamp,
+                ar.attendance_date as date,
+                COALESCE(ar.attendance_time, '00:00:00') as time,
+                ar.status
+            FROM attendance_records_enhanced ar
+            JOIN students_enhanced s ON ar.student_id = s.student_id
+            WHERE 1=1
+            """
+            
+            # Add filters for enhanced table
+            params = []
+            if start_date:
+                query += " AND ar.attendance_date >= ?"
+                params.append(start_date)
+            if end_date:
+                query += " AND ar.attendance_date <= ?"
+                params.append(end_date)
+            if student_name:
+                query += " AND s.name LIKE ?"
+                params.append(f"%{student_name}%")
+                
+            query += " ORDER BY ar.attendance_date DESC, ar.attendance_time DESC"
+            if limit:
+                query += f" LIMIT {limit}"
+                
+        else:
+            # Legacy table structure
+            # Get schema mapping to handle column name differences
+            schema = get_attendance_records_schema()
+            student_col = schema['student_name']
+            timestamp_col = schema['timestamp']
             
         # Check what columns actually exist in the table
         cursor.execute(f"PRAGMA table_info({table_name})")
@@ -137,38 +175,54 @@ def get_class_attendance_data(start_date=None, end_date=None, student_name=None,
     """
     conn = get_db_connection()
     
-    # Build query parts
-    query_parts = ["SELECT * FROM class_attendance"]
+    # Build query parts for enhanced table
+    query_parts = ["""
+        SELECT 
+            ar.id,
+            s.name as student_name,
+            sub.subject_name as subject,
+            ar.attendance_date as class_date,
+            ar.attendance_time as start_time,
+            ar.attendance_time as end_time,
+            CASE WHEN ar.status = 'present' THEN 1 ELSE 0 END as attended,
+            ar.status as attended_status,
+            ar.notes,
+            ar.academic_year,
+            ar.semester
+        FROM attendance_records_enhanced ar
+        JOIN students_enhanced s ON ar.student_id = s.student_id
+        JOIN subjects_enhanced sub ON ar.subject_id = sub.subject_id
+    """]
     where_clauses = []
     params = []
     
     if start_date:
-        where_clauses.append("class_date >= ?")
+        where_clauses.append("ar.attendance_date >= ?")
         params.append(start_date)
     
     if end_date:
-        where_clauses.append("class_date <= ?")
+        where_clauses.append("ar.attendance_date <= ?")
         params.append(end_date)
     
     if student_name and student_name != "All Students":
-        where_clauses.append("student_name = ?")
+        where_clauses.append("s.name = ?")
         params.append(student_name)
         
     if subject and subject != "All Subjects":
-        where_clauses.append("subject = ?")
+        where_clauses.append("sub.subject_name = ?")
         params.append(subject)
     
     # Add filter for teacher's subjects
     if teacher_subjects and "All Subjects" not in teacher_subjects:
         placeholders = ", ".join(["?"] * len(teacher_subjects))
-        where_clauses.append(f"subject IN ({placeholders})")
+        where_clauses.append(f"sub.subject_name IN ({placeholders})")
         params.extend(teacher_subjects)
     
     if where_clauses:
         query_parts.append("WHERE " + " AND ".join(where_clauses))
     
     # Add order by
-    query_parts.append("ORDER BY class_date DESC, start_time ASC")
+    query_parts.append("ORDER BY ar.attendance_date DESC, ar.attendance_time ASC")
     
     # Combine query parts
     query = " ".join(query_parts)
@@ -189,18 +243,24 @@ def get_class_attendance_data(start_date=None, end_date=None, student_name=None,
 def get_registered_students():
     conn = get_db_connection()
     
-    # First get students from the students table
-    query1 = "SELECT name FROM students ORDER BY name"
+    # First get students from the students_enhanced table
+    query1 = "SELECT name FROM students_enhanced ORDER BY name"
     df1 = pd.read_sql(query1, conn)
     students_list = df1['name'].tolist() if not df1.empty else []
     
-    # Then get all student names from attendance records
-    query2 = "SELECT DISTINCT student_name as name FROM class_attendance ORDER BY student_name"
+    # Then get all student names from attendance records  
+    query2 = """SELECT DISTINCT s.name 
+                FROM attendance_records_enhanced ar 
+                JOIN students_enhanced s ON ar.student_id = s.student_id 
+                ORDER BY s.name"""
     df2 = pd.read_sql(query2, conn)
     attendance_students = df2['name'].tolist() if not df2.empty else []
     
-    # Also get students from attendance logs for completeness
-    query3 = "SELECT DISTINCT name FROM attendance_log ORDER BY name"
+    # Also get students from attendance records for completeness
+    query3 = """SELECT DISTINCT s.name 
+                FROM attendance_records_enhanced ar 
+                JOIN students_enhanced s ON ar.student_id = s.student_id 
+                ORDER BY s.name"""
     df3 = pd.read_sql(query3, conn)
     log_students = df3['name'].tolist() if not df3.empty else []
     
@@ -246,9 +306,9 @@ def get_subjects(username=None):
             
         # If still no subjects, try subjects table directly
         if not subjects:
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects_enhanced'")
             if cursor.fetchone():
-                cursor.execute("SELECT subject_name FROM subjects ORDER BY subject_name")
+                cursor.execute("SELECT subject_name FROM subjects_enhanced ORDER BY subject_name")
                 subjects = [row[0] for row in cursor.fetchall()]
                 
         return ["All Subjects"] + subjects
@@ -387,24 +447,24 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
     params = []
     
     if search_term:
-        search_condition = "AND ca.student_name LIKE ?"
+        search_condition = "AND s.name LIKE ?"
         params.append(f"%{search_term}%")
     
     # Build date filter conditions
     date_condition = ""
     if start_date:
-        date_condition += "AND ca.class_date >= ?"
+        date_condition += "AND ar.attendance_date >= ?"
         params.append(start_date)
     
     if end_date:
-        date_condition += "AND ca.class_date <= ?"
+        date_condition += "AND ar.attendance_date <= ?"
         params.append(end_date)
     
     # Build subject filter condition
     subject_condition = ""
     if teacher_subjects and "All Subjects" not in teacher_subjects:
         placeholders = ", ".join(["?"] * len(teacher_subjects))
-        subject_condition = f"AND ca.subject IN ({placeholders})"
+        subject_condition = f"AND sub.subject_name IN ({placeholders})"
         params.extend(teacher_subjects)
     
     # Main query with proper sorting
@@ -418,8 +478,10 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
     
     # Count total number of students matching criteria (for pagination)
     count_query = f"""
-    SELECT COUNT(DISTINCT ca.student_name) as total_count
-    FROM class_attendance ca
+    SELECT COUNT(DISTINCT s.name) as total_count
+    FROM attendance_records_enhanced ar
+    JOIN students_enhanced s ON ar.student_id = s.student_id
+    JOIN subjects_enhanced sub ON ar.subject_id = sub.subject_id
     WHERE 1=1 {date_condition} {search_condition} {subject_condition}
     """
     
@@ -429,15 +491,17 @@ def get_attendance_summary(start_date=None, end_date=None, search_term=None, sor
     # Main query with sorting and pagination
     query = f"""
     SELECT 
-        ca.student_name, 
-        COUNT(CASE WHEN ca.attended = 1 THEN 1 ELSE NULL END) as attended_classes,
+        s.name as student_name,
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) as attended_classes,
         COUNT(*) as total_classes,
-        SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate,
-        MIN(ca.class_date) as first_date,
-        MAX(ca.class_date) as last_date
-    FROM class_attendance ca
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) * 100.0 / COUNT(*) as attendance_rate,
+        MIN(ar.attendance_date) as first_date,
+        MAX(ar.attendance_date) as last_date
+    FROM attendance_records_enhanced ar
+    JOIN students_enhanced s ON ar.student_id = s.student_id
+    JOIN subjects_enhanced sub ON ar.subject_id = sub.subject_id
     WHERE 1=1 {date_condition} {search_condition} {subject_condition}
-    GROUP BY ca.student_name
+    GROUP BY s.name, ar.student_id
     ORDER BY {sort_by} {sort_dir}
     LIMIT ? OFFSET ?
     """
@@ -468,21 +532,21 @@ def get_subject_attendance_summary(start_date=None, end_date=None, search_term=N
     conditions = []
     
     if start_date:
-        conditions.append("ca.class_date >= ?")
+        conditions.append("ar.attendance_date >= ?")
         params.append(start_date)
     
     if end_date:
-        conditions.append("ca.class_date <= ?")
+        conditions.append("ar.attendance_date <= ?")
         params.append(end_date)
     
     if search_term:
-        conditions.append("ca.subject LIKE ?")
+        conditions.append("sub.subject_name LIKE ?")
         params.append(f"%{search_term}%")
     
     # Add filter for teacher's subjects
     if teacher_subjects and "All Subjects" not in teacher_subjects:
         placeholders = ", ".join(["?"] * len(teacher_subjects))
-        conditions.append(f"ca.subject IN ({placeholders})")
+        conditions.append(f"sub.subject_name IN ({placeholders})")
         params.extend(teacher_subjects)
     
     # Build WHERE clause
@@ -493,14 +557,16 @@ def get_subject_attendance_summary(start_date=None, end_date=None, search_term=N
     # Query for subject statistics
     query = f"""
     SELECT 
-        ca.subject, 
-        COUNT(DISTINCT ca.student_name) as unique_students,
-        COUNT(CASE WHEN ca.attended = 1 THEN 1 ELSE NULL END) as attended_count,
+        sub.subject_name as subject,
+        COUNT(DISTINCT s.name) as unique_students,
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) as attended_count,
         COUNT(*) as total_count,
-        SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate
-    FROM class_attendance ca
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) * 100.0 / COUNT(*) as attendance_rate
+    FROM attendance_records_enhanced ar
+    JOIN students_enhanced s ON ar.student_id = s.student_id
+    JOIN subjects_enhanced sub ON ar.subject_id = sub.subject_id
     {where_clause}
-    GROUP BY ca.subject
+    GROUP BY sub.subject_name
     ORDER BY attendance_rate DESC
     """
     
@@ -524,17 +590,17 @@ def get_monthly_attendance_trends(start_date=None, end_date=None, teacher_subjec
     params = []
     
     if start_date:
-        conditions.append("ca.class_date >= ?")
+        conditions.append("ar.attendance_date >= ?")
         params.append(start_date)
     
     if end_date:
-        conditions.append("ca.class_date <= ?")
+        conditions.append("ar.attendance_date <= ?")
         params.append(end_date)
     
     # Add filter for teacher's subjects
     if teacher_subjects and "All Subjects" not in teacher_subjects:
         placeholders = ", ".join(["?"] * len(teacher_subjects))
-        conditions.append(f"ca.subject IN ({placeholders})")
+        conditions.append(f"sub.subject_name IN ({placeholders})")
         params.extend(teacher_subjects)
     
     # Build WHERE clause
@@ -545,12 +611,14 @@ def get_monthly_attendance_trends(start_date=None, end_date=None, teacher_subjec
     # Query for monthly trends
     query = f"""
     SELECT 
-        strftime('%Y-%m', ca.class_date) as month,
-        COUNT(DISTINCT ca.student_name) as active_students,
+        strftime('%Y-%m', ar.attendance_date) as month,
+        COUNT(DISTINCT s.name) as active_students,
         COUNT(*) as total_classes,
-        SUM(ca.attended) as attended_classes,
-        SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate
-    FROM class_attendance ca
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) as attended_classes,
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) * 100.0 / COUNT(*) as attendance_rate
+    FROM attendance_records_enhanced ar
+    JOIN students_enhanced s ON ar.student_id = s.student_id
+    JOIN subjects_enhanced sub ON ar.subject_id = sub.subject_id
     {where_clause}
     GROUP BY month
     ORDER BY month
@@ -578,17 +646,17 @@ def get_attendance_outliers(start_date=None, end_date=None, limit=5, teacher_sub
     params = []
     
     if start_date:
-        conditions.append("ca.class_date >= ?")
+        conditions.append("ar.attendance_date >= ?")
         params.append(start_date)
     
     if end_date:
-        conditions.append("ca.class_date <= ?")
+        conditions.append("ar.attendance_date <= ?")
         params.append(end_date)
     
     # Add filter for teacher's subjects
     if teacher_subjects and "All Subjects" not in teacher_subjects:
         placeholders = ", ".join(["?"] * len(teacher_subjects))
-        conditions.append(f"ca.subject IN ({placeholders})")
+        conditions.append(f"sub.subject_name IN ({placeholders})")
         params.extend(teacher_subjects)
     
     # Build WHERE clause
@@ -599,13 +667,15 @@ def get_attendance_outliers(start_date=None, end_date=None, limit=5, teacher_sub
     # Query for top performers
     top_query = f"""
     SELECT 
-        ca.student_name, 
-        COUNT(CASE WHEN ca.attended = 1 THEN 1 ELSE NULL END) as attended_classes,
+        s.name as student_name,
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) as attended_classes,
         COUNT(*) as total_classes,
-        SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate
-    FROM class_attendance ca
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) * 100.0 / COUNT(*) as attendance_rate
+    FROM attendance_records_enhanced ar
+    JOIN students_enhanced s ON ar.student_id = s.student_id
+    JOIN subjects_enhanced sub ON ar.subject_id = sub.subject_id
     {where_clause}
-    GROUP BY ca.student_name
+    GROUP BY s.name, ar.student_id
     HAVING COUNT(*) > 3
     ORDER BY attendance_rate DESC
     LIMIT {limit}
@@ -614,13 +684,15 @@ def get_attendance_outliers(start_date=None, end_date=None, limit=5, teacher_sub
     # Query for bottom performers
     bottom_query = f"""
     SELECT 
-        ca.student_name, 
-        COUNT(CASE WHEN ca.attended = 1 THEN 1 ELSE NULL END) as attended_classes,
+        s.name as student_name,
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) as attended_classes,
         COUNT(*) as total_classes,
-        SUM(ca.attended) * 100.0 / COUNT(*) as attendance_rate
-    FROM class_attendance ca
+        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) * 100.0 / COUNT(*) as attendance_rate
+    FROM attendance_records_enhanced ar
+    JOIN students_enhanced s ON ar.student_id = s.student_id
+    JOIN subjects_enhanced sub ON ar.subject_id = sub.subject_id
     {where_clause}
-    GROUP BY ca.student_name
+    GROUP BY s.name, ar.student_id
     HAVING COUNT(*) > 3
     ORDER BY attendance_rate ASC
     LIMIT {limit}
@@ -891,14 +963,14 @@ def show_report():
     assigned_subjects = None
     
     try:
-        # Check which columns actually exist in the subjects table
-        cursor.execute("PRAGMA table_info(subjects)")
+        # Check which columns actually exist in the subjects_enhanced table
+        cursor.execute("PRAGMA table_info(subjects_enhanced)")
         available_columns = {col[1].lower(): col[1] for col in cursor.fetchall()}
-        print(f"Available columns in subjects table: {available_columns}")
+        print(f"Available columns in subjects_enhanced table: {available_columns}")
         
         # Get subject table schema info - only include columns that actually exist
-        id_col = available_columns.get('subject_id', available_columns.get('id', 'id'))
-        name_col = available_columns.get('subject_name', available_columns.get('name', 'name'))
+        id_col = available_columns.get('subject_id', available_columns.get('id', 'subject_id'))
+        name_col = available_columns.get('subject_name', available_columns.get('name', 'subject_name'))
         
         # Build SELECT part dynamically, only including columns that exist
         select_columns = [f"s.{id_col} as subject_id", f"s.{name_col} as subject_name"]
@@ -923,29 +995,36 @@ def show_report():
         select_columns.append("NULL as schedule")
         select_columns.append("NULL as room")
         
-        # First try professor_subject_assignments table with dynamic column selection
+        # Try teacher_subjects_enhanced table first (this is what we have)
         query = f"""
         SELECT {', '.join(select_columns)}
-        FROM subjects s
-        JOIN professor_subject_assignments psa ON s.{id_col} = psa.subject_id
-        WHERE psa.professor_username = ?
+        FROM subjects_enhanced s
+        JOIN teacher_subjects_enhanced tse ON s.{id_col} = tse.subject_id
+        JOIN teachers_enhanced te ON tse.teacher_id = te.teacher_id
+        WHERE te.employee_id = ? OR te.name = ?
         ORDER BY s.{name_col}
         """
         
         print(f"Executing query: {query}")
-        assigned_subjects = pd.read_sql_query(query, conn, params=(username,))
+        assigned_subjects = pd.read_sql_query(query, conn, params=(username, username))
         
-        # If no results, try teacher_subjects table with the same dynamic columns
+        # If no results and username looks like employee_id, try direct lookup
         if assigned_subjects.empty:
-            query = f"""
-            SELECT {', '.join(select_columns)}
-            FROM subjects s
-            JOIN teacher_subjects ts ON s.{id_col} = ts.subject_id
-            WHERE ts.teacher_name = ?
-            ORDER BY s.{name_col}
-            """
-            print(f"Executing fallback query: {query}")
-            assigned_subjects = pd.read_sql_query(query, conn, params=(username,))
+            # Get teacher_id first
+            cursor.execute("SELECT teacher_id FROM teachers_enhanced WHERE employee_id = ? OR name = ?", (username, username))
+            teacher_result = cursor.fetchone()
+            
+            if teacher_result:
+                teacher_id = teacher_result[0]
+                query = f"""
+                SELECT {', '.join(select_columns)}
+                FROM subjects_enhanced s
+                JOIN teacher_subjects_enhanced tse ON s.{id_col} = tse.subject_id
+                WHERE tse.teacher_id = ?
+                ORDER BY s.{name_col}
+                """
+                print(f"Executing teacher_id query: {query}")
+                assigned_subjects = pd.read_sql_query(query, conn, params=(teacher_id,))
     except Exception as e:
         st.error(f"Error querying subjects: {e}")
     finally:
@@ -961,16 +1040,16 @@ def show_report():
                 conn = sqlite3.connect(DATABASE_PATH)
                 cursor = conn.cursor()
                 
-                # First check if subjects table exists and has data
-                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
+                # First check if subjects_enhanced table exists and has data
+                cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects_enhanced'")
                 if cursor.fetchone():
                     # Get first available subject
-                    cursor.execute("SELECT * FROM subjects LIMIT 1")
+                    cursor.execute("SELECT * FROM subjects_enhanced LIMIT 1")
                     subject = cursor.fetchone()
                     
                     if subject:
                         # Get the column index for ID
-                        cursor.execute("PRAGMA table_info(subjects)")
+                        cursor.execute("PRAGMA table_info(subjects_enhanced)")
                         columns = {col[1].lower(): idx for idx, col in enumerate(cursor.fetchall())}
                         id_idx = columns.get('subject_id', columns.get('id', 0))
                         subject_id = subject[id_idx]
@@ -999,16 +1078,25 @@ def show_report():
                         # )
                         # """)
                         
-                        # Assign this subject to the current professor
+                        # Assign this subject to the current teacher using enhanced tables
+                        # First get the teacher_id for this username
                         cursor.execute("""
-                        INSERT OR IGNORE INTO professor_subject_assignments 
-                        (professor_username, subject_id) VALUES (?, ?)
-                        """, (username, subject_id))
+                        SELECT teacher_id FROM teachers_enhanced 
+                        WHERE employee_id = ? OR name = ?
+                        """, (username, username))
                         
-                        cursor.execute("""
-                        INSERT OR IGNORE INTO teacher_subjects
-                        (teacher_name, subject_id) VALUES (?, ?)
-                        """, (username, subject_id))
+                        teacher_result = cursor.fetchone()
+                        if teacher_result:
+                            teacher_id = teacher_result[0]
+                            
+                            # Insert into teacher_subjects_enhanced
+                            cursor.execute("""
+                            INSERT OR IGNORE INTO teacher_subjects_enhanced 
+                            (teacher_id, subject_id, academic_year, semester, status)
+                            VALUES (?, ?, '2024-2025', '1', 'active')
+                            """, (teacher_id, subject_id))
+                        else:
+                            st.warning(f"Could not find teacher record for username: {username}")
                         
                         conn.commit()
                         st.success("Default subject assigned successfully! Refreshing...")
@@ -1017,7 +1105,7 @@ def show_report():
                     else:
                         st.error("No subjects found in database. Please create subjects first.")
                 else:
-                    st.error("Subjects table does not exist. Database may need repair.")
+                    st.error("Subjects_enhanced table does not exist. Database may need repair.")
             except Exception as e:
                 st.error(f"Error auto-assigning subject: {e}")
             finally:
@@ -1037,16 +1125,18 @@ def show_report():
     # Display assigned subjects in a nice format
     st.subheader("Your Assigned Subjects")
     
-    # Create a better looking display for subjects
-    for i, subject in assigned_subjects.iterrows():
-        with st.container():
-            # Enhanced card with gradient background, better shadows and styling
-            st.markdown(f"""
-            <div style="padding: 18px; border-radius: 8px; margin-bottom: 15px; 
-                      background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%); 
-                      border-left: 5px solid #3f51b5; box-shadow: 0 3px 10px rgba(0,0,0,0.08);">
-                <h3 style="margin-top: 0; color: #3f51b5; font-weight: 600;">{subject['subject_name']}</h3>
-                <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
+    # Safety check to ensure assigned_subjects is not None and not empty
+    if assigned_subjects is not None and not assigned_subjects.empty:
+        # Create a better looking display for subjects
+        for i, subject in assigned_subjects.iterrows():
+            with st.container():
+                # Enhanced card with gradient background, better shadows and styling
+                st.markdown(f"""
+                <div style="padding: 18px; border-radius: 8px; margin-bottom: 15px; 
+                          background: linear-gradient(135deg, #f5f7fa 0%, #e4edf5 100%); 
+                          border-left: 5px solid #3f51b5; box-shadow: 0 3px 10px rgba(0,0,0,0.08);">
+                    <h3 style="margin-top: 0; color: #3f51b5; font-weight: 600;">{subject['subject_name']}</h3>
+                    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px;">
                     <div>
                         <p style="color: #555; margin: 4px 0;"><strong style="color: #333;">Course Code:</strong> 
                             <span style="color: {('#666' if subject['course_code'] == 'N/A' else '#333')};">
@@ -1070,6 +1160,33 @@ def show_report():
                 </div>
             </div>
             """, unsafe_allow_html=True)
+    else:
+        # Show message when no subjects are assigned
+        st.info("📚 No subjects are currently assigned to you. Please contact the administrator to assign subjects.")
+        
+        # Add a helpful button for troubleshooting
+        if st.button("🔍 Debug Subject Assignment", help="Click to see debug information"):
+            st.write("**Debug Information:**")
+            st.write(f"Username: {username}")
+            
+            # Show available teachers
+            conn = sqlite3.connect('attendance_system.db')
+            cursor = conn.cursor()
+            
+            cursor.execute("SELECT employee_id, name FROM teachers_enhanced LIMIT 5")
+            teachers = cursor.fetchall()
+            st.write("**Sample Teachers:**")
+            for emp_id, name in teachers:
+                st.write(f"- Employee ID: {emp_id}, Name: {name}")
+            
+            # Show available subjects
+            cursor.execute("SELECT subject_id, subject_name FROM subjects_enhanced LIMIT 5")
+            subjects = cursor.fetchall()
+            st.write("**Sample Subjects:**")
+            for subj_id, subj_name in subjects:
+                st.write(f"- Subject ID: {subj_id}, Name: {subj_name}")
+            
+            conn.close()
     
     # If a subject is selected, show its attendance
     if 'selected_subject_id' in st.session_state:
