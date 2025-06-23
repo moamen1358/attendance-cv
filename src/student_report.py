@@ -1450,20 +1450,24 @@ def show_student_report():
             margin-bottom: 10px;
         }
         
-        /* Enhanced user info styling with modern gradient */
+        /* Enhanced user info styling - compact and centered */
         .user-info-badge {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
             color: white;
-            padding: 15px 25px;
-            border-radius: 30px;
+            padding: 10px 15px;
+            border-radius: 15px;
             font-weight: 600;
-            font-size: 15px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
-            display: inline-block;
-            margin-bottom: 20px;
+            font-size: 14px;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            box-shadow: 0 3px 12px rgba(40, 167, 69, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
             position: relative;
             overflow: hidden;
+            height: 50px;
+            text-align: center;
         }
         
         .user-info-badge:before {
@@ -1546,14 +1550,17 @@ def show_student_report():
         </style>
         """, unsafe_allow_html=True)
         
-        # User info display with improved styling
+        # Create three-row layout: user info badge and two buttons with same width
+        user_col1, user_col2 = st.columns([1, 1])
+        
+        # User info display spanning both columns
         st.markdown(f"""
         <div class="user-info-badge">
             👤 {student_name} | ID: {student_id} | Section: {section}
         </div>
         """, unsafe_allow_html=True)
         
-        # Two buttons in a clean layout
+        # Two buttons in a clean layout with same width as user badge
         button_col1, button_col2 = st.columns([1, 1])
         
         with button_col1:
@@ -1630,10 +1637,11 @@ def show_student_report():
                     # Handle any other format issues
                     continue
             
-            # Count past classes (classes that have already ended)
-            if current_time_obj >= end_time_obj:
+            # Count classes that have started (consistent with dashboard metrics)
+            if current_time_obj >= start_time_obj:
                 past_classes += 1
-                if check_attendance(student_name, date_str, row['start_time'], row['end_time']):
+                # Use the same attendance check as the dashboard metrics for consistency
+                if check_attendance_for_subject(student_name, date_str, row['subject']):
                     attended_past_classes += 1
 
         # Now determine the welcome message based on attendance
@@ -1660,14 +1668,14 @@ def show_student_report():
         if next_class is None:
             # No more classes today
             if past_classes > 0 and attended_past_classes == past_classes:
-                # Student attended all classes today
+                # Student attended all classes that have started today
                 welcome_message = welcome_countdown_html(student_name, attended_all=True)
             elif past_classes > 0:
-                # Some classes were missed
+                # Some classes that started were missed
                 missed = past_classes - attended_past_classes
                 welcome_message = welcome_countdown_html(student_name, missed_count=missed)
             else:
-                # No classes were scheduled for today
+                # No classes have started yet today
                 welcome_message = welcome_countdown_html(student_name, no_classes=True)
         else:
             # There's an upcoming class - prepare it as a dictionary for the welcome_countdown_html function
@@ -1677,11 +1685,11 @@ def show_student_report():
             }
             
             if past_classes > 0 and attended_past_classes < past_classes:
-                # Student missed some earlier classes
+                # Student missed some classes that have started
                 missed = past_classes - attended_past_classes
                 welcome_message = welcome_countdown_html(student_name, next_class_dict, missed_count=missed)
             else:
-                # Student has attended all previous classes (or there were none)
+                # Student has attended all classes that have started (or there were none)
                 welcome_message = welcome_countdown_html(student_name, next_class_dict)
 
         # Display the welcome message with HTML component to enable JavaScript

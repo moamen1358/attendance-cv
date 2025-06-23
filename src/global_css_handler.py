@@ -16,7 +16,7 @@ def apply_global_css():
     .reportview-container .main,
     .appview-container .main,
     div[data-testid="stAppViewContainer"] {
-        padding-top: 10px !important;
+        padding-top: 5px !important;
     }
     
     /* Force full width layout on all pages - more aggressive selectors */
@@ -32,7 +32,7 @@ def apply_global_css():
         max-width: 100% !important;
         padding-left: 20px !important;
         padding-right: 20px !important;
-        padding-top: 10px !important;
+        padding-top: 5px !important;
         padding-bottom: 10px !important;
         width: 100% !important;
         margin: 0 !important;
@@ -45,7 +45,7 @@ def apply_global_css():
         width: 100% !important;
         padding-left: 20px !important;
         padding-right: 20px !important;
-        padding-top: 10px !important;
+        padding-top: 5px !important;
         padding-bottom: 10px !important;
         margin: 0 !important;
     }

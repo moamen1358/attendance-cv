@@ -595,20 +595,24 @@ def show_app():
         # Apply modern CSS styling for professor interface
         st.markdown("""
         <style>
-        /* Enhanced user info styling with modern gradient for professors */
+        /* Enhanced user info styling - compact and centered for professors */
         .user-info-badge {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            background: linear-gradient(135deg, #17a2b8 0%, #6f42c1 100%);
             color: white;
-            padding: 15px 25px;
-            border-radius: 30px;
+            padding: 10px 15px;
+            border-radius: 15px;
             font-weight: 600;
-            font-size: 15px;
-            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
-            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
-            display: inline-block;
-            margin-bottom: 20px;
+            font-size: 14px;
+            text-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            box-shadow: 0 3px 12px rgba(23, 162, 184, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 15px;
             position: relative;
             overflow: hidden;
+            height: 50px;
+            text-align: center;
         }
         
         .user-info-badge:before {
@@ -691,28 +695,24 @@ def show_app():
         </style>
         """, unsafe_allow_html=True)
         
-        # IMPROVED LAYOUT: Clean header with modern styling
+        # IMPROVED LAYOUT: Clean header matching student interface
         st.markdown('<div style="margin-top: 0; padding-top: 0;">', unsafe_allow_html=True)
         
-        # Dashboard title with improved styling
-        st.markdown("""
-        <div style="text-align: center; margin-bottom: 30px;">
-            <h1 style="color: #2c3e50; font-size: 2.5rem; font-weight: 700; margin-bottom: 10px;">
-                📚 Teacher Dashboard
-            </h1>
-        </div>
-        """, unsafe_allow_html=True)
+        # User info display in same column layout as buttons (matching student interface)
+        user_col1, user_col2 = st.columns([1, 1])
+        with user_col1:
+            pass  # Empty column for spacing
+        with user_col2:
+            pass  # Empty column for spacing
         
-        # User info display with improved styling
+        # User info badge spanning both columns to match button width
         st.markdown(f"""
-        <div style="text-align: center; margin-bottom: 30px;">
-            <div class="user-info-badge">
-                👤 {username} | Professor
-            </div>
+        <div class="user-info-badge">
+            👤 {username} | Professor
         </div>
         """, unsafe_allow_html=True)
         
-        # Two buttons in a clean layout
+        # Two buttons in a clean layout with same width as user badge
         button_col1, button_col2 = st.columns([1, 1])
         
         with button_col1:
