@@ -12,6 +12,7 @@ sys.path.append('/home/invisa/Desktop/my_grad_streamlit')
 # Update imports to use direct module imports without src prefix
 from database_utils import execute_query, execute_query_df
 from database_sync import sync_user_tables, register_user
+from global_css_handler import apply_global_css
 
 # Import centralized database initialization
 try:
@@ -759,6 +760,9 @@ def initialize_database():
         return False
 
 def main():
+    # Apply global CSS
+    apply_global_css()
+    
     # Force database initialization at startup
     initialize_database()  # Run this first to ensure tables exist
     

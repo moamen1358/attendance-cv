@@ -930,6 +930,9 @@ def show_subject_attendance(subject_id, subject_name):
 
 def show_report():
     """Show attendance report for professors"""
+    # Apply global CSS
+    apply_global_css()
+    
     # Get username and ensure we have a valid value
     username = st.session_state.get('username', 'Unknown')
     

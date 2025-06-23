@@ -5,6 +5,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 import plotly.express as px
 import plotly.graph_objects as go
+from global_css_handler import apply_global_css
 
 DATABASE_PATH = 'attendance_system.db'
 
@@ -145,6 +146,9 @@ def get_student_attendance(student_name, limit_days=30):
 
 def show_student_dashboard():
     """Main student dashboard"""
+    # Apply global CSS
+    apply_global_css()
+    
     st.title("🎓 Student Dashboard")
     
     # Add refresh button

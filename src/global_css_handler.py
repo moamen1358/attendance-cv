@@ -8,33 +8,53 @@ import streamlit as st
 
 def apply_global_css():
     """Apply global CSS to Streamlit app for consistent styling"""
-    # Check if this is a student or professor user and skip CSS injection to avoid display issues
-    user_role = st.session_state.get('user_role')
-    if user_role in ['student', 'professor']:
-        return  # Don't apply CSS for students and professors
     
     # Define CSS styles
     css = """
     <style>
-    /* Force full width layout on all pages */
+    /* Add top padding to all pages */
+    .reportview-container .main,
+    .appview-container .main,
+    div[data-testid="stAppViewContainer"] {
+        padding-top: 10px !important;
+    }
+    
+    /* Force full width layout on all pages - more aggressive selectors */
     .reportview-container .main .block-container,
     .appview-container .main .block-container,
     div[data-testid="stAppViewContainer"] > section[data-testid="stAppViewContainer"] > div,
     div[data-testid="stAppViewContainer"] > section > div,
     .main .block-container,
-    .block-container {
+    .block-container,
+    div[data-testid="block-container"],
+    section.main > div,
+    section[data-testid="stSidebar"] + section > div {
         max-width: 100% !important;
-        padding-left: 40px !important;
-        padding-right: 40px !important;
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
         width: 100% !important;
+        margin: 0 !important;
     }
     
     /* Override any Streamlit-specific container classes */
-    .css-1d391kg, .css-12oz5g7, .css-1r6slb0, .css-18e3th9, .css-1d8a290 {
+    .css-1d391kg, .css-12oz5g7, .css-1r6slb0, .css-18e3th9, .css-1d8a290,
+    .css-k1vhr4, .css-1y4p8pa, .css-18e3th9, .css-12oz5g7 {
         max-width: 100% !important;
         width: 100% !important;
-        padding-left: 40px !important;
-        padding-right: 40px !important;
+        padding-left: 20px !important;
+        padding-right: 20px !important;
+        padding-top: 10px !important;
+        padding-bottom: 10px !important;
+        margin: 0 !important;
+    }
+    
+    /* Force wide layout for main content area */
+    .stApp > header,
+    .stApp > div[data-testid="stHeader"],
+    .stApp > div[data-testid="stToolbar"] {
+        background-color: transparent !important;
     }
     
     /* Ensure stDataFrame components use full width */
