@@ -995,23 +995,23 @@ def show_report():
         select_columns.append("NULL as schedule")
         select_columns.append("NULL as room")
         
-        # Try teacher_subjects_enhanced table first (this is what we have)
+        # Try teacher_subjects_enhanced table with users_enhanced (our actual setup)
         query = f"""
         SELECT {', '.join(select_columns)}
         FROM subjects_enhanced s
         JOIN teacher_subjects_enhanced tse ON s.{id_col} = tse.subject_id
-        JOIN teachers_enhanced te ON tse.teacher_id = te.teacher_id
-        WHERE te.employee_id = ? OR te.name = ?
+        JOIN users_enhanced u ON tse.teacher_id = u.linked_id
+        WHERE u.username = ? AND u.role = 'teacher' AND tse.status = 'active'
         ORDER BY s.{name_col}
         """
         
         print(f"Executing query: {query}")
-        assigned_subjects = pd.read_sql_query(query, conn, params=(username, username))
+        assigned_subjects = pd.read_sql_query(query, conn, params=(username,))
         
-        # If no results and username looks like employee_id, try direct lookup
+        # If no results, try fallback approach
         if assigned_subjects.empty:
-            # Get teacher_id first
-            cursor.execute("SELECT teacher_id FROM teachers_enhanced WHERE employee_id = ? OR name = ?", (username, username))
+            # Get teacher_id from users_enhanced first
+            cursor.execute("SELECT linked_id FROM users_enhanced WHERE username = ? AND role = 'teacher'", (username,))
             teacher_result = cursor.fetchone()
             
             if teacher_result:
@@ -1020,7 +1020,7 @@ def show_report():
                 SELECT {', '.join(select_columns)}
                 FROM subjects_enhanced s
                 JOIN teacher_subjects_enhanced tse ON s.{id_col} = tse.subject_id
-                WHERE tse.teacher_id = ?
+                WHERE tse.teacher_id = ? AND tse.status = 'active'
                 ORDER BY s.{name_col}
                 """
                 print(f"Executing teacher_id query: {query}")
