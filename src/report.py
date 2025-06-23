@@ -1257,13 +1257,42 @@ def show_report():
                     key="manual_status_select"
                 )
             
-            # Time input
+            # Time input with quick presets
             col4, col5 = st.columns(2)
             with col4:
+                # Initialize default time in session state if not exists
+                if "default_class_time" not in st.session_state:
+                    st.session_state.default_class_time = datetime.strptime("09:00", "%H:%M").time()
+                
+                # Quick time presets
+                st.write("**Class Time**")
+                preset_cols = st.columns(4)
+                
+                with preset_cols[0]:
+                    if st.button("9:00", key="preset_9", help="9:00 AM"):
+                        st.session_state.default_class_time = datetime.strptime("09:00", "%H:%M").time()
+                        st.rerun()
+                
+                with preset_cols[1]:
+                    if st.button("11:00", key="preset_11", help="11:00 AM"):
+                        st.session_state.default_class_time = datetime.strptime("11:00", "%H:%M").time()
+                        st.rerun()
+                
+                with preset_cols[2]:
+                    if st.button("14:00", key="preset_14", help="2:00 PM"):
+                        st.session_state.default_class_time = datetime.strptime("14:00", "%H:%M").time()
+                        st.rerun()
+                
+                with preset_cols[3]:
+                    if st.button("16:00", key="preset_16", help="4:00 PM"):
+                        st.session_state.default_class_time = datetime.strptime("16:00", "%H:%M").time()
+                        st.rerun()
+                
                 attendance_time = st.time_input(
-                    "Class Time",
-                    value=datetime.now().time(),
-                    key="manual_time_select"
+                    "Or select custom time:",
+                    value=st.session_state.default_class_time,
+                    key="manual_time_select",
+                    help="24-hour format (e.g., 15:00 for 3:00 PM)"
                 )
             
             with col5:

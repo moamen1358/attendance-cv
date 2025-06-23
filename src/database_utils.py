@@ -253,21 +253,20 @@ def execute_query_df(query, params=None):
     conn = sqlite3.connect(DATABASE_PATH)
     try:
         fixed_query = query.strip()
-        print(f"Executing query: {fixed_query}")  # Added debug log
+        print(f"[DEBUG] Executing query: {fixed_query}")
+        print(f"[DEBUG] With params: {params}")
         df = pd.read_sql_query(fixed_query, conn, params=params)
-        print(f"Query result columns: {df.columns.tolist()}")  # Log the columns of the result
+        print(f"[DEBUG] Query result: {len(df)} rows, columns: {df.columns.tolist()}")
         return df
     except Exception as e:
-        print(f"Error executing query: {query}, Error: {e}")
-        # Return empty DataFrame with appropriate columns if a SELECT query fails
-        if query.strip().upper().startswith("SELECT"):
-            # Try to extract column names from the SELECT part
-            try:
-                # Extract columns or return empty DataFrame with minimal structure
-                return pd.DataFrame()
-            except:
-                return pd.DataFrame()
-        raise
+        print(f"[ERROR] executing query: {e}")
+        print(f"[ERROR] Query was: {query}")
+        print(f"[ERROR] Params were: {params}")
+        # Don't suppress the error - let it be visible
+        import traceback
+        traceback.print_exc()
+        # Return empty DataFrame with same column structure if possible
+        return pd.DataFrame()
     finally:
         conn.close()
 

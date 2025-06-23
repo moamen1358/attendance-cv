@@ -90,32 +90,60 @@ def get_student_attendance(student_name, date=None, detailed=False):
     
     return df
 
-def get_schedule_for_day(day_name):
+def get_schedule_for_day(day_name, student_name=None):
     """
-    Get the subject schedule for a specific day
+    Get the subject schedule for a specific day, optionally filtered by student enrollment
     
     Args:
         day_name (str): Name of the day (e.g., 'Sunday', 'Monday')
+        student_name (str, optional): Filter schedule by student's enrolled subjects
     
     Returns:
         pandas.DataFrame: DataFrame containing schedule for the day
     """
     conn = get_db_connection()
-    query = """
-    SELECT 
-        s.subject_name as subject, 
-        cs.class_type as type, 
-        cs.start_time, 
-        cs.end_time,
-        cs.room_number as room,
-        t.name as professor_name
-    FROM class_schedules_enhanced cs
-    JOIN subjects_enhanced s ON cs.subject_id = s.subject_id
-    JOIN teachers_enhanced t ON cs.teacher_id = t.teacher_id
-    WHERE cs.day_of_week = ? AND s.subject_name != '' AND cs.status = 'active'
-    ORDER BY cs.start_time
-    """
-    df = execute_query_df(query, (day_name,))
+    
+    if student_name:
+        # Get schedule only for subjects the student is enrolled in
+        query = """
+        SELECT 
+            s.subject_name as subject, 
+            cs.class_type as type, 
+            cs.start_time, 
+            cs.end_time,
+            cs.room_number as room,
+            t.name as professor_name
+        FROM class_schedules_enhanced cs
+        JOIN subjects_enhanced s ON cs.subject_id = s.subject_id
+        JOIN teachers_enhanced t ON cs.teacher_id = t.teacher_id
+        JOIN student_enrollments_enhanced se ON s.subject_id = se.subject_id
+        JOIN students_enhanced st ON se.student_id = st.student_id
+        WHERE cs.day_of_week = ? 
+          AND st.name = ?
+          AND se.status = 'active'
+          AND cs.status = 'active'
+          AND s.subject_name != ''
+        ORDER BY cs.start_time
+        """
+        df = execute_query_df(query, (day_name, student_name))
+    else:
+        # Get all schedule for the day (original behavior)
+        query = """
+        SELECT 
+            s.subject_name as subject, 
+            cs.class_type as type, 
+            cs.start_time, 
+            cs.end_time,
+            cs.room_number as room,
+            t.name as professor_name
+        FROM class_schedules_enhanced cs
+        JOIN subjects_enhanced s ON cs.subject_id = s.subject_id
+        JOIN teachers_enhanced t ON cs.teacher_id = t.teacher_id
+        WHERE cs.day_of_week = ? AND s.subject_name != '' AND cs.status = 'active'
+        ORDER BY cs.start_time
+        """
+        df = execute_query_df(query, (day_name,))
+    
     conn.close()
     return df
 
@@ -214,25 +242,57 @@ def check_attendance(student_name, date, start_time, end_time):
         query = """
         SELECT COUNT(*) as count 
         FROM attendance_records_enhanced ar
-        JOIN student_profiles_enhanced sp ON ar.student_id = sp.student_id
-        WHERE sp.name = ? 
-          AND date(ar.timestamp) = ? 
-          AND (
-              time(ar.timestamp) BETWEEN time(?) AND time(?)
-          )
+        JOIN students_enhanced s ON ar.student_id = s.student_id
+        WHERE s.name = ? 
+          AND ar.attendance_date = ?
+          AND ar.status = 'present'
         """
         
-        # Calculate proper time strings for comparison
-        time_start = date + " " + start_time
-        time_end = date + " " + end_time
-        
-        execute_query(query, (student_name, date_start, time_start, time_end))
+        execute_query(query, (student_name, date))
         result = cursor.fetchone()
         attended = result[0] > 0
         
         return attended
     except Exception as e:
         print(f"Error checking attendance: {e}")
+        return False
+    finally:
+        conn.close()
+
+def check_attendance_for_subject(student_name, date, subject_name):
+    """
+    Check if student attended a specific subject on a given date
+    
+    Args:
+        student_name (str): Name of the student
+        date (str): Date in format 'YYYY-MM-DD'
+        subject_name (str): Name of the subject
+    
+    Returns:
+        bool: True if student attended, False otherwise
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Query the attendance_records_enhanced table for specific subject
+        query = """
+        SELECT COUNT(*) as count 
+        FROM attendance_records_enhanced ar
+        JOIN students_enhanced s ON ar.student_id = s.student_id
+        JOIN subjects_enhanced se ON ar.subject_id = se.subject_id
+        WHERE s.name = ? 
+          AND ar.attendance_date = ?
+          AND se.subject_name = ?
+          AND ar.status = 'present'
+        """
+        
+        cursor.execute(query, (student_name, date, subject_name))
+        result = cursor.fetchone()
+        attended = result[0] > 0
+        
+        return attended
+    except Exception as e:
         return False
     finally:
         conn.close()
@@ -330,7 +390,7 @@ def create_timeline_chart(schedule_df, current_time_obj, student_name, date_str)
                 continue
         
         # Check attendance
-        attended = check_attendance(student_name, date_str, start_time, end_time)
+        attended = check_attendance_for_subject(student_name, date_str, subject)
         
         # Check if class is current, past, or upcoming
         if current_time_obj >= end_time_obj:
@@ -875,7 +935,7 @@ def welcome_countdown_html(student_name, next_class=None, missed_count=0, attend
 # Add a new function to get weekly and monthly attendance data
 def get_extended_attendance_history(student_name, days=30):
     """
-    Get extended attendance history for visualization with fallback for missing tables
+    Get extended attendance history for visualization using enhanced schema
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -888,106 +948,58 @@ def get_extended_attendance_history(student_name, days=30):
     start_str = f"{start_date}"
     end_str = f"{end_date}"
     
-    # First check if the attendance_records_enhanced table exists and get its structure
-    cursor.execute("PRAGMA table_info(attendance_records_enhanced)")
-    columns = cursor.fetchall()
-    column_names = [col[1] for col in columns]
-    
-    # For enhanced table, we'll use JOIN with student_profiles_enhanced
-    # So we don't need to check for name columns directly in attendance table
-    student_name_column = "sp.name"  # We'll always use JOIN
-    
-    # Check if the table has the expected structure
-    if not columns:
-        st.warning("Could not access attendance_records_enhanced table. Using fallback.")
-        student_name_column = 'student_username'  # Default based on schema
-    else:
-        # Table exists and has columns, proceed with enhanced logic
-        pass  # Continue with normal processing
-    
-    # Now check if class_attendance table exists
-    cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='class_attendance'")
-    class_attendance_exists = cursor.fetchone() is not None
-    
-    if class_attendance_exists:
-        # Use the original query with class_attendance table
+    try:
+        # Use enhanced schema to get attendance history
         query = """
         WITH daily_attendance AS (
-            -- Get attendance data by day and subject
+            -- Get attendance data by day and subject using enhanced tables
             SELECT 
-                ca.class_date as date,
-                ca.subject,
-                SUM(ca.attended) as attended_classes,
+                ar.attendance_date as date,
+                se.subject_name as subject,
+                COUNT(CASE WHEN ar.status = 'present' THEN 1 END) as attended_classes,
                 COUNT(*) as total_classes
-            FROM class_attendance ca
-            WHERE ca.student_name = ? 
-            AND ca.class_date BETWEEN ? AND ?
-            GROUP BY ca.class_date, ca.subject
+            FROM attendance_records_enhanced ar
+            JOIN students_enhanced s ON ar.student_id = s.student_id
+            JOIN subjects_enhanced se ON ar.subject_id = se.subject_id
+            WHERE s.name = ? 
+              AND ar.attendance_date BETWEEN ? AND ?
+            GROUP BY ar.attendance_date, se.subject_name
         ),
         daily_totals AS (
-            -- Get total attendance data per day (without subject)
+            -- Get total attendance data per day
             SELECT 
                 date,
                 SUM(attended_classes) as attended_classes,
                 SUM(total_classes) as total_classes
             FROM daily_attendance
             GROUP BY date
-        ),
-        detection_counts AS (
-            -- Get detection counts by day (still useful for analytics)
-            SELECT 
-                date(timestamp) as date,
-                COUNT(DISTINCT strftime('%H', timestamp)) as hours_present,
-                COUNT(*) as detection_count
-            FROM attendance_records
-            WHERE """ + student_name_column + """ = ? AND date(timestamp) BETWEEN ? AND ?
-            GROUP BY date(timestamp)
         )
-        -- Join the datasets
+        -- Return the aggregated data
         SELECT 
-            da.date,
-            da.subject,
-            da.attended_classes,
-            da.total_classes,
-            COALESCE(dc.hours_present, 0) as hours_present,
-            COALESCE(dc.detection_count, 0) as detection_count
-        FROM daily_attendance da
-        LEFT JOIN detection_counts dc ON da.date = dc.date
-        ORDER BY da.date
+            dt.date,
+            'Overall' as subject,
+            dt.attended_classes,
+            dt.total_classes,
+            0 as hours_present,
+            0 as detection_count
+        FROM daily_totals dt
+        ORDER BY dt.date
         """
         
-        df = pd.read_sql_query(query, conn, params=(
-            student_name, start_str, end_str,
-            student_name, start_str, end_str
-        ))
-    else:
-        # FALLBACK: If class_attendance table doesn't exist, use a simpler query
-        # that only uses the attendance_records table with the correct column name
-        print("class_attendance table doesn't exist. Using fallback query.")
+        df = pd.read_sql_query(query, conn, params=(student_name, start_str, end_str))
         
-        # Get detection data by date from attendance_records_enhanced
-        query = f"""
-        SELECT 
-            date(ar.timestamp) as date,
-            COUNT(DISTINCT strftime('%H', ar.timestamp)) as hours_present,
-            COUNT(*) as detection_count
-        FROM attendance_records_enhanced ar
-        JOIN student_profiles_enhanced sp ON ar.student_id = sp.student_id
-        WHERE {student_name_column} = ? AND date(ar.timestamp) BETWEEN ? AND ?
-        GROUP BY date(ar.timestamp)
-        ORDER BY date
-        """
-        
-        df = execute_query_df(query, (student_name, start_str, end_str))
-        
-        # Check if we got any results
         if df.empty:
             # Create empty DataFrame with expected structure
             df = pd.DataFrame(columns=[
-                'date', 'hours_present', 'detection_count'
+                'date', 'subject', 'attended_classes', 'total_classes', 'hours_present', 'detection_count'
             ])
         
-        # Synthesize the subject and attendance columns that would come from class_attendance
+    except Exception as e:
+        print(f"Error in get_extended_attendance_history: {e}")
+        # Return empty DataFrame with expected structure
+        df = pd.DataFrame(columns=[
+            'date', 'subject', 'attended_classes', 'total_classes', 'hours_present', 'detection_count'
+        ])
         if not df.empty:
             # Get class schedule info
             cursor.execute("""
@@ -1430,7 +1442,7 @@ def show_student_report():
         st.markdown(f"""
         <div class="username-container">
             <div class="username-text">
-                👤 {st.session_state.username} | ID: {student_id} | {section}
+                👤 {student_name} | ID: {student_id} | {section}
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -1456,8 +1468,8 @@ def show_student_report():
     
     st.markdown('</div>', unsafe_allow_html=True)
     
-    # Get schedule for today
-    schedule_df = get_schedule_for_day(day_name)
+    # Get schedule for today (filtered by student's enrolled subjects)
+    schedule_df = get_schedule_for_day(day_name, student_name)
     
     # Main content starts here
     
@@ -1659,7 +1671,7 @@ def show_student_report():
                 time_color = "#2196F3"  # Blue
             
             # Check if student attended
-            attended = check_attendance(student_name, date_str, start_time, end_time)
+            attended = check_attendance_for_subject(student_name, date_str, subject)
             show_attendance = is_current or is_past
             
             # Create a unique ID for this card
@@ -1692,9 +1704,10 @@ def show_student_report():
         attended_count = 0
         total_classes = 0
         
-        # Only count classes that have already started
+        # Count all classes for today, prioritizing manual attendance entries
         for _, row in schedule_df.iterrows():
             start_time = row['start_time']
+            subject_name = row['subject']
             
             try:
                 # Try AM/PM format
@@ -1707,9 +1720,13 @@ def show_student_report():
                     # Skip if time format is invalid
                     continue
             
-            if current_time_obj >= start_time_obj:
+            # Check if there's an attendance record for this subject (manual entry by teacher)
+            attendance_check = check_attendance_for_subject(student_name, date_str, subject_name)
+            
+            # If there's an attendance record OR the class has started, count it
+            if attendance_check or current_time_obj >= start_time_obj:
                 total_classes += 1
-                if check_attendance(student_name, date_str, row['start_time'], row['end_time']):
+                if attendance_check:
                     attended_count += 1
         
         attendance_rate = 0 if total_classes == 0 else (attended_count / total_classes) * 100
@@ -1725,7 +1742,7 @@ def show_student_report():
             with class_cols[0]:
                 st.metric("Total Classes", len(schedule_df))
             with class_cols[1]:
-                st.metric("Started So Far", total_classes)
+                st.metric("Available", total_classes)
             with class_cols[2]:
                 st.metric("Attended", attended_count, delta=f"{attendance_rate:.1f}%" if total_classes > 0 else None)
             
@@ -2052,91 +2069,52 @@ def get_secure_student_data():
         st.stop()
         return None
         
-    # Get student details from database
+    # Get student details from database using enhanced tables
     conn = get_db_connection()
     cursor = conn.cursor()
     
     try:
-        # First check if the student_profiles_enhanced table exists
-        execute_query("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
-        if not cursor.fetchone():
-            return {
-                'student_name': current_user,
-                'student_id': 'Unknown',
-                'section': 'Unknown'
-            }
+        # Get student data from users_enhanced and students_enhanced tables
+        query = """
+            SELECT s.name, s.roll_number, s.department, s.section, s.year
+            FROM users_enhanced u
+            JOIN students_enhanced s ON u.linked_id = s.student_id
+            WHERE u.username = ? AND u.role = 'student'
+        """
         
-        # Check what columns are available in the student_profiles_enhanced table
-        execute_query("PRAGMA table_info(student_profiles_enhanced)")
-        columns = [info[1] for info in cursor.fetchall()]
-        
-        # Build a flexible query based on available columns
-        select_cols = []
-        if "name" in columns: select_cols.append("name")
-        if "student_number" in columns: select_cols.append("student_number")
-        if "academic_year" in columns: select_cols.append("academic_year")
-        if "current_semester" in columns: select_cols.append("current_semester")
-        if "department_id" in columns: select_cols.append("department_id")
-        
-        if not select_cols:
-            st.warning("Required columns missing in student_profiles_enhanced table.")
-            return {
-                'student_name': current_user,
-                'student_id': 'Unknown',
-                'section': 'Unknown'
-            }
-        
-        # Build WHERE clause based on available columns
-        where_clauses = []
-        params = []
-        
-        if "name" in columns:
-            where_clauses.append("name = ?")
-            params.append(current_user)
-            
-        # Only add username to where clause if it exists
-        if "username" in columns:
-            where_clauses.append("username = ?")
-            params.append(current_user)
-        
-        # If no valid where clause can be constructed, return default
-        if not where_clauses:
-            st.warning("Cannot find any matching column to query student profile.")
-            return {
-                'student_name': current_user,
-                'student_id': 'Unknown',
-                'section': 'Unknown'
-            }
-        
-        # Construct and execute query
-        query = f"SELECT {', '.join(select_cols)} FROM student_profiles_enhanced WHERE {' OR '.join(where_clauses)}"
-        execute_query(query, params)
+        cursor.execute(query, (current_user,))
         result = cursor.fetchone()
         
-        if not result:
-            st.warning(f"Cannot find student profile for {current_user}. Please contact your administrator.")
-            return {
+        if result:
+            student_data = {
+                'student_name': result[0],
+                'student_id': result[1] or 'Unknown',
+                'section': result[3] or 'Unknown',
+                'department': result[2] or 'Unknown',
+                'year': result[4] or 'Unknown'
+            }
+            return student_data
+        else:
+            # Fallback if no proper record found
+            fallback_data = {
                 'student_name': current_user,
                 'student_id': 'Unknown',
-                'section': 'Unknown'
+                'section': 'Unknown',
+                'department': 'Unknown',
+                'year': 'Unknown'
             }
-        
-        # Build result dictionary based on available columns
-        student_data = {
-            'student_name': result[select_cols.index("name")] if "name" in select_cols else current_user,
-            'student_id': result[select_cols.index("student_number")] if "student_number" in select_cols else 'Unknown',
-            'section': f"Year {result[select_cols.index('academic_year')]}, Semester {result[select_cols.index('current_semester')]}" if "academic_year" in select_cols and "current_semester" in select_cols else 'Unknown'
-        }
-        
-        return student_data
-    
+            return fallback_data
+            
     except Exception as e:
-        st.error(f"Database error: {str(e)}")
-        return {
+        st.error(f"Error getting student data: {e}")
+        error_data = {
             'student_name': current_user,
             'student_id': 'Unknown',
-            'section': 'Unknown'
+            'section': 'Unknown',
+            'department': 'Unknown',
+            'year': 'Unknown'
         }
+        return error_data
     finally:
         conn.close()
 

@@ -14,13 +14,13 @@ def get_student_info(username):
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
-        # Get from enhanced student_profiles table
+        # Get from enhanced tables using proper joins
         cursor.execute("""
-            SELECT sp.student_id, sp.name, sp.student_number, d.department_name, 
-                   sp.academic_year, sp.current_semester, sp.email, sp.phone, sp.gpa
-            FROM student_profiles_enhanced sp
-            JOIN departments d ON sp.department_id = d.department_id
-            WHERE sp.username = ?
+            SELECT s.student_id, s.name, s.roll_number, s.department, 
+                   s.year, s.section, s.email, s.phone, u.full_name
+            FROM users_enhanced u
+            JOIN students_enhanced s ON u.linked_id = s.student_id
+            WHERE u.username = ? AND u.role = 'student'
         """, (username,))
         
         result = cursor.fetchone()
@@ -31,10 +31,10 @@ def get_student_info(username):
                 'student_id': result[2],
                 'department': result[3],
                 'academic_year': result[4],
-                'section': result[5],  # current_semester
+                'section': result[5],
                 'email': result[6],
                 'phone': result[7],
-                'gpa': result[8]
+                'gpa': None  # GPA not stored in current schema
             }
         
         return None
@@ -57,7 +57,7 @@ def get_student_subjects(student_id):
                    se.description, se.semester, cs.room_number as room, cs.day_of_week, cs.start_time, cs.end_time,
                    en.status, en.grade, 
                    COALESCE(att.attendance_percentage, 0) as attendance_percentage
-            FROM student_enrollments en
+            FROM student_enrollments_enhanced en
             JOIN subjects_enhanced se ON en.subject_id = se.subject_id  
             LEFT JOIN class_schedules_enhanced cs ON se.subject_id = cs.subject_id
             LEFT JOIN (
@@ -67,7 +67,7 @@ def get_student_subjects(student_id):
                 WHERE student_id = ?
                 GROUP BY subject_id, student_id
             ) att ON se.subject_id = att.subject_id AND en.student_id = att.student_id
-            WHERE en.student_id = ? AND en.status = 'enrolled'
+            WHERE en.student_id = ? AND en.status = 'active'
             ORDER BY se.subject_name
         """, (student_id, student_id))
         
@@ -105,22 +105,23 @@ def get_student_attendance(student_name, limit_days=30):
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
-        # Get student ID first
-        cursor.execute("SELECT student_id FROM student_profiles_enhanced WHERE name = ?", (student_name,))
+        # Get student ID from students_enhanced table
+        cursor.execute("SELECT student_id FROM students_enhanced WHERE name = ?", (student_name,))
         student_result = cursor.fetchone()
         if not student_result:
             return []
         student_id = student_result[0]
         
-        # Get attendance from the last N days
+        # Get attendance from the last N days (using a wider window to capture more data)
         cursor.execute("""
-            SELECT ar.timestamp, ar.subject_id, se.subject_name, ar.status, ar.class_date
+            SELECT ar.created_at as timestamp, ar.subject_id, se.subject_name, ar.status, ar.attendance_date
             FROM attendance_records_enhanced ar
             LEFT JOIN subjects_enhanced se ON ar.subject_id = se.subject_id
             WHERE ar.student_id = ?
-            ORDER BY ar.timestamp DESC
+            AND ar.attendance_date >= date('now', '-{} days')
+            ORDER BY ar.attendance_date DESC, ar.attendance_time DESC
             LIMIT ?
-        """, (student_id, limit_days * 5))  # Assume max 5 classes per day
+        """.format(180), (student_id, limit_days * 10))  # Use 180 days window, limit results
         
         attendance = cursor.fetchall()
         
@@ -145,6 +146,15 @@ def get_student_attendance(student_name, limit_days=30):
 def show_student_dashboard():
     """Main student dashboard"""
     st.title("🎓 Student Dashboard")
+    
+    # Add refresh button
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        if st.button("🔄 Refresh Data", type="secondary"):
+            # Clear any cached data
+            if hasattr(st, 'cache_data'):
+                st.cache_data.clear()
+            st.rerun()
     
     # Get current user info
     username = st.session_state.get('username', 'Unknown')
@@ -198,11 +208,20 @@ def show_student_dashboard():
                 if subject['description']:
                     st.write(f"**Description:** {subject['description']}")
                 
-                # Attendance percentage
+                # Attendance percentage with highlighting for recent updates
                 if subject['attendance_percentage'] is not None:
                     attendance_pct = subject['attendance_percentage']
                     color = "green" if attendance_pct >= 75 else "orange" if attendance_pct >= 60 else "red"
-                    st.markdown(f"**Attendance:** <span style='color: {color}'>{attendance_pct:.1f}%</span>", unsafe_allow_html=True)
+                    
+                    # Check if there's a recent attendance record for today
+                    today = datetime.now().strftime('%Y-%m-%d')
+                    recent_record = any(record['class_date'] == today and record['subject_id'] == subject['id'] 
+                                      for record in attendance_records)
+                    
+                    if recent_record:
+                        st.markdown(f"**Attendance:** <span style='color: {color}; background-color: yellow; padding: 2px 6px; border-radius: 3px;'>{attendance_pct:.1f}% ✨ Updated Today!</span>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"**Attendance:** <span style='color: {color}'>{attendance_pct:.1f}%</span>", unsafe_allow_html=True)
                 
                 # Grade if available
                 if subject['grade']:
@@ -212,6 +231,11 @@ def show_student_dashboard():
     
     # Attendance summary
     st.subheader("📊 Attendance Summary")
+    
+    # Show last refresh time
+    current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    st.info(f"📅 Last updated: {current_time}")
+    
     attendance_records = get_student_attendance(student_info['name'])
     
     if not attendance_records:
@@ -231,6 +255,17 @@ def show_student_dashboard():
         
         # Recent attendance
         st.subheader("📅 Recent Attendance")
+        
+        # Highlight today's attendance if any
+        today = datetime.now().strftime('%Y-%m-%d')
+        today_records = [record for record in attendance_records if record['class_date'] == today]
+        
+        if today_records:
+            st.success(f"🎉 Today's Attendance ({today}):")
+            for record in today_records:
+                status_icon = "✅" if record['status'] == 'present' else "❌"
+                st.info(f"{status_icon} **{record['subject_name']}** - {record['status'].capitalize()}")
+        
         recent_df = df.head(10)
         
         if not recent_df.empty:
@@ -280,9 +315,11 @@ def show_student_profile():
                 cursor = conn.cursor()
                 
                 cursor.execute("""
-                    UPDATE student_profiles 
+                    UPDATE students_enhanced 
                     SET email = ?, phone = ?
-                    WHERE username = ?
+                    WHERE student_id = (
+                        SELECT linked_id FROM users_enhanced WHERE username = ?
+                    )
                 """, (email, phone, username))
                 
                 conn.commit()
