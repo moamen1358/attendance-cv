@@ -933,6 +933,82 @@ def show_report():
     # Apply global CSS
     apply_global_css()
     
+    # Add custom CSS for manual entry forms
+    st.markdown("""
+    <style>
+    /* Custom styling for manual entry forms */
+    .stSelectbox > div > div {
+        border-radius: 8px !important;
+        border: 2px solid #e9ecef !important;
+        transition: border-color 0.3s ease !important;
+    }
+    
+    .stSelectbox > div > div:focus-within {
+        border-color: #667eea !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+    }
+    
+    .stDateInput > div > div {
+        border-radius: 8px !important;
+        border: 2px solid #e9ecef !important;
+    }
+    
+    .stTimeInput > div > div {
+        border-radius: 8px !important;
+        border: 2px solid #e9ecef !important;
+    }
+    
+    .stTextArea > div > div {
+        border-radius: 8px !important;
+        border: 2px solid #e9ecef !important;
+    }
+    
+    /* Primary button styling */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        border: none !important;
+        border-radius: 10px !important;
+        padding: 12px 24px !important;
+        font-weight: 600 !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+    }
+    
+    .stButton > button[kind="primary"]:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
+    }
+    
+    /* Radio button styling */
+    .stRadio > div {
+        gap: 20px !important;
+    }
+    
+    .stRadio > div > label {
+        background: #f8f9fa !important;
+        border: 2px solid #e9ecef !important;
+        border-radius: 8px !important;
+        padding: 8px 16px !important;
+        transition: all 0.3s ease !important;
+    }
+    
+    .stRadio > div > label:hover {
+        background: #e9ecef !important;
+        border-color: #667eea !important;
+    }
+    
+    /* Form sections */
+    .form-section {
+        background: white;
+        padding: 20px;
+        border-radius: 12px;
+        margin: 15px 0;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border: 1px solid #f0f0f0;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # Get username and ensure we have a valid value
     username = st.session_state.get('username', 'Unknown')
     
@@ -1215,8 +1291,32 @@ def show_report():
         
         # Manual Attendance Entry Section
         st.markdown("""
-        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6;">
-            <h3 style="color: #495057; margin-top: 0;">✏️ Manual Attendance Entry</h3>
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px; 
+            border-radius: 15px; 
+            border: none;
+            box-shadow: 0 8px 32px rgba(102, 126, 234, 0.2);
+            margin: 20px 0;
+        ">
+            <h2 style="
+                color: white; 
+                margin: 0 0 10px 0; 
+                font-weight: 600;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+                display: flex;
+                align-items: center;
+                gap: 10px;
+            ">
+                ✏️ Manual Attendance Entry
+            </h2>
+            <p style="
+                color: rgba(255,255,255,0.9); 
+                margin: 0;
+                font-size: 16px;
+            ">
+                Record attendance for students in your class
+            </p>
         </div>
         """, unsafe_allow_html=True)
         
@@ -1232,131 +1332,264 @@ def show_report():
         enrolled_students = cursor.fetchall()
         
         if enrolled_students:
+            # Add styled form container
+            st.markdown("""
+            <div style="
+                background: white;
+                padding: 30px;
+                border-radius: 15px;
+                box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+                border: 1px solid #e9ecef;
+                margin: 20px 0;
+            ">
+            """, unsafe_allow_html=True)
+            
+            st.markdown("### 👥 Student & Class Information")
             col1, col2, col3 = st.columns(3)
             
             with col1:
                 # Student selection dropdown
+                st.markdown("**🎓 Select Student**")
                 student_options = {f"{name} (ID: {student_id})": student_id for student_id, name in enrolled_students}
                 selected_student_display = st.selectbox(
-                    "Select Student",
+                    "",
                     options=list(student_options.keys()),
-                    key="manual_student_select"
+                    key="manual_student_select",
+                    help="Choose the student to record attendance for"
                 )
                 selected_student_id = student_options[selected_student_display]
             
             with col2:
                 # Date selection
+                st.markdown("**📅 Class Date**")
                 selected_date = st.date_input(
-                    "Select Date",
+                    "",
                     value=datetime.now().date(),
-                    key="manual_date_select"
+                    key="manual_date_select",
+                    help="Select the date of the class"
                 )
             
             with col3:
                 # Status selection
+                st.markdown("**📊 Attendance Status**")
                 attendance_status = st.selectbox(
-                    "Attendance Status",
+                    "",
                     options=["present", "absent", "late", "excused"],
-                    key="manual_status_select"
+                    key="manual_status_select",
+                    help="Select the attendance status",
+                    format_func=lambda x: {
+                        "present": "✅ Present",
+                        "absent": "❌ Absent", 
+                        "late": "🕐 Late",
+                        "excused": "📋 Excused"
+                    }[x]
                 )
             
-            # Time input with quick presets
+            st.markdown("---")
+            
+            # Enhanced time and notes section with better styling
+            st.markdown("""
+            <div style="background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%); 
+                        padding: 20px; border-radius: 10px; margin: 15px 0;
+                        border: 1px solid #dee2e6;">
+                <h4 style="color: #495057; margin: 0 0 15px 0; display: flex; align-items: center;">
+                    ⏰ Time & Additional Information
+                </h4>
+            </div>
+            """, unsafe_allow_html=True)
+            
             col4, col5 = st.columns(2)
             with col4:
                 # Initialize default time in session state if not exists
                 if "default_class_time" not in st.session_state:
                     st.session_state.default_class_time = datetime.strptime("09:00", "%H:%M").time()
                 
-                # Quick time presets
-                st.write("**Class Time**")
-                preset_cols = st.columns(4)
-                
-                with preset_cols[0]:
-                    if st.button("9:00", key="preset_9", help="9:00 AM"):
-                        st.session_state.default_class_time = datetime.strptime("09:00", "%H:%M").time()
-                        st.rerun()
-                
-                with preset_cols[1]:
-                    if st.button("11:00", key="preset_11", help="11:00 AM"):
-                        st.session_state.default_class_time = datetime.strptime("11:00", "%H:%M").time()
-                        st.rerun()
-                
-                with preset_cols[2]:
-                    if st.button("14:00", key="preset_14", help="2:00 PM"):
-                        st.session_state.default_class_time = datetime.strptime("14:00", "%H:%M").time()
-                        st.rerun()
-                
-                with preset_cols[3]:
-                    if st.button("16:00", key="preset_16", help="4:00 PM"):
-                        st.session_state.default_class_time = datetime.strptime("16:00", "%H:%M").time()
-                        st.rerun()
+                # Class time input with enhanced styling
+                st.markdown("""
+                <div style="background: #fff; padding: 15px; border-radius: 8px; 
+                           border: 1px solid #e3e6ea; margin-bottom: 10px;">
+                    <strong style="color: #495057;">🕒 Class Time</strong>
+                </div>
+                """, unsafe_allow_html=True)
                 
                 attendance_time = st.time_input(
-                    "Or select custom time:",
+                    "Select time:",
                     value=st.session_state.default_class_time,
                     key="manual_time_select",
-                    help="24-hour format (e.g., 15:00 for 3:00 PM)"
+                    help="Set the exact time for this attendance record"
                 )
             
             with col5:
-                notes = st.text_input(
-                    "Notes (Optional)",
-                    placeholder="Add any notes about this attendance record",
-                    key="manual_notes_input"
+                st.markdown("""
+                <div style="background: #fff; padding: 15px; border-radius: 8px; 
+                           border: 1px solid #e3e6ea; margin-bottom: 10px;">
+                    <strong style="color: #495057;">📝 Notes (Optional)</strong>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                notes = st.text_area(
+                    "",
+                    placeholder="Add any notes about this attendance record...",
+                    key="manual_notes_input",
+                    height=100,
+                    help="Optional notes about the attendance record"
                 )
             
-            # Submit button
-            if st.button("📝 Add Attendance Record", type="primary", use_container_width=True):
-                try:
-                    # Convert time to string format for SQLite compatibility
-                    attendance_time_str = attendance_time.strftime("%H:%M:%S")
-                    
-                    # Check if record already exists for this student, subject, and date
-                    cursor.execute("""
-                        SELECT id FROM attendance_records_enhanced 
-                        WHERE student_id = ? AND subject_id = ? AND attendance_date = ?
-                    """, (selected_student_id, subject_id, selected_date))
-                    
-                    existing_record = cursor.fetchone()
-                    
-                    if existing_record:
-                        # Update existing record
-                        cursor.execute("""
-                            UPDATE attendance_records_enhanced 
-                            SET status = ?, attendance_time = ?, notes = ?, 
-                                marked_by = ?, created_at = CURRENT_TIMESTAMP
-                            WHERE id = ?
-                        """, (attendance_status, attendance_time_str, notes, username, existing_record[0]))
+            st.markdown("---")
+            
+            
+            # Enhanced submit button section
+            st.markdown("---")
+            st.markdown("""
+            <div style="text-align: center; margin: 20px 0;">
+            """, unsafe_allow_html=True)
+            
+            col_submit1, col_submit2, col_submit3 = st.columns([2, 3, 2])
+            with col_submit2:
+                st.markdown("""
+                <style>
+                .stButton > button[data-testid="baseButton-primary"] {
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+                    border: none !important;
+                    color: white !important;
+                    font-weight: 600 !important;
+                    padding: 12px 24px !important;
+                    border-radius: 12px !important;
+                    box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
+                    transition: all 0.3s ease !important;
+                }
+                
+                .stButton > button[data-testid="baseButton-primary"]:hover {
+                    transform: translateY(-2px) !important;
+                    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
+                }
+                </style>
+                """, unsafe_allow_html=True)
+                
+                if st.button("📝 Add Attendance Record", type="primary", use_container_width=True, key="submit_manual_entry"):
+                    try:
+                        # Convert time to string format for SQLite compatibility
+                        attendance_time_str = attendance_time.strftime("%H:%M:%S")
                         
-                        st.success(f"✅ Updated attendance record for {selected_student_display.split(' (')[0]} on {selected_date}")
-                    else:
-                        # Get teacher_id for this subject
+                        # Check if record already exists for this student, subject, and date
                         cursor.execute("""
-                            SELECT teacher_id FROM teacher_subjects_enhanced 
-                            WHERE subject_id = ? LIMIT 1
-                        """, (subject_id,))
-                        teacher_result = cursor.fetchone()
-                        teacher_id = teacher_result[0] if teacher_result else 1
+                            SELECT id FROM attendance_records_enhanced 
+                            WHERE student_id = ? AND subject_id = ? AND attendance_date = ?
+                        """, (selected_student_id, subject_id, selected_date))
                         
-                        # Create new record
-                        cursor.execute("""
-                            INSERT INTO attendance_records_enhanced 
-                            (student_id, subject_id, teacher_id, attendance_date, attendance_time, 
-                             status, marked_by, notes, academic_year, semester, created_at)
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                        """, (selected_student_id, subject_id, teacher_id, selected_date, 
-                             attendance_time_str, attendance_status, username, notes, '2024-2025', 'Fall'))
+                        existing_record = cursor.fetchone()
                         
-                        st.success(f"✅ Added new attendance record for {selected_student_display.split(' (')[0]} on {selected_date}")
-                    
-                    conn.commit()
-                    
-                    # Refresh the page to show updated statistics
-                    st.rerun()
-                    
-                except Exception as e:
-                    st.error(f"❌ Error adding attendance record: {e}")
-                    conn.rollback()
+                        if existing_record:
+                            # Update existing record
+                            cursor.execute("""
+                                UPDATE attendance_records_enhanced 
+                                SET status = ?, attendance_time = ?, notes = ?, 
+                                    marked_by = ?, created_at = CURRENT_TIMESTAMP
+                                WHERE id = ?
+                            """, (attendance_status, attendance_time_str, notes, username, existing_record[0]))
+                            
+                            # Enhanced success message
+                            st.markdown(f"""
+                            <div style="
+                                background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+                                color: #155724;
+                                padding: 15px;
+                                border-radius: 10px;
+                                border-left: 5px solid #28a745;
+                                margin: 15px 0;
+                                box-shadow: 0 2px 10px rgba(40, 167, 69, 0.2);
+                            ">
+                                <strong>✅ Successfully Updated!</strong><br>
+                                Attendance record for <strong>{selected_student_display.split(' (')[0]}</strong> 
+                                has been updated for {selected_date.strftime('%B %d, %Y')}
+                            </div>
+                            """, unsafe_allow_html=True)
+                        else:
+                            # Get teacher_id for this subject
+                            cursor.execute("""
+                                SELECT teacher_id FROM teacher_subjects_enhanced 
+                                WHERE subject_id = ? LIMIT 1
+                            """, (subject_id,))
+                            teacher_result = cursor.fetchone()
+                            teacher_id = teacher_result[0] if teacher_result else 1
+                            
+                            # Create new record
+                            cursor.execute("""
+                                INSERT INTO attendance_records_enhanced 
+                                (student_id, subject_id, teacher_id, attendance_date, attendance_time, 
+                                 status, marked_by, notes, academic_year, semester, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                            """, (selected_student_id, subject_id, teacher_id, selected_date, 
+                                 attendance_time_str, attendance_status, username, notes, '2024-2025', 'Fall'))
+                            
+                            # Enhanced success message
+                            st.markdown(f"""
+                            <div style="
+                                background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+                                color: #155724;
+                                padding: 15px;
+                                border-radius: 10px;
+                                border-left: 5px solid #28a745;
+                                margin: 15px 0;
+                                box-shadow: 0 2px 10px rgba(40, 167, 69, 0.2);
+                            ">
+                                <strong>✅ Successfully Added!</strong><br>
+                                New attendance record created for <strong>{selected_student_display.split(' (')[0]}</strong> 
+                                on {selected_date.strftime('%B %d, %Y')}
+                            </div>
+                            """, unsafe_allow_html=True)
+                        
+                        conn.commit()
+                        
+                        # Display confirmation details in a styled info box
+                        st.markdown(f"""
+                        <div style="
+                            background: linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%);
+                            padding: 20px;
+                            border-radius: 12px;
+                            border-left: 5px solid #2196f3;
+                            margin: 15px 0;
+                            box-shadow: 0 3px 15px rgba(33, 150, 243, 0.2);
+                        ">
+                            <div style="display: flex; align-items: center; margin-bottom: 10px;">
+                                <span style="font-size: 24px; margin-right: 10px;">📋</span>
+                                <strong style="font-size: 18px; color: #1976d2;">Record Details</strong>
+                            </div>
+                            <div style="display: grid; grid-template-columns: auto 1fr; gap: 8px; color: #1565c0;">
+                                <strong>Student:</strong> <span>{selected_student_display.split(' (')[0]}</span>
+                                <strong>Date:</strong> <span>{selected_date.strftime('%B %d, %Y')}</span>
+                                <strong>Time:</strong> <span>{attendance_time.strftime('%I:%M %p')}</span>
+                                <strong>Status:</strong> <span>{attendance_status.title()} {{'✅' if attendance_status == 'present' else '❌' if attendance_status == 'absent' else '🕐' if attendance_status == 'late' else '📋'}}</span>
+                                {f"<strong>Notes:</strong> <span>{notes}</span>" if notes else ""}
+                            </div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Refresh the page to show updated statistics
+                        st.rerun()
+                        
+                    except Exception as e:
+                        # Enhanced error message
+                        st.markdown(f"""
+                        <div style="
+                            background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+                            color: #721c24;
+                            padding: 15px;
+                            border-radius: 10px;
+                            border-left: 5px solid #dc3545;
+                            margin: 15px 0;
+                            box-shadow: 0 2px 10px rgba(220, 53, 69, 0.2);
+                        ">
+                            <strong>❌ Error Occurred!</strong><br>
+                            Failed to add attendance record: {str(e)}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        conn.rollback()
+            
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+            # Close the styled form container
+            st.markdown("</div>", unsafe_allow_html=True)
         else:
             st.warning("No students enrolled in this subject.")
         
@@ -1928,43 +2161,101 @@ def show_report():
 
     # Tab 4: Manual Entry
     with tabs[3]:
-        st.header("Manual Attendance Entry")
-        st.write("Use this form to manually record attendance for a student")
+        # Header with modern styling
+        st.markdown("""
+        <div style="
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px; 
+            border-radius: 15px; 
+            margin-bottom: 20px;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
+        ">
+            <h2 style="
+                color: white; 
+                margin: 0 0 5px 0; 
+                font-weight: 600;
+                text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            ">✏️ Manual Attendance Entry</h2>
+            <p style="
+                color: rgba(255,255,255,0.9); 
+                margin: 0;
+                font-size: 16px;
+            ">Record attendance for any student and subject</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Create styled form container
+        st.markdown("""
+        <div style="
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+            border: 1px solid #e9ecef;
+        ">
+        """, unsafe_allow_html=True)
         
         # Create the form
         with st.form("manual_attendance_form"):
-            # Student selection
-            student_name = st.selectbox("Student", get_registered_students())
+            # Student and Date Section
+            st.markdown("### 👥 Student Information")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.markdown("**🎓 Select Student**")
+                student_name = st.selectbox("", get_registered_students(), help="Choose student to record attendance for")
+            with col2:
+                st.markdown("**📅 Class Date**")
+                class_date = st.date_input("", value=datetime.now().date(), help="Select the date of the class")
             
-            # Date selection (defaulting to today)
-            class_date = st.date_input("Class Date", value=datetime.now().date())
+            st.markdown("---")
+            st.markdown("### 📚 Class Details")
             
             # Subject and class type selection
             col1, col2 = st.columns([3, 1])
             with col1:
-                subject = st.selectbox("Subject", get_subjects())
+                st.markdown("**📖 Subject**")
+                subject = st.selectbox("", get_subjects(), help="Select the subject")
             with col2:
-                class_type = st.selectbox("Type", ["lec", "sec"], format_func=lambda x: "Lecture" if x == "lec" else "Section")
+                st.markdown("**🏫 Class Type**")
+                class_type = st.selectbox("", ["lec", "sec"], format_func=lambda x: "📊 Lecture" if x == "lec" else "📝 Section", help="Select class type")
             
-            # Time selection
+            st.markdown("---")
+            st.markdown("### ⏰ Class Timing")
+            
+            # Time selection with better styling
             col1, col2 = st.columns(2)
             with col1:
-                start_hour = st.selectbox("Start Hour", list(range(1, 13)), index=8)
-                start_minute = st.selectbox("Start Minute", [0, 15, 30, 45])
-                start_period = st.selectbox("AM/PM", ["AM", "PM"])
+                st.markdown("**🕐 Start Time**")
+                start_hour = st.selectbox("Hour", list(range(1, 13)), index=8, key="start_hour")
+                start_minute = st.selectbox("Minute", [0, 15, 30, 45], key="start_minute")
+                start_period = st.selectbox("Period", ["AM", "PM"], key="start_period")
                 start_time = f"{start_hour}:{start_minute:02d} {start_period}"
             with col2:
-                end_hour = st.selectbox("End Hour", list(range(1, 13)), index=9)
-                end_minute = st.selectbox("End Minute", [0, 15, 30, 45])
-                end_period = st.selectbox("AM/PM", ["AM", "PM"], key="end_period")
+                st.markdown("**🕐 End Time**")
+                end_hour = st.selectbox("Hour", list(range(1, 13)), index=9, key="end_hour")
+                end_minute = st.selectbox("Minute", [0, 15, 30, 45], key="end_minute")
+                end_period = st.selectbox("Period", ["AM", "PM"], key="end_period")
                 end_time = f"{end_hour}:{end_minute:02d} {end_period}"
             
-            # Attendance status
-            attended = st.radio("Attendance Status", ["Present", "Absent"], horizontal=True)
+            st.markdown("---")
+            st.markdown("### 📊 Attendance Status")
+            
+            # Attendance status with icons
+            attended = st.radio(
+                "",
+                ["Present", "Absent"], 
+                horizontal=True,
+                format_func=lambda x: f"✅ {x}" if x == "Present" else f"❌ {x}",
+                help="Select the attendance status"
+            )
             attended_val = attended == "Present"
             
-            # Submit button
-            submitted = st.form_submit_button("Record Attendance")
+            st.markdown("---")
+            
+            # Submit button with centered styling
+            col_submit1, col_submit2, col_submit3 = st.columns([2, 3, 2])
+            with col_submit2:
+                submitted = st.form_submit_button("📝 Record Attendance", use_container_width=True, type="primary")
             
             if submitted:
                 # Convert date to string format
@@ -1983,12 +2274,37 @@ def show_report():
                     )
                     
                     if success:
-                        st.success(f"Successfully recorded attendance for {student_name}: {'Present' if attended_val else 'Absent'} " +
-                                 f"({class_type})")
+                        # Success message with styling
+                        status_icon = "✅" if attended_val else "❌"
+                        status_text = "Present" if attended_val else "Absent"
+                        
+                        st.success(f"{status_icon} **Successfully recorded** attendance for **{student_name}**: **{status_text}**")
+                        
+                        # Display detailed confirmation
+                        st.markdown(f"""
+                        <div style="
+                            background: linear-gradient(135deg, #e8f5e8 0%, #f0f8f0 100%);
+                            padding: 15px;
+                            border-radius: 10px;
+                            border-left: 5px solid #4caf50;
+                            margin: 10px 0;
+                        ">
+                            <strong>📋 Record Details:</strong><br>
+                            <strong>Student:</strong> {student_name}<br>
+                            <strong>Subject:</strong> {subject}<br>
+                            <strong>Date:</strong> {class_date.strftime('%B %d, %Y')}<br>
+                            <strong>Time:</strong> {start_time} - {end_time}<br>
+                            <strong>Type:</strong> {'📊 Lecture' if class_type == 'lec' else '📝 Section'}<br>
+                            <strong>Status:</strong> {status_text} {status_icon}
+                        </div>
+                        """, unsafe_allow_html=True)
                     else:
-                        st.error("Failed to record attendance")
+                        st.error("❌ **Failed** to record attendance. Please try again.")
                 except Exception as e:
-                    st.error(f"Error recording attendance: {e}")
+                    st.error(f"❌ **Error** recording attendance: {e}")
+        
+        # Close the styled form container
+        st.markdown("</div>", unsafe_allow_html=True)
 
 def get_teacher_overall_stats(start_date=None, end_date=None, teacher_subjects=None):
     """Get overall attendance statistics for a teacher's subjects"""

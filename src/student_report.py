@@ -1438,21 +1438,127 @@ def show_student_report():
     
     # User info and buttons in column 2
     with top_col2:
-        # Username display with right alignment and student info
+        # Add custom CSS for the header buttons
+        st.markdown("""
+        <style>
+        /* Header buttons container */
+        .header-buttons-container {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        
+        /* Enhanced user info styling with modern gradient */
+        .user-info-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 15px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+            display: inline-block;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .user-info-badge:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.8s;
+        }
+        
+        .user-info-badge:hover:before {
+            left: 100%;
+        }
+        
+        /* Custom button styling - Enhanced symmetric design */
+        .stButton > button {
+            border-radius: 25px !important;
+            border: 2px solid #e9ecef !important;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
+            color: #495057 !important;
+            font-weight: 600 !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            height: 50px !important;
+            min-height: 50px !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+            position: relative !important;
+            overflow: hidden !important;
+        }
+        
+        .stButton > button:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: left 0.5s;
+        }
+        
+        .stButton > button:hover:before {
+            left: 100%;
+        }
+        
+        .stButton > button:hover {
+            transform: translateY(-3px) !important;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+        }
+        
+        /* Refresh button - Green theme with improved symmetry */
+        div[data-testid="column"]:nth-child(1) .stButton > button {
+            border-color: #28a745 !important;
+            color: #28a745 !important;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fff9 100%) !important;
+        }
+        
+        div[data-testid="column"]:nth-child(1) .stButton > button:hover {
+            background: linear-gradient(135deg, #e8f5e9 0%, #d4edda 100%) !important;
+            border-color: #1e7e34 !important;
+            color: #1e7e34 !important;
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.25) !important;
+        }
+        
+        /* Logout button - Red theme with symmetric design */
+        div[data-testid="column"]:nth-child(2) .stButton > button {
+            border-color: #dc3545 !important;
+            color: #dc3545 !important;
+            background: linear-gradient(135deg, #ffffff 0%, #fff8f8 100%) !important;
+        }
+        
+        div[data-testid="column"]:nth-child(2) .stButton > button:hover {
+            background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%) !important;
+            border-color: #721c24 !important;
+            color: #721c24 !important;
+            box-shadow: 0 8px 25px rgba(220, 53, 69, 0.25) !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # User info display with improved styling
         st.markdown(f"""
-        <div class="username-container">
-            <div class="username-text">
-                👤 {student_name} | ID: {student_id} | {section}
-            </div>
+        <div class="user-info-badge">
+            👤 {student_name} | ID: {student_id} | Section: {section}
         </div>
         """, unsafe_allow_html=True)
         
-        # Two buttons side by side
-        button_col1, button_col2 = st.columns(2)
+        # Two buttons in a clean layout
+        button_col1, button_col2 = st.columns([1, 1])
         
         with button_col1:
-            # Refresh button with same style as logout
-            if st.button("🔄 Refresh", key="manual_refresh", use_container_width=True):
+            # Refresh button
+            if st.button("🔄 Refresh", key="manual_refresh", use_container_width=True, help="Refresh attendance data"):
                 st.session_state.last_refresh = datetime.now()
                 st.session_state.is_refreshing = True
                 st.session_state.refresh_count += 1
@@ -1460,7 +1566,7 @@ def show_student_report():
         
         with button_col2:
             # Logout button
-            if st.button("🚪 Logout", use_container_width=True):
+            if st.button("🚪 Logout", key="logout_btn", use_container_width=True, help="Logout from system"):
                 for key in list(st.session_state.keys()):
                     del st.session_state[key]
                 st.query_params.clear()

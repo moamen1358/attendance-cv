@@ -592,43 +592,138 @@ def show_app():
                 
     # PROFESSOR/TEACHER VIEW - Only access to Reports page with no sidebar
     elif user_role in ['professor', 'teacher']:
-        # Skip CSS and session management for professor users to avoid display issues
+        # Apply modern CSS styling for professor interface
+        st.markdown("""
+        <style>
+        /* Enhanced user info styling with modern gradient for professors */
+        .user-info-badge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 30px;
+            font-weight: 600;
+            font-size: 15px;
+            text-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+            display: inline-block;
+            margin-bottom: 20px;
+            position: relative;
+            overflow: hidden;
+        }
         
-        # IMPROVED LAYOUT: Put title, username and buttons all in the same container - MATCHING STUDENT LAYOUT
+        .user-info-badge:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.8s;
+        }
+        
+        .user-info-badge:hover:before {
+            left: 100%;
+        }
+        
+        /* Custom button styling - Enhanced symmetric design for professors */
+        .stButton > button {
+            border-radius: 25px !important;
+            border: 2px solid #e9ecef !important;
+            background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
+            color: #495057 !important;
+            font-weight: 600 !important;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+            height: 50px !important;
+            min-height: 50px !important;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important;
+            position: relative !important;
+            overflow: hidden !important;
+        }
+        
+        .stButton > button:before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+            transition: left 0.5s;
+        }
+        
+        .stButton > button:hover:before {
+            left: 100%;
+        }
+        
+        .stButton > button:hover {
+            transform: translateY(-3px) !important;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15) !important;
+        }
+        
+        /* Refresh button - Green theme */
+        div[data-testid="column"]:nth-child(1) .stButton > button {
+            border-color: #28a745 !important;
+            color: #28a745 !important;
+            background: linear-gradient(135deg, #ffffff 0%, #f8fff9 100%) !important;
+        }
+        
+        div[data-testid="column"]:nth-child(1) .stButton > button:hover {
+            background: linear-gradient(135deg, #e8f5e9 0%, #d4edda 100%) !important;
+            border-color: #1e7e34 !important;
+            color: #1e7e34 !important;
+            box-shadow: 0 8px 25px rgba(40, 167, 69, 0.25) !important;
+        }
+        
+        /* Logout button - Red theme */
+        div[data-testid="column"]:nth-child(2) .stButton > button {
+            border-color: #dc3545 !important;
+            color: #dc3545 !important;
+            background: linear-gradient(135deg, #ffffff 0%, #fff8f8 100%) !important;
+        }
+        
+        div[data-testid="column"]:nth-child(2) .stButton > button:hover {
+            background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%) !important;
+            border-color: #721c24 !important;
+            color: #721c24 !important;
+            box-shadow: 0 8px 25px rgba(220, 53, 69, 0.25) !important;
+        }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # IMPROVED LAYOUT: Clean header with modern styling
         st.markdown('<div style="margin-top: 0; padding-top: 0;">', unsafe_allow_html=True)
-        top_col1, top_col2 = st.columns([3, 2])
         
-        # Put the dashboard title in the first column
-        with top_col1:
-            st.markdown("""
-            <div class="dashboard-header">
-                <h2 class="dashboard-title">📚 Teacher Dashboard</h2>
-            </div>
-            """, unsafe_allow_html=True)
+        # Dashboard title with improved styling
+        st.markdown("""
+        <div style="text-align: center; margin-bottom: 30px;">
+            <h1 style="color: #2c3e50; font-size: 2.5rem; font-weight: 700; margin-bottom: 10px;">
+                📚 Teacher Dashboard
+            </h1>
+        </div>
+        """, unsafe_allow_html=True)
         
-        # User info and buttons in column 2
-        with top_col2:
-            # Username display with right alignment - USING THE SAME STYLING AS STUDENT
-            st.markdown(f"""
-            <div class="username-container">
-                <div class="username-text" style="font-size: 0.8rem;">
-                    👤 {username} | Professor
-                </div>
+        # User info display with improved styling
+        st.markdown(f"""
+        <div style="text-align: center; margin-bottom: 30px;">
+            <div class="user-info-badge">
+                👤 {username} | Professor
             </div>
-            """, unsafe_allow_html=True)
-            
-            # Two buttons side by side - MATCHES STUDENT LAYOUT
-            button_col1, button_col2 = st.columns(2)
-            
-            with button_col1:
-                # Refresh button with same style as logout
-                if st.button("🔄 Refresh", key="prof_refresh", use_container_width=True):
-                    st.rerun()
-            
-            with button_col2:
-                # Logout button
-                if st.button("🚪 Logout", key="prof_logout", use_container_width=True):
-                    logout_user()
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Two buttons in a clean layout
+        button_col1, button_col2 = st.columns([1, 1])
+        
+        with button_col1:
+            # Refresh button
+            if st.button("🔄 Refresh", key="prof_refresh", use_container_width=True, help="Refresh dashboard data"):
+                st.rerun()
+        
+        with button_col2:
+            # Logout button
+            if st.button("🚪 Logout", key="prof_logout", use_container_width=True, help="Logout from system"):
+                logout_user()
         
         st.markdown('</div>', unsafe_allow_html=True)
         
