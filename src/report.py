@@ -1148,20 +1148,6 @@ def show_report():
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         border-radius: 2px;
     }
-    
-    /* Status indicators */
-    .status-indicator {
-        display: inline-block;
-        padding: 8px 16px;
-        border-radius: 20px;
-        font-weight: 600;
-        font-size: 0.9rem;
-        margin: 5px;
-    }
-    
-    .status-excellent { background: #d4edda; color: #155724; }
-    .status-good { background: #fff3cd; color: #856404; }
-    .status-needs-improvement { background: #f8d7da; color: #721c24; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -1387,27 +1373,6 @@ def show_report():
             
             # Enhanced performance indicator
             attendance_rate = attendance_rate or 0
-            if attendance_rate >= 85:
-                status_class = "status-excellent"
-                status_icon = "🎉"
-                status_text = "Excellent Performance"
-            elif attendance_rate >= 75:
-                status_class = "status-good"
-                status_icon = "👍"
-                status_text = "Good Performance"
-            else:
-                status_class = "status-needs-improvement"
-                status_icon = "�"
-                status_text = "Needs Improvement"
-            
-            st.markdown(f"""
-            <div style="text-align: center; margin: 20px 0;">
-                <span class="status-indicator {status_class}">
-                    {status_icon} {status_text}
-                </span>
-            </div>
-            """, unsafe_allow_html=True)
-        
         # Add some breathing space at the bottom
         st.markdown("<br>", unsafe_allow_html=True)
         
