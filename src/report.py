@@ -1077,9 +1077,10 @@ def show_report():
     
     # Now get specific statistics for this teacher's subject
     conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    
     try:
         # Get subject_id for the teacher's assigned subject
-        cursor = conn.cursor()
         cursor.execute("""
             SELECT subject_id FROM subjects_enhanced 
             WHERE subject_name = ?
@@ -1206,13 +1207,183 @@ def show_report():
             </div>
             """, unsafe_allow_html=True)
         
+        # Add some breathing space at the bottom
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Manual Attendance Entry Section
+        st.markdown("""
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6;">
+            <h3 style="color: #495057; margin-top: 0;">✏️ Manual Attendance Entry</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Get students enrolled in this subject
+        cursor.execute("""
+            SELECT DISTINCT s.student_id, s.name 
+            FROM students_enhanced s
+            JOIN student_enrollments_enhanced se ON s.student_id = se.student_id
+            WHERE se.subject_id = ?
+            ORDER BY s.name
+        """, (subject_id,))
+        
+        enrolled_students = cursor.fetchall()
+        
+        if enrolled_students:
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                # Student selection dropdown
+                student_options = {f"{name} (ID: {student_id})": student_id for student_id, name in enrolled_students}
+                selected_student_display = st.selectbox(
+                    "Select Student",
+                    options=list(student_options.keys()),
+                    key="manual_student_select"
+                )
+                selected_student_id = student_options[selected_student_display]
+            
+            with col2:
+                # Date selection
+                selected_date = st.date_input(
+                    "Select Date",
+                    value=datetime.now().date(),
+                    key="manual_date_select"
+                )
+            
+            with col3:
+                # Status selection
+                attendance_status = st.selectbox(
+                    "Attendance Status",
+                    options=["present", "absent", "late", "excused"],
+                    key="manual_status_select"
+                )
+            
+            # Time input
+            col4, col5 = st.columns(2)
+            with col4:
+                attendance_time = st.time_input(
+                    "Class Time",
+                    value=datetime.now().time(),
+                    key="manual_time_select"
+                )
+            
+            with col5:
+                notes = st.text_input(
+                    "Notes (Optional)",
+                    placeholder="Add any notes about this attendance record",
+                    key="manual_notes_input"
+                )
+            
+            # Submit button
+            if st.button("📝 Add Attendance Record", type="primary", use_container_width=True):
+                try:
+                    # Convert time to string format for SQLite compatibility
+                    attendance_time_str = attendance_time.strftime("%H:%M:%S")
+                    
+                    # Check if record already exists for this student, subject, and date
+                    cursor.execute("""
+                        SELECT id FROM attendance_records_enhanced 
+                        WHERE student_id = ? AND subject_id = ? AND attendance_date = ?
+                    """, (selected_student_id, subject_id, selected_date))
+                    
+                    existing_record = cursor.fetchone()
+                    
+                    if existing_record:
+                        # Update existing record
+                        cursor.execute("""
+                            UPDATE attendance_records_enhanced 
+                            SET status = ?, attendance_time = ?, notes = ?, 
+                                marked_by = ?, created_at = CURRENT_TIMESTAMP
+                            WHERE id = ?
+                        """, (attendance_status, attendance_time_str, notes, username, existing_record[0]))
+                        
+                        st.success(f"✅ Updated attendance record for {selected_student_display.split(' (')[0]} on {selected_date}")
+                    else:
+                        # Get teacher_id for this subject
+                        cursor.execute("""
+                            SELECT teacher_id FROM teacher_subjects_enhanced 
+                            WHERE subject_id = ? LIMIT 1
+                        """, (subject_id,))
+                        teacher_result = cursor.fetchone()
+                        teacher_id = teacher_result[0] if teacher_result else 1
+                        
+                        # Create new record
+                        cursor.execute("""
+                            INSERT INTO attendance_records_enhanced 
+                            (student_id, subject_id, teacher_id, attendance_date, attendance_time, 
+                             status, marked_by, notes, academic_year, semester, created_at)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                        """, (selected_student_id, subject_id, teacher_id, selected_date, 
+                             attendance_time_str, attendance_status, username, notes, '2024-2025', 'Fall'))
+                        
+                        st.success(f"✅ Added new attendance record for {selected_student_display.split(' (')[0]} on {selected_date}")
+                    
+                    conn.commit()
+                    
+                    # Refresh the page to show updated statistics
+                    st.rerun()
+                    
+                except Exception as e:
+                    st.error(f"❌ Error adding attendance record: {e}")
+                    conn.rollback()
+        else:
+            st.warning("No students enrolled in this subject.")
+        
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Recent Attendance Records Section
+        st.markdown("""
+        <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6;">
+            <h3 style="color: #495057; margin-top: 0;">📋 Recent Attendance Records</h3>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Get recent attendance records for this subject
+        cursor.execute("""
+            SELECT ar.attendance_date, s.name, ar.status, ar.attendance_time, ar.notes, ar.created_at
+            FROM attendance_records_enhanced ar
+            JOIN students_enhanced s ON ar.student_id = s.student_id
+            WHERE ar.subject_id = ?
+            ORDER BY ar.attendance_date DESC, ar.attendance_time DESC
+            LIMIT 10
+        """, (subject_id,))
+        
+        recent_records = cursor.fetchall()
+        
+        if recent_records:
+            # Create a DataFrame for better display
+            df = pd.DataFrame(recent_records, columns=[
+                'Date', 'Student', 'Status', 'Time', 'Notes', 'Recorded At'
+            ])
+            
+            # Format the dataframe
+            df['Date'] = pd.to_datetime(df['Date']).dt.strftime('%Y-%m-%d')
+            df['Time'] = df['Time'].astype(str)
+            df['Notes'] = df['Notes'].fillna('')
+            df['Recorded At'] = pd.to_datetime(df['Recorded At']).dt.strftime('%Y-%m-%d %H:%M')
+            
+            # Color code the status
+            def style_status(val):
+                if val == 'present':
+                    return 'background-color: #d4edda; color: #155724'
+                elif val == 'absent':
+                    return 'background-color: #f8d7da; color: #721c24'
+                elif val == 'late':
+                    return 'background-color: #fff3cd; color: #856404'
+                elif val == 'excused':
+                    return 'background-color: #d1ecf1; color: #0c5460'
+                return ''
+            
+            # Apply styling
+            styled_df = df.style.applymap(style_status, subset=['Status'])
+            
+            st.dataframe(styled_df, use_container_width=True, hide_index=True)
+        else:
+            st.info("No attendance records found for this subject.")
+        
     except Exception as e:
         st.error(f"Error getting subject statistics: {e}")
     finally:
         conn.close()
-    
-    # Add some breathing space at the bottom
-    st.markdown("<br><br>", unsafe_allow_html=True)
     
     # Subject-specific statistics are complete, return here to avoid duplicate displays
     return

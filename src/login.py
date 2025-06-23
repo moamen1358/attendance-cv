@@ -208,13 +208,7 @@ def get_available_users():
             return [(user, 'professor' if role == 'teacher' else role) for user, role in users]
         
         # Fallback to legacy tables if users_enhanced doesn't exist
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts_enhanced'")
-        if cursor.fetchone():
-            cursor.execute("SELECT username, role FROM user_accounts_enhanced ORDER BY role, username")
-            users = cursor.fetchall()
-            return [(user, 'professor' if role == 'teacher' else role) for user, role in users]
-        
-        # Last resort - empty list
+        # This is for compatibility with older database structures
         return []
         
     except sqlite3.Error as e:
@@ -263,7 +257,7 @@ def check_required_tables():
         cursor.execute("""
             SELECT name FROM sqlite_master 
             WHERE type='table' AND name IN (
-                'user_accounts_enhanced', 
+                'users_enhanced', 
                 'student_profiles_enhanced', 
                 'professor_profiles', 
                 'login_logs'
@@ -274,7 +268,7 @@ def check_required_tables():
         
         # Update table existence mapping to use enhanced tables
         tables = {
-            'user_accounts': 'user_accounts_enhanced' in existing_tables,
+            'user_accounts': 'users_enhanced' in existing_tables,
             'student_profiles': 'student_profiles_enhanced' in existing_tables,
             'professor_profiles': 'professor_profiles' in existing_tables,
             'login_logs': 'login_logs' in existing_tables
@@ -487,7 +481,12 @@ def login_page():
     
     # Check if other essential tables are missing
     if not tables.get('user_accounts', False):
-        st.error("User accounts table not found (looking for user_accounts_enhanced). Login functionality may be unavailable.")
+        # Check if we have users_enhanced instead
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users_enhanced'")
+        if cursor.fetchone():
+            print("Found users_enhanced table, using it for authentication")
+        else:
+            st.error("User accounts table not found. Login functionality may be unavailable.")
     
     username = st.text_input("Username")
     password = st.text_input("Password", type="password")
