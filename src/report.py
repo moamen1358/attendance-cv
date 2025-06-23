@@ -1066,9 +1066,14 @@ def show_report():
         subject_name = primary_subject
         subject_code = ""
     
-    # Display teacher's assigned subject prominently
-    st.success(f"📚 **Your Assigned Subject:** {subject_name} ({subject_code})")
-    st.markdown("---")
+    # Display teacher's assigned subject with professional styling
+    st.markdown("""
+    <div style="background: linear-gradient(90deg, #1f4e79 0%, #2980b9 100%); 
+                padding: 25px; border-radius: 12px; margin-bottom: 30px; color: white; text-align: center;">
+        <h2 style="margin: 0; font-weight: 600; font-size: 1.8rem;">📚 Subject Overview</h2>
+        <p style="margin: 10px 0 0 0; font-size: 1.2rem; opacity: 0.9;">""" + f"{subject_name} ({subject_code})" + """</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     # Now get specific statistics for this teacher's subject
     conn = sqlite3.connect(DATABASE_PATH)
@@ -1102,74 +1107,115 @@ def show_report():
         if stats:
             total_students, present_count, total_records, attendance_rate = stats
             
-            # Display key metrics for this subject
-            st.subheader("📊 Subject Statistics")
+            # Professional metrics styling
+            st.markdown("""
+            <style>
+            .metric-card {
+                background: white;
+                padding: 20px;
+                border-radius: 10px;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+                border-left: 4px solid #3498db;
+                margin-bottom: 15px;
+                transition: transform 0.2s ease;
+            }
+            .metric-card:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+            }
+            .metric-value {
+                font-size: 2.2rem;
+                font-weight: 700;
+                color: #2c3e50;
+                margin: 0;
+            }
+            .metric-label {
+                font-size: 0.95rem;
+                color: #7f8c8d;
+                margin: 5px 0 0 0;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+            }
+            .attendance-rate {
+                color: """ + ("#27ae60" if (attendance_rate or 0) >= 75 else "#e74c3c" if (attendance_rate or 0) < 60 else "#f39c12") + """;
+            }
+            </style>
+            """, unsafe_allow_html=True)
             
-            col1, col2, col3, col4 = st.columns(4)
+            # Display metrics in a clean 2x2 grid
+            row1_col1, row1_col2 = st.columns(2)
+            row2_col1, row2_col2 = st.columns(2)
             
-            with col1:
-                st.metric(
-                    label="Total Students", 
-                    value=total_students or 0
-                )
+            with row1_col1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-value">👥 {total_students or 0}</div>
+                    <div class="metric-label">Enrolled Students</div>
+                </div>
+                """, unsafe_allow_html=True)
             
-            with col2:
-                st.metric(
-                    label="Total Classes", 
-                    value=total_records or 0
-                )
+            with row1_col2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-value">📅 {total_records or 0}</div>
+                    <div class="metric-label">Total Classes</div>
+                </div>
+                """, unsafe_allow_html=True)
             
-            with col3:
-                st.metric(
-                    label="Present Count", 
-                    value=present_count or 0
-                )
+            with row2_col1:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-value">✅ {present_count or 0}</div>
+                    <div class="metric-label">Total Present</div>
+                </div>
+                """, unsafe_allow_html=True)
             
-            with col4:
-                st.metric(
-                    label="Attendance Rate", 
-                    value=f"{attendance_rate or 0}%"
-                )
+            with row2_col2:
+                st.markdown(f"""
+                <div class="metric-card">
+                    <div class="metric-value attendance-rate">📊 {attendance_rate or 0}%</div>
+                    <div class="metric-label">Attendance Rate</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            # Add professional performance indicator
+            st.markdown("<br>", unsafe_allow_html=True)
+            
+            attendance_rate = attendance_rate or 0
+            if attendance_rate >= 85:
+                performance_color = "#27ae60"
+                performance_icon = "🎉"
+                performance_text = "Excellent attendance rate!"
+            elif attendance_rate >= 75:
+                performance_color = "#f39c12"
+                performance_icon = "👍"
+                performance_text = "Good attendance rate"
+            elif attendance_rate >= 60:
+                performance_color = "#e67e22"
+                performance_icon = "⚠️"
+                performance_text = "Moderate attendance - consider engagement strategies"
+            else:
+                performance_color = "#e74c3c"
+                performance_icon = "📉"
+                performance_text = "Low attendance - may need intervention"
+            
+            st.markdown(f"""
+            <div style="background: {performance_color}; color: white; padding: 15px; 
+                        border-radius: 8px; text-align: center; font-weight: 500;">
+                {performance_icon} {performance_text}
+            </div>
+            """, unsafe_allow_html=True)
         
     except Exception as e:
         st.error(f"Error getting subject statistics: {e}")
     finally:
         conn.close()
-        st.info("📚 No subjects are currently assigned to you. Please contact the administrator to assign subjects.")
-        
-        # Add a helpful button for troubleshooting
-        if st.button("🔍 Debug Subject Assignment", help="Click to see debug information"):
-            st.write("**Debug Information:**")
-            st.write(f"Username: {username}")
-            
-            # Show available teachers
-            conn = sqlite3.connect('attendance_system.db')
-            cursor = conn.cursor()
-            
-            cursor.execute("SELECT employee_id, name FROM teachers_enhanced LIMIT 5")
-            teachers = cursor.fetchall()
-            st.write("**Sample Teachers:**")
-            for emp_id, name in teachers:
-                st.write(f"- Employee ID: {emp_id}, Name: {name}")
-            
-            # Show available subjects
-            cursor.execute("SELECT subject_id, subject_name FROM subjects_enhanced LIMIT 5")
-            subjects = cursor.fetchall()
-            st.write("**Sample Subjects:**")
-            for subj_id, subj_name in subjects:
-                st.write(f"- Subject ID: {subj_id}, Name: {subj_name}")
-            
-            conn.close()
     
-    # If a subject is selected, show its attendance
-    if 'selected_subject_id' in st.session_state:
-        show_subject_attendance(st.session_state['selected_subject_id'], st.session_state['selected_subject_name'])
-
-    # Apply global CSS to ensure consistency
-    apply_global_css()
+    # Add some breathing space at the bottom
+    st.markdown("<br><br>", unsafe_allow_html=True)
     
-    # Add extra padding enforcement for professor view
-    enforce_fixed_padding()
+    # Subject-specific statistics are complete, return here to avoid duplicate displays
+    return
     
     # Force override any page-specific padding that might conflict
     # PLUS: Add standardized heading styles with TEAL color scheme
