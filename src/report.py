@@ -437,6 +437,50 @@ def add_manual_attendance(student_name, class_date, subject, start_time, end_tim
     finally:
         conn.close()
 
+# Simplified function to add manual attendance record
+# Uses the enhanced database schema for cleaner operation
+def add_manual_attendance_simple(student_name, class_date, subject, attendance_time, status, notes=""):
+    """
+    Simplified function to add manual attendance record
+    Uses the enhanced database schema for cleaner operation
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    try:
+        # Get student ID
+        cursor.execute("SELECT student_id FROM students_enhanced WHERE name = ?", (student_name,))
+        student_result = cursor.fetchone()
+        if not student_result:
+            return False, f"Student '{student_name}' not found"
+        student_id = student_result[0]
+        
+        # Get subject ID
+        cursor.execute("SELECT subject_id FROM subjects_enhanced WHERE subject_name = ?", (subject,))
+        subject_result = cursor.fetchone()
+        if not subject_result:
+            return False, f"Subject '{subject}' not found"
+        subject_id = subject_result[0]
+        
+        # Format the time for database
+        time_str = attendance_time.strftime("%H:%M:%S")
+        
+        # Insert or update attendance record
+        cursor.execute("""
+            INSERT OR REPLACE INTO attendance_records_enhanced
+            (student_id, subject_id, attendance_date, attendance_time, status, notes, recorded_by)
+            VALUES (?, ?, ?, ?, ?, ?, 'manual_entry')
+        """, (student_id, subject_id, class_date, time_str, status, notes))
+        
+        conn.commit()
+        return True, "Attendance recorded successfully"
+        
+    except Exception as e:
+        conn.rollback()
+        return False, f"Error recording attendance: {str(e)}"
+    finally:
+        conn.close()
+
 # Modified function to get attendance summary filtered by teacher subjects
 def get_attendance_summary(start_date=None, end_date=None, search_term=None, sort_by="student_name", sort_dir="asc", limit=100, offset=0, teacher_subjects=None):
     """Get attendance summary with pagination, search and sorting options"""
@@ -933,79 +977,191 @@ def show_report():
     # Apply global CSS
     apply_global_css()
     
-    # Add custom CSS for manual entry forms
+    # Add enhanced CSS for professor dashboard
     st.markdown("""
     <style>
-    /* Custom styling for manual entry forms */
-    .stSelectbox > div > div {
-        border-radius: 8px !important;
-        border: 2px solid #e9ecef !important;
-        transition: border-color 0.3s ease !important;
+    /* Enhanced dashboard styling */
+    .dashboard-container {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+        padding: 0;
     }
     
-    .stSelectbox > div > div:focus-within {
-        border-color: #667eea !important;
-        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
-    }
-    
-    .stDateInput > div > div {
-        border-radius: 8px !important;
-        border: 2px solid #e9ecef !important;
-    }
-    
-    .stTimeInput > div > div {
-        border-radius: 8px !important;
-        border: 2px solid #e9ecef !important;
-    }
-    
-    .stTextArea > div > div {
-        border-radius: 8px !important;
-        border: 2px solid #e9ecef !important;
-    }
-    
-    /* Primary button styling */
-    .stButton > button[kind="primary"] {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
-        border: none !important;
-        border-radius: 10px !important;
-        padding: 12px 24px !important;
-        font-weight: 600 !important;
-        transition: all 0.3s ease !important;
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
-    }
-    
-    .stButton > button[kind="primary"]:hover {
-        transform: translateY(-2px) !important;
-        box-shadow: 0 6px 20px rgba(102, 126, 234, 0.4) !important;
-    }
-    
-    /* Radio button styling */
-    .stRadio > div {
-        gap: 20px !important;
-    }
-    
-    .stRadio > div > label {
-        background: #f8f9fa !important;
-        border: 2px solid #e9ecef !important;
-        border-radius: 8px !important;
-        padding: 8px 16px !important;
-        transition: all 0.3s ease !important;
-    }
-    
-    .stRadio > div > label:hover {
-        background: #e9ecef !important;
-        border-color: #667eea !important;
-    }
-    
-    /* Form sections */
-    .form-section {
+    /* Modern card styling */
+    .professor-card {
         background: white;
-        padding: 20px;
-        border-radius: 12px;
+        border-radius: 15px;
+        padding: 25px;
         margin: 15px 0;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
-        border: 1px solid #f0f0f0;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
+    
+    .professor-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+    }
+    
+    /* Header card styling */
+    .header-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        text-align: center;
+        margin-bottom: 30px;
+    }
+    
+    /* Stats card styling */
+    .stats-card {
+        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+        text-align: center;
+    }
+    
+    /* Metric cards */
+    .metric-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        border-left: 4px solid;
+        margin: 10px 0;
+        transition: all 0.3s ease;
+    }
+    
+    .metric-card.students { border-left-color: #3498db; }
+    .metric-card.attendance { border-left-color: #2ecc71; }
+    .metric-card.rate { border-left-color: #f39c12; }
+    
+    .metric-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+    }
+    
+    .metric-number {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #2c3e50;
+        margin: 0;
+    }
+    
+    .metric-label {
+        font-size: 1rem;
+        color: #7f8c8d;
+        margin: 5px 0 0 0;
+        font-weight: 500;
+    }
+    
+    /* Tab styling improvements */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background: white;
+        border-radius: 10px;
+        padding: 5px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        border-radius: 8px;
+        color: #64748b;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+    }
+    
+    /* Subject overview styling */
+    .subject-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 15px;
+        text-align: center;
+        margin: 20px 0;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .subject-header:before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        animation: pulse 4s ease-in-out infinite;
+    }
+    
+    @keyframes pulse {
+        0%, 100% { opacity: 0.3; }
+        50% { opacity: 0.1; }
+    }
+    
+    .subject-title {
+        font-size: 2rem;
+        font-weight: 700;
+        margin: 0 0 10px 0;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        position: relative;
+        z-index: 1;
+    }
+    
+    .subject-code {
+        font-size: 1.2rem;
+        opacity: 0.9;
+        position: relative;
+        z-index: 1;
+    }
+    
+    /* Enhanced form styling */
+    .form-container {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        margin: 20px 0;
+    }
+    
+    .form-section-title {
+        color: #2c3e50;
+        font-size: 1.5rem;
+        font-weight: 600;
+        margin: 0 0 20px 0;
+        text-align: center;
+        position: relative;
+    }
+    
+    .form-section-title:after {
+        content: '';
+        position: absolute;
+        bottom: -5px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 50px;
+        height: 3px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 2px;
+    }
+    
+    /* Status indicators */
+    .status-indicator {
+        display: inline-block;
+        padding: 8px 16px;
+        border-radius: 20px;
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin: 5px;
+    }
+    
+    .status-excellent { background: #d4edda; color: #155724; }
+    .status-good { background: #fff3cd; color: #856404; }
+    .status-needs-improvement { background: #f8d7da; color: #721c24; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -1145,12 +1301,11 @@ def show_report():
         subject_name = primary_subject
         subject_code = ""
     
-    # Display teacher's assigned subject with professional styling
-    st.markdown("""
-    <div style="background: linear-gradient(90deg, #1f4e79 0%, #2980b9 100%); 
-                padding: 25px; border-radius: 12px; margin-bottom: 30px; color: white; text-align: center;">
-        <h2 style="margin: 0; font-weight: 600; font-size: 1.8rem;">📚 Subject Overview</h2>
-        <p style="margin: 10px 0 0 0; font-size: 1.2rem; opacity: 0.9;">""" + f"{subject_name} ({subject_code})" + """</p>
+    # Display teacher's assigned subject with enhanced modern styling
+    st.markdown(f"""
+    <div class="subject-header">
+        <h1 class="subject-title">📚 {subject_name}</h1>
+        <p class="subject-code">Course Code: {subject_code}</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1187,102 +1342,69 @@ def show_report():
         if stats:
             total_students, present_count, total_records, attendance_rate = stats
             
-            # Professional metrics styling
+            # Modern dashboard metrics
             st.markdown("""
-            <style>
-            .metric-card {
-                background: white;
-                padding: 20px;
-                border-radius: 10px;
-                box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-                border-left: 4px solid #3498db;
-                margin-bottom: 15px;
-                transition: transform 0.2s ease;
-            }
-            .metric-card:hover {
-                transform: translateY(-2px);
-                box-shadow: 0 4px 16px rgba(0,0,0,0.15);
-            }
-            .metric-value {
-                font-size: 2.2rem;
-                font-weight: 700;
-                color: #2c3e50;
-                margin: 0;
-            }
-            .metric-label {
-                font-size: 0.95rem;
-                color: #7f8c8d;
-                margin: 5px 0 0 0;
-                text-transform: uppercase;
-                letter-spacing: 0.5px;
-            }
-            .attendance-rate {
-                color: """ + ("#27ae60" if (attendance_rate or 0) >= 75 else "#e74c3c" if (attendance_rate or 0) < 60 else "#f39c12") + """;
-            }
-            </style>
+            <div class="professor-card stats-card">
+                <h2 style="margin: 0 0 20px 0; font-size: 1.5rem;">📊 Class Overview</h2>
+            </div>
             """, unsafe_allow_html=True)
             
-            # Display metrics in a clean 2x2 grid
-            row1_col1, row1_col2 = st.columns(2)
-            row2_col1, row2_col2 = st.columns(2)
+            # Display metrics in a clean grid with modern cards
+            metric_col1, metric_col2, metric_col3, metric_col4 = st.columns(4)
             
-            with row1_col1:
+            with metric_col1:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-value">👥 {total_students or 0}</div>
-                    <div class="metric-label">Enrolled Students</div>
+                <div class="metric-card students">
+                    <p class="metric-number">{total_students or 0}</p>
+                    <p class="metric-label">👥 Students</p>
                 </div>
                 """, unsafe_allow_html=True)
             
-            with row1_col2:
+            with metric_col2:
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-value">📅 {total_records or 0}</div>
-                    <div class="metric-label">Total Classes</div>
+                <div class="metric-card attendance">
+                    <p class="metric-number">{present_count or 0}</p>
+                    <p class="metric-label">✅ Present</p>
                 </div>
                 """, unsafe_allow_html=True)
             
-            with row2_col1:
+            with metric_col3:
                 st.markdown(f"""
                 <div class="metric-card">
-                    <div class="metric-value">✅ {present_count or 0}</div>
-                    <div class="metric-label">Total Present</div>
+                    <p class="metric-number">{total_records or 0}</p>
+                    <p class="metric-label">📅 Total Classes</p>
                 </div>
                 """, unsafe_allow_html=True)
             
-            with row2_col2:
+            with metric_col4:
+                rate_color = "#2ecc71" if (attendance_rate or 0) >= 75 else "#f39c12" if (attendance_rate or 0) >= 60 else "#e74c3c"
                 st.markdown(f"""
-                <div class="metric-card">
-                    <div class="metric-value attendance-rate">📊 {attendance_rate or 0}%</div>
-                    <div class="metric-label">Attendance Rate</div>
+                <div class="metric-card rate" style="border-left-color: {rate_color};">
+                    <p class="metric-number" style="color: {rate_color};">{attendance_rate or 0}%</p>
+                    <p class="metric-label">📊 Rate</p>
                 </div>
                 """, unsafe_allow_html=True)
             
-            # Add professional performance indicator
-            st.markdown("<br>", unsafe_allow_html=True)
-            
+            # Enhanced performance indicator
             attendance_rate = attendance_rate or 0
             if attendance_rate >= 85:
-                performance_color = "#27ae60"
-                performance_icon = "🎉"
-                performance_text = "Excellent attendance rate!"
+                status_class = "status-excellent"
+                status_icon = "🎉"
+                status_text = "Excellent Performance"
             elif attendance_rate >= 75:
-                performance_color = "#f39c12"
-                performance_icon = "👍"
-                performance_text = "Good attendance rate"
-            elif attendance_rate >= 60:
-                performance_color = "#e67e22"
-                performance_icon = "⚠️"
-                performance_text = "Moderate attendance - consider engagement strategies"
+                status_class = "status-good"
+                status_icon = "👍"
+                status_text = "Good Performance"
             else:
-                performance_color = "#e74c3c"
-                performance_icon = "📉"
-                performance_text = "Low attendance - may need intervention"
+                status_class = "status-needs-improvement"
+                status_icon = "�"
+                status_text = "Needs Improvement"
             
             st.markdown(f"""
-            <div style="background: {performance_color}; color: white; padding: 15px; 
-                        border-radius: 8px; text-align: center; font-weight: 500;">
-                {performance_icon} {performance_text}
+            <div style="text-align: center; margin: 20px 0;">
+                <span class="status-indicator {status_class}">
+                    {status_icon} {status_text}
+                </span>
             </div>
             """, unsafe_allow_html=True)
         
@@ -1785,16 +1907,26 @@ def show_report():
             if st.button("🔄 Refresh Data", use_container_width=True):
                 st.rerun()
     
-    # Add tabs for different report sections
-    tabs = st.tabs(["Attendance Summary", "Class Attendance", "Raw Attendance Logs", "Manual Entry"])
+    # Enhanced tabs with better organization and icons
+    tabs = st.tabs([
+        "📊 Dashboard", 
+        "👥 Class Records", 
+        "📋 Attendance Log", 
+        "✏️ Manual Entry"
+    ])
     
     # Get list of all students for filtering
     students = ["All Students"] + get_registered_students()
     subjects = teacher_subjects  # Now using teacher-specific subjects
     
-    # Tab 1: Enhanced Attendance Summary with beautiful visualizations
+    # Tab 1: Enhanced Dashboard with modern visualizations
     with tabs[0]:
-        st.header("Attendance Summary Statistics")
+        st.markdown("""
+        <div class="professor-card">
+            <h2 style="margin: 0 0 20px 0; color: #2c3e50; font-size: 1.8rem; text-align: center;">
+                📊 Attendance Analytics Dashboard
+            </h2>
+        """, unsafe_allow_html=True)
         
         # Get overall attendance metrics - filtered by teacher subjects
         overall_stats = get_teacher_overall_stats(start_date_str, end_date_str, teacher_subjects)
@@ -2159,29 +2291,15 @@ def show_report():
         else:
             st.info("No attendance logs found for the selected filters.")
 
-    # Tab 4: Manual Entry
+    # Tab 4: Enhanced Manual Entry
     with tabs[3]:
-        # Header with modern styling
+        # Modern form header
         st.markdown("""
-        <div style="
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 25px; 
-            border-radius: 15px; 
-            margin-bottom: 20px;
-            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.3);
-        ">
-            <h2 style="
-                color: white; 
-                margin: 0 0 5px 0; 
-                font-weight: 600;
-                text-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            ">✏️ Manual Attendance Entry</h2>
-            <p style="
-                color: rgba(255,255,255,0.9); 
-                margin: 0;
-                font-size: 16px;
-            ">Record attendance for any student and subject</p>
-        </div>
+        <div class="form-container">
+            <h2 class="form-section-title">✏️ Manual Attendance Entry</h2>
+            <p style="text-align: center; color: #64748b; margin-bottom: 30px;">
+                Record attendance for students in your class
+            </p>
         """, unsafe_allow_html=True)
         
         # Create styled form container
@@ -2305,73 +2423,3 @@ def show_report():
         
         # Close the styled form container
         st.markdown("</div>", unsafe_allow_html=True)
-
-def get_teacher_overall_stats(start_date=None, end_date=None, teacher_subjects=None):
-    """Get overall attendance statistics for a teacher's subjects"""
-    conn = get_db_connection()
-    
-    # Prepare conditions and parameters
-    conditions = []
-    params = []
-    
-    if start_date:
-        conditions.append("ar.attendance_date >= ?")
-        params.append(start_date)
-    
-    if end_date:
-        conditions.append("ar.attendance_date <= ?")
-        params.append(end_date)
-    
-    # Add filter for teacher's subjects
-    if teacher_subjects and "All Subjects" not in teacher_subjects:
-        # Extract subject names from teacher_subjects (they may include course codes)
-        subject_names = []
-        for subject in teacher_subjects:
-            if "(" in subject and ")" in subject:
-                # Extract just the subject name part before the parentheses
-                subject_name = subject.split(" (")[0].strip()
-            else:
-                subject_name = subject.strip()
-            subject_names.append(subject_name)
-        
-        placeholders = ", ".join(["?"] * len(subject_names))
-        conditions.append(f"sub.subject_name IN ({placeholders})")
-        params.extend(subject_names)
-    
-    # Build WHERE clause
-    where_clause = " AND ".join(conditions)
-    if where_clause:
-        where_clause = "WHERE " + where_clause
-    
-    # Query for overall statistics
-    query = f"""
-    SELECT 
-        COUNT(DISTINCT ar.student_id) as total_students,
-        COUNT(*) as total_classes,
-        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) as attended_classes,
-        COUNT(CASE WHEN ar.status = 'present' THEN 1 ELSE NULL END) * 100.0 / COUNT(*) as attendance_rate
-    FROM attendance_records_enhanced ar
-    JOIN students_enhanced s ON ar.student_id = s.student_id
-    JOIN subjects_enhanced sub ON ar.subject_id = sub.subject_id
-    {where_clause}
-    """
-    
-    # Execute query
-    result = conn.execute(query, params).fetchone()
-    conn.close()
-    
-    # Return as dictionary
-    if result:
-        return {
-            'total_students': result[0] or 0,
-            'total_classes': result[1] or 0,
-            'attended_classes': result[2] or 0,
-            'attendance_rate': round(result[3] or 0, 1)
-        }
-    else:
-        return {
-            'total_students': 0,
-            'total_classes': 0,
-            'attended_classes': 0,
-            'attendance_rate': 0
-        }
