@@ -186,62 +186,6 @@ def get_student_info_enhanced(username):
     finally:
         conn.close()
 
-def get_available_users():
-    """
-    Get a list of available users from the database
-    Returns a list of tuples (username, role)
-    """
-    conn = create_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # Check users_enhanced table first (primary user table)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users_enhanced'")
-        if cursor.fetchone():
-            cursor.execute("""
-                SELECT username, role 
-                FROM users_enhanced 
-                WHERE status = 'active' 
-                ORDER BY role, username
-            """)
-            users = cursor.fetchall()
-            # Convert teacher to professor for consistency
-            return [(user, 'professor' if role == 'teacher' else role) for user, role in users]
-        
-        # Fallback to legacy tables if users_enhanced doesn't exist
-        # This is for compatibility with older database structures
-        return []
-        
-    except sqlite3.Error as e:
-        st.error(f"Database error: {e}")
-        return []
-    
-    finally:
-        conn.close()
-
-def get_user_section(username):
-    """Get the section for a student user (if available)"""
-    conn = create_connection()
-    cursor = conn.cursor()
-    
-    try:
-        # First check if student_profiles_enhanced table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles_enhanced'")
-        if not cursor.fetchone():
-            # Table doesn't exist, return default value
-            return "Unassigned"
-            
-        # Table exists, so query it
-        cursor.execute("SELECT section FROM student_profiles_enhanced WHERE name = ? OR username = ?", (username, username))
-        result = cursor.fetchone()
-        
-        return result[0] if result and result[0] else "Unassigned"
-    except Exception as e:
-        print(f"Error getting user section: {e}")
-        return "Unassigned"
-    finally:
-        conn.close()
-
 def check_required_tables():
     """Check if all required database tables exist - Updated for enhanced tables"""
     conn = create_connection()
@@ -561,24 +505,6 @@ def login_page():
                 print(f"Error logging failed login: {e}")
                 
             st.error("Invalid username or password")
-    
-    # Show available users from database
-    with st.expander("Available Users"):
-        users = get_available_users()
-        if users:
-            st.write("Available users in the system:")
-            for user, role in users:
-                try:
-                    section = get_user_section(user) if role == "student" else "N/A"
-                except Exception as e:
-                    # Handle any errors during section lookup
-                    print(f"Error getting section for {user}: {e}")
-                    section = "Unknown"
-                    
-                st.write(f"- {user} (Role: {role}, Section: {section})")
-            st.info("Note: Passwords are hashed in the database. Contact the administrator if you need access.")
-        else:
-            st.warning("No users found in the database.")
 
 # Simple function to get client IP for logging
 def get_client_ip():
