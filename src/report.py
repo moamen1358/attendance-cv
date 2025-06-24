@@ -1421,7 +1421,7 @@ def show_report():
         </div>
         """, unsafe_allow_html=True)
         
-        # Get students enrolled in this subject
+        # Get students enrolled in this subject for manual entry
         cursor.execute("""
             SELECT DISTINCT s.student_id, s.name 
             FROM students_enhanced s
@@ -1432,10 +1432,169 @@ def show_report():
         
         enrolled_students = cursor.fetchall()
         
-        st.markdown("<br>", unsafe_allow_html=True)
+        if enrolled_students:
+            # Manual entry form - properly wrapped
+            with st.form("manual_attendance_form_main", clear_on_submit=False):
+                st.markdown("### 👥 Student & Class Information")
+                
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    # Student selection dropdown
+                    st.markdown("**🎓 Select Student**")
+                    student_options = [name for student_id, name in enrolled_students]
+                    selected_student_name = st.selectbox(
+                        "Choose student",
+                        options=student_options,
+                        key="manual_student_select_main",
+                        help="Choose the student to record attendance for",
+                        label_visibility="collapsed"
+                    )
+                    # Get student ID for the selected name
+                    selected_student_id = next(student_id for student_id, name in enrolled_students if name == selected_student_name)
+                
+                with col2:
+                    # Date selection
+                    st.markdown("**📅 Class Date**")
+                    selected_date = st.date_input(
+                        "Select date",
+                        value=datetime.now().date(),
+                        key="manual_date_select_main",
+                        help="Select the date of the class",
+                        label_visibility="collapsed"
+                    )
+                
+                with col3:
+                    # Time selection dropdown
+                    st.markdown("**🕐 Class Hour**")
+                    time_options = [
+                        "08:00", "09:00", "10:00", "11:00", "12:00",
+                        "13:00", "14:00", "15:00", "16:00", "17:00", "18:00"
+                    ]
+                    selected_time_str = st.selectbox(
+                        "Select time",
+                        options=time_options,
+                        index=1,  # Default to 09:00
+                        key="manual_time_select_main",
+                        help="Select the class hour",
+                        label_visibility="collapsed"
+                    )
+                
+                with col4:
+                    # Status selection
+                    st.markdown("**📊 Attendance Status**")
+                    status_options = ["present", "absent", "late", "excused"]
+                    attendance_status = st.selectbox(
+                        "Select status",
+                        options=status_options,
+                        key="manual_status_select_main",
+                        help="Select the attendance status",
+                        format_func=lambda x: {
+                            "present": "✅ Present",
+                            "absent": "❌ Absent", 
+                            "late": "🕐 Late",
+                            "excused": "📋 Excused"
+                        }[x],
+                        label_visibility="collapsed"
+                    )
+                
+                # Submit button
+                col_submit1, col_submit2, col_submit3 = st.columns([2, 3, 2])
+                with col_submit2:
+                    st.markdown("""
+                    <style>
+                    /* Enhanced button styling for main form */
+                    div[data-testid="stForm"] button[data-testid="baseButton-primary"],
+                    div[data-testid="stForm"] button[kind="primary"],
+                    div[data-testid="stForm"] .stButton > button {
+                        background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%) !important;
+                        border: 2px solid #4CAF50 !important;
+                        color: white !important;
+                        font-weight: bold !important;
+                        padding: 15px 30px !important;
+                        border-radius: 10px !important;
+                        box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3) !important;
+                        width: 100% !important;
+                        font-size: 16px !important;
+                        min-height: 55px !important;
+                    }
+                    
+                    /* Hover effects */
+                    div[data-testid="stForm"] button:hover {
+                        background: linear-gradient(135deg, #45a049 0%, #3d8b40 100%) !important;
+                        transform: translateY(-2px) !important;
+                        box-shadow: 0 8px 20px rgba(76, 175, 80, 0.4) !important;
+                    }
+                    </style>
+                    """, unsafe_allow_html=True)
+                    
+                    # Form submit button
+                    if st.form_submit_button("🎯 Add Attendance Record", type="primary", use_container_width=True):
+                        try:
+                            # Convert selected time string to time object for database
+                            selected_time = datetime.strptime(selected_time_str, "%H:%M").time()
+                            attendance_time_str = selected_time.strftime("%H:%M:%S")
+                            
+                            # Check if record already exists for this student, subject, and date
+                            cursor.execute("""
+                                SELECT id FROM attendance_records_enhanced 
+                                WHERE student_id = ? AND subject_id = ? AND attendance_date = ?
+                            """, (selected_student_id, subject_id, selected_date))
+                            
+                            existing_record = cursor.fetchone()
+                            
+                            if existing_record:
+                                # Update existing record
+                                cursor.execute("""
+                                    UPDATE attendance_records_enhanced 
+                                    SET status = ?, attendance_time = ?, 
+                                        marked_by = ?, created_at = CURRENT_TIMESTAMP
+                                    WHERE id = ?
+                                """, (attendance_status, attendance_time_str, username, existing_record[0]))
+                                
+                                st.success(f"✅ Successfully Updated! Attendance record for **{selected_student_name}** has been updated for {selected_date.strftime('%B %d, %Y')}")
+                            else:
+                                # Get teacher_id for this subject
+                                cursor.execute("""
+                                    SELECT teacher_id FROM teacher_subjects_enhanced 
+                                    WHERE subject_id = ? LIMIT 1
+                                """, (subject_id,))
+                                teacher_result = cursor.fetchone()
+                                teacher_id = teacher_result[0] if teacher_result else 1
+                                
+                                # Create new record
+                                cursor.execute("""
+                                    INSERT INTO attendance_records_enhanced 
+                                    (student_id, subject_id, teacher_id, attendance_date, attendance_time, 
+                                     status, marked_by, academic_year, semester, created_at)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                                """, (selected_student_id, subject_id, teacher_id, selected_date, 
+                                     attendance_time_str, attendance_status, username, '2024-2025', 'Fall'))
+                                
+                                st.success(f"✅ Successfully Added! New attendance record created for **{selected_student_name}** on {selected_date.strftime('%B %d, %Y')}")
+                            
+                            conn.commit()
+                            
+                            # Display confirmation details
+                            status_icon = {'present': '✅', 'absent': '❌', 'late': '🕐', 'excused': '📋'}[attendance_status]
+                            st.info(f"""
+                            **📋 Record Details:**
+                            - **Student:** {selected_student_name}
+                            - **Date:** {selected_date.strftime('%B %d, %Y')}
+                            - **Time:** {datetime.strptime(selected_time_str, '%H:%M').strftime('%I:%M %p')}
+                            - **Status:** {attendance_status.title()} {status_icon}
+                            """)
+                            
+                            # Refresh the page to show updated statistics
+                            st.rerun()
+                            
+                        except Exception as e:
+                            st.error(f"❌ Error Recording Attendance: {str(e)}")
+                            conn.rollback()
+        else:
+            st.info("📚 No students are currently enrolled in this subject. Please check the student enrollment records.")
         
         st.markdown("<br>", unsafe_allow_html=True)
-        
         # Recent Attendance Records Section
         st.markdown("""
         <div style="background: #f8f9fa; padding: 20px; border-radius: 10px; border: 1px solid #dee2e6;">
