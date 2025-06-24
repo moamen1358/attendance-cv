@@ -258,156 +258,343 @@ def ensure_database_consistency():
 
 # Modify login_page function to call the sync first
 def login_page():
-    # Apply consistent styling for login page - wide layout
+    # Apply modern, professional styling for login page
     st.markdown("""
     <style>
-    /* Wide layout for login page */
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+    
+    /* Global styling */
+    * {
+        font-family: 'Inter', sans-serif !important;
+    }
+    
+    /* Hide Streamlit elements */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Main container styling */
     .main .block-container {
         max-width: 100% !important;
         width: 100% !important;
-        padding: 40px 80px !important;
+        padding: 0 !important;
+        margin: 0 !important;
     }
     
-    /* Hide sidebar on login page */
+    /* Hide sidebar */
     [data-testid="stSidebar"] {
         display: none !important;
     }
     
-    /* Force full width layout */
-    .reportview-container .main .block-container,
-    .appview-container .main .block-container,
-    div[data-testid="stAppViewContainer"] > section[data-testid="stAppViewContainer"] > div,
-    div[data-testid="stAppViewContainer"] > section > div {
-        max-width: 100% !important;
-        padding-left: 80px !important;
-        padding-right: 80px !important;
-        width: 100% !important;
+    /* Full page background */
+    .stApp {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
     }
     
-    /* Title styling */
-    .stTitle h1 {
-        color: #2c3e50;
-        font-size: 2.5rem;
-        font-weight: 600;
+    /* Login container */
+    .login-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 20px;
+    }
+    
+    /* Login card */
+    .login-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
+        padding: 40px;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        width: 100%;
+        max-width: 450px;
+        margin: 0 auto;
+    }
+    
+    /* Header styling */
+    .login-header {
+        text-align: center;
         margin-bottom: 40px;
-        padding-bottom: 20px;
-        border-bottom: 2px solid #3498db;
     }
     
-    /* Input container styling */
-    .stTextInput {
+    .login-title {
+        font-size: 2.5rem;
+        font-weight: 700;
+        color: #2c3e50;
+        margin-bottom: 10px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    .login-subtitle {
+        font-size: 1.1rem;
+        color: #7f8c8d;
+        font-weight: 400;
+        margin-bottom: 0;
+    }
+    
+    /* University logo/icon */
+    .university-icon {
+        font-size: 4rem;
         margin-bottom: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
     
-    /* Input field styling - wide but controlled */
-    .stTextInput > div > div > input {
-        width: 100% !important;
-        height: 50px !important;
-        border-radius: 8px !important;
-        border: 2px solid #bdc3c7 !important;
-        padding: 0 15px !important;
-        font-size: 16px !important;
-        background-color: #ffffff !important;
-        color: #000000 !important;
-        box-sizing: border-box !important;
-        transition: all 0.3s ease !important;
+    /* Input styling */
+    .stTextInput {
+        margin-bottom: 25px;
     }
     
-    .stTextInput > div > div > input:focus {
-        border-color: #3498db !important;
-        outline: none !important;
-        box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1) !important;
-        color: #000000 !important;
-    }
-    
-    /* Ensure placeholder text is visible */
-    .stTextInput > div > div > input::placeholder {
-        color: #666666 !important;
-    }
-    
-    /* Input labels */
     .stTextInput > label {
-        font-weight: 500 !important;
+        font-weight: 600 !important;
         color: #2c3e50 !important;
+        font-size: 14px !important;
         margin-bottom: 8px !important;
         display: block !important;
     }
     
-    /* Login button styling - wide */
+    .stTextInput > div > div > input {
+        width: 100% !important;
+        height: 55px !important;
+        border-radius: 12px !important;
+        border: 2px solid #e1e8ed !important;
+        padding: 0 20px !important;
+        font-size: 16px !important;
+        background-color: #ffffff !important;
+        color: #2c3e50 !important;
+        box-sizing: border-box !important;
+        transition: all 0.3s ease !important;
+        font-weight: 500 !important;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #667eea !important;
+        outline: none !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+        transform: translateY(-1px) !important;
+    }
+    
+    .stTextInput > div > div > input::placeholder {
+        color: #95a5a6 !important;
+        font-weight: 400 !important;
+    }
+    
+    /* Login button styling */
     .stButton {
         margin-top: 30px;
+        margin-bottom: 20px;
     }
     
     .stButton > button {
         width: 100% !important;
-        height: 50px !important;
-        background-color: #3498db !important;
+        height: 55px !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
         color: white !important;
-        border-radius: 8px !important;
+        border-radius: 12px !important;
         border: none !important;
         font-size: 16px !important;
         font-weight: 600 !important;
         cursor: pointer !important;
         transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
     }
     
     .stButton > button:hover {
-        background-color: #2980b9 !important;
         transform: translateY(-2px) !important;
-        box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3) !important;
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4) !important;
     }
     
     .stButton > button:active {
         transform: translateY(0px) !important;
     }
     
-    /* Expander styling for user list */
+    /* Expander styling */
     .streamlit-expanderHeader {
-        background-color: #ecf0f1 !important;
-        border-radius: 8px !important;
-        border: 1px solid #bdc3c7 !important;
-        margin-top: 30px !important;
+        background: rgba(255, 255, 255, 0.8) !important;
+        border-radius: 12px !important;
+        border: 1px solid rgba(102, 126, 234, 0.2) !important;
+        margin-top: 25px !important;
+        padding: 15px !important;
+        transition: all 0.3s ease !important;
     }
     
-    /* Error/success message styling */
+    .streamlit-expanderHeader:hover {
+        background: rgba(255, 255, 255, 0.9) !important;
+        border-color: rgba(102, 126, 234, 0.3) !important;
+        transform: translateY(-1px) !important;
+    }
+    
+    .streamlit-expanderContent {
+        background: rgba(255, 255, 255, 0.95) !important;
+        border-radius: 0 0 12px 12px !important;
+        border: 1px solid rgba(102, 126, 234, 0.2) !important;
+        border-top: none !important;
+        padding: 20px !important;
+    }
+    
+    /* Credential list styling */
+    .credential-section {
+        margin-bottom: 20px;
+    }
+    
+    .credential-section h4 {
+        color: #2c3e50 !important;
+        font-weight: 600 !important;
+        margin-bottom: 10px !important;
+    }
+    
+    .credential-item {
+        background: rgba(102, 126, 234, 0.1);
+        padding: 8px 12px;
+        border-radius: 8px;
+        margin-bottom: 5px;
+        font-family: 'Monaco', 'Menlo', monospace;
+        font-size: 13px;
+        color: #2c3e50;
+    }
+    
+    /* Alert styling */
     .stAlert {
         margin-top: 20px !important;
-        border-radius: 8px !important;
+        border-radius: 12px !important;
+        border: none !important;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1) !important;
     }
     
-    /* Ensure wide layout consistency */
-    .element-container,
-    [data-testid="stVerticalBlock"] {
-        max-width: 100% !important;
-        width: 100% !important;
+    /* Success message */
+    .stSuccess {
+        background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%) !important;
+        color: white !important;
+    }
+    
+    /* Error message */
+    .stError {
+        background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%) !important;
+        color: white !important;
+    }
+    
+    /* Warning message */
+    .stWarning {
+        background: linear-gradient(135deg, #f39c12 0%, #e67e22 100%) !important;
+        color: white !important;
+    }
+    
+    /* Info message */
+    .stInfo {
+        background: linear-gradient(135deg, #3498db 0%, #2980b9 100%) !important;
+        color: white !important;
+    }
+    
+    /* Responsive design */
+    @media (max-width: 768px) {
+        .login-card {
+            padding: 30px 25px;
+        }
+        
+        .login-title {
+            font-size: 2rem;
+        }
+        
+        .university-icon {
+            font-size: 3rem;
+        }
+    }
+    
+    /* Animation for login card */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(30px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .login-card {
+        animation: fadeInUp 0.6s ease-out;
+    }
+    
+    /* Floating particles background effect */
+    .particles {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        pointer-events: none;
+        z-index: -1;
+    }
+    
+    .particle {
+        position: absolute;
+        width: 4px;
+        height: 4px;
+        background: rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        animation: float 6s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+        0%, 100% { transform: translateY(0px) rotate(0deg); }
+        50% { transform: translateY(-20px) rotate(180deg); }
     }
     </style>
     """, unsafe_allow_html=True)
     
-    st.title("🇪🇬 Egyptian University Attendance System")
+    # Create the login interface with modern styling
+    st.markdown("""
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <div class="university-icon">🎓</div>
+                <h1 class="login-title">University Portal</h1>
+                <p class="login-subtitle">Egyptian University Attendance System</p>
+            </div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
-    # Display sample Egyptian credentials
-    with st.expander("📋 Sample Login Credentials", expanded=False):
+    # Display sample Egyptian credentials with enhanced styling
+    with st.expander("� Sample Login Credentials", expanded=False):
         st.markdown("""
-        ### 🔐 Test Accounts (Egyptian Sample Data)
+        <div class="credential-section">
+            <h4>👨‍💼 Administrator</h4>
+            <div class="credential-item">Username: admin | Password: admin</div>
+            <div class="credential-item">Username: dean | Password: dean</div>
+        </div>
         
-        **👨‍💼 Administrator:**
-        - Username: `admin` | Password: `admin`
-        - Username: `dean` | Password: `dean`
+        <div class="credential-section">
+            <h4>👨‍🏫 Teachers/Professors</h4>
+            <div class="credential-item">Username: emp2024001 | Password: emp2024001</div>
+            <div class="credential-item">Username: emp2024002 | Password: emp2024002</div>
+            <div class="credential-item">Username: emp2024003 | Password: emp2024003</div>
+        </div>
         
-        **👨‍🏫 Teachers/Professors:**
-        - Username: `emp2024001` | Password: `emp2024001`
-        - Username: `emp2024002` | Password: `emp2024002`
-        - Username: `emp2024003` | Password: `emp2024003`
+        <div class="credential-section">
+            <h4>👨‍🎓 Students</h4>
+            <div class="credential-item">Username: 2024001 | Password: 2024001</div>
+            <div class="credential-item">Username: 2024002 | Password: 2024002</div>
+            <div class="credential-item">Username: 2024003 | Password: 2024003</div>
+        </div>
         
-        **👨‍🎓 Students:**
-        - Username: `2024001` | Password: `2024001`
-        - Username: `2024002` | Password: `2024002`
-        - Username: `2024003` | Password: `2024003`
-        
-        *Note: All passwords are set to match the username for easy testing*
-        *Egyptian university data includes authentic names and departments*
-        """)
+        <div style="margin-top: 15px; padding: 15px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; border-left: 4px solid #667eea;">
+            <p style="margin: 0; color: #2c3e50; font-size: 13px;">
+                <strong>📝 Note:</strong> All passwords match their respective usernames for easy testing. 
+                This system contains authentic Egyptian university data with real names and departments.
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
     
     # Sync tables before proceeding
     ensure_database_consistency()
@@ -433,78 +620,102 @@ def login_page():
         else:
             st.error("User accounts table not found. Login functionality may be unavailable.")
     
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
+    # Create a centered login form
+    col1, col2, col3 = st.columns([1, 2, 1])
+    
+    with col2:
+        # Add some spacing
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Username field with icon
+        st.markdown("**👤 Username**")
+        username = st.text_input(
+            "Username", 
+            placeholder="Enter your username (e.g., admin, emp2024001, 2024001)",
+            label_visibility="collapsed",
+            key="username_input"
+        )
+        
+        # Password field with icon
+        st.markdown("**🔒 Password**")
+        password = st.text_input(
+            "Password", 
+            type="password",
+            placeholder="Enter your password",
+            label_visibility="collapsed",
+            key="password_input"
+        )
 
-    if st.button("Login"):
-        success, role = verify_credentials(username, password)
-        if success:
-            # Set session state variables
-            st.session_state.logged_in = True
-            st.session_state.username = username
-            
-            # ENHANCED ROLE DETECTION
-            # Force admin role for any username containing "admin"
-            is_admin = (username.lower() == "admin" or "admin" in username.lower() or role.lower() == "admin")
-            is_professor = role.lower() == "professor"
-            
-            if is_admin:
-                role = "admin"
-                st.session_state.is_admin = True
-                print(f"Enforcing admin role for {username}")
-            elif is_professor:
-                st.session_state.is_professor = True
-                print(f"Setting professor role for {username}")
+        # Login button with icon
+        if st.button("🚀 Login to System", type="primary", use_container_width=True):
+            success, role = verify_credentials(username, password)
+            if success:
+                # Set session state variables
+                st.session_state.logged_in = True
+                st.session_state.username = username
                 
-            st.session_state.user_role = role
-            
-            # Debug info for role login
-            print(f"User login successful: username={username}, role={role}")
-            
-            # Store login time for security tracking
-            st.session_state.login_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            # Update query parameters to maintain login state - INCLUDE ROLE FOR ALL USERS
-            st.query_params["logged_in"] = "True"
-            st.query_params["username"] = username
-            st.query_params["user_role"] = role  # Add role to query params
-            
-            # For admin users, add a flag to URL to ensure persistence
-            if is_admin:
-                st.query_params["is_admin"] = "true"
-            elif is_professor:
-                st.query_params["is_professor"] = "true"
-            
-            # Log successful login
-            try:
-                conn = sqlite3.connect('attendance_system.db')
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO login_logs (username, login_time, ip_address, status) VALUES (?, ?, ?, ?)",
-                    (username, st.session_state.login_time, get_client_ip(), "success")
-                )
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                print(f"Error logging login: {e}")
-            
-            # Refresh to load the app
-            st.rerun()
-        else:
-            # Log failed login attempt
-            try:
-                conn = sqlite3.connect('attendance_system.db')
-                cursor = conn.cursor()
-                cursor.execute(
-                    "INSERT INTO login_logs (username, login_time, ip_address, status) VALUES (?, ?, ?, ?)",
-                    (username, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), get_client_ip(), "failed")
-                )
-                conn.commit()
-                conn.close()
-            except Exception as e:
-                print(f"Error logging failed login: {e}")
+                # ENHANCED ROLE DETECTION
+                # Force admin role for any username containing "admin"
+                is_admin = (username.lower() == "admin" or "admin" in username.lower() or role.lower() == "admin")
+                is_professor = role.lower() == "professor"
                 
-            st.error("Invalid username or password")
+                if is_admin:
+                    role = "admin"
+                    st.session_state.is_admin = True
+                    print(f"Enforcing admin role for {username}")
+                elif is_professor:
+                    st.session_state.is_professor = True
+                    print(f"Setting professor role for {username}")
+                    
+                st.session_state.user_role = role
+                
+                # Debug info for role login
+                print(f"User login successful: username={username}, role={role}")
+                
+                # Store login time for security tracking
+                st.session_state.login_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                
+                # Update query parameters to maintain login state - INCLUDE ROLE FOR ALL USERS
+                st.query_params["logged_in"] = "True"
+                st.query_params["username"] = username
+                st.query_params["user_role"] = role  # Add role to query params
+                
+                # For admin users, add a flag to URL to ensure persistence
+                if is_admin:
+                    st.query_params["is_admin"] = "true"
+                elif is_professor:
+                    st.query_params["is_professor"] = "true"
+                
+                # Log successful login
+                try:
+                    conn = sqlite3.connect('attendance_system.db')
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO login_logs (username, login_time, ip_address, status) VALUES (?, ?, ?, ?)",
+                        (username, st.session_state.login_time, get_client_ip(), "success")
+                    )
+                    conn.commit()
+                    conn.close()
+                except Exception as e:
+                    print(f"Error logging login: {e}")
+                
+                # Refresh to load the app
+                st.rerun()
+            else:
+                # Log failed login attempt
+                try:
+                    conn = sqlite3.connect('attendance_system.db')
+                    cursor = conn.cursor()
+                    cursor.execute(
+                        "INSERT INTO login_logs (username, login_time, ip_address, status) VALUES (?, ?, ?, ?)",
+                        (username, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), get_client_ip(), "failed")
+                    )
+                    conn.commit()
+                    conn.close()
+                except Exception as e:
+                    print(f"Error logging failed login: {e}")
+                    
+                st.error("❌ Invalid username or password. Please try again.")
 
 # Simple function to get client IP for logging
 def get_client_ip():
