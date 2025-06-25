@@ -7,7 +7,7 @@
 
 This document presents a comprehensive methodology for the development and implementation of an Advanced Intelligent Face Recognition-Based University Attendance Management System. The system integrates cutting-edge computer vision technologies, automated hardware control, and sophisticated database management to provide a fully automated, accurate, and scalable solution for academic attendance tracking.
 
-The system employs a novel multi-stage approach utilizing variable zoom cameras, AI-powered face detection (VionAgent), Arduino-controlled pan-tilt mechanisms, and advanced face recognition algorithms to achieve unprecedented accuracy and automation in attendance management.
+The system employs a novel multi-stage approach utilizing variable zoom cameras, custom face detection scripts, Arduino-controlled pan-tilt mechanisms, and advanced face recognition algorithms to achieve unprecedented accuracy and automation in attendance management.
 
 ---
 
@@ -55,7 +55,7 @@ The system implements a sophisticated multi-stage detection and recognition pipe
 
 ```mermaid
 graph TD
-    A[Wide-Angle Capture Initialization] --> B[VionAgent Face Detection]
+    A[Wide-Angle Capture Initialization] --> B[Custom Face Detection Script]
     B --> C[Position Calculation & Mapping]
     C --> D[Arduino Pan-Tilt Control]
     D --> E[Precise Camera Positioning]
@@ -66,6 +66,8 @@ graph TD
     I --> J[Next Position Movement]
     J --> K{More Faces?}
     K -->|Yes| D
+    K -->|No| L[Session Complete]
+```
     K -->|No| L[Session Complete]
 ```
 
@@ -88,27 +90,60 @@ camera_config = {
 3. **Image Preprocessing**: Apply noise reduction and lighting normalization
 4. **Quality Assessment**: Ensure image meets minimum quality thresholds
 
-##### Stage 2: AI-Powered Face Detection with VionAgent
+##### Stage 2: Custom Face Detection Script Processing
 ```python
-# VionAgent integration for comprehensive face detection
-vion_config = {
+# Custom face detection script for local processing
+def detect_faces_and_calculate_positions(image):
+    """
+    Detect faces and directly calculate Arduino positioning commands
+    """
+    # Face detection using local algorithms (OpenCV, MediaPipe, etc.)
+    faces = face_detector.detect(image)
+    
+    # Calculate positioning data for each face
+    positioning_commands = []
+    for face in faces:
+        position_data = calculate_camera_position(
+            face_bbox=face.bbox,
+            image_dimensions=image.shape,
+            camera_specs=camera_specifications
+        )
+        positioning_commands.append(position_data)
+    
+    return positioning_commands
+
+# Process detected faces and generate Arduino commands
+arduino_commands = detect_faces_and_calculate_positions(wide_angle_image)
+```
+
+**Custom Script Advantages:**
+- **No External Dependencies**: Eliminates reliance on external APIs
+- **Privacy Protection**: All processing done locally
+- **Real-time Processing**: Optimized for classroom environment
+- **Direct Arduino Integration**: Seamless command generation
+
+##### Stage 2: Custom Face Detection Script Processing
+```python
+# Custom face detection script integration
+face_detection_config = {
     'detection_threshold': 0.8,    # High confidence requirement
     'minimum_face_size': 64,       # Minimum pixel size for valid face
     'maximum_faces': 50,           # Classroom capacity consideration
-    'angle_tolerance': 45          # Maximum face angle deviation
+    'angle_tolerance': 45,         # Maximum face angle deviation
+    'processing_method': 'local'   # Local processing for privacy
 }
 
-detected_faces = vion_agent.detect_faces(
+detected_faces = face_detection_script.detect_faces(
     image=wide_angle_capture,
-    config=vion_config
+    config=face_detection_config
 )
 ```
 
-**VionAgent Capabilities:**
+**Custom Detection Script Capabilities:**
 - **Multi-Scale Detection**: Identifies faces at various distances and scales
-- **Pose Estimation**: Calculates face orientation and optimal capture angle
+- **Local Processing**: All processing done locally for privacy protection
 - **Quality Scoring**: Ranks faces by capture suitability
-- **Occlusion Detection**: Identifies partially hidden or obscured faces
+- **Position Mapping**: Direct coordinate mapping for Arduino control
 
 ##### Stage 3: Precision Position Calculation and Mapping
 ```python
@@ -276,7 +311,7 @@ def capture_and_recognize_face(position_data):
   - **Power Supply**: 12V dedicated power for consistent motor performance
 
 ##### Detection and Recognition
-- **VionAgent Integration**: Advanced AI face detection system
+- **Custom Face Detection Script**: Local processing for privacy and reliability
 - **InsightFace Model**: Buffalo_SC for high-accuracy recognition
 - **Processing Unit**: NVIDIA GPU acceleration for real-time processing
 
@@ -288,7 +323,7 @@ def capture_and_recognize_face(position_data):
 class AttendanceSystemCore:
     def __init__(self):
         self.camera_controller = CameraController()
-        self.vion_agent = VionAgentInterface()
+        self.face_detection_script = CustomFaceDetectionScript()
         self.arduino_interface = ArduinoController()
         self.face_recognition = InsightFaceEngine()
         self.database_manager = DatabaseManager()
@@ -300,20 +335,17 @@ class AttendanceSystemCore:
         # Stage 1: Wide angle capture
         wide_image = self.camera_controller.capture_wide_angle()
         
-        # Stage 2: VionAgent face detection
-        detected_faces = self.vion_agent.detect_faces(wide_image)
+        # Stage 2: Custom face detection script
+        detected_faces = self.face_detection_script.detect_and_calculate_positions(wide_image)
         
-        # Stage 3: Process each detected face
+        # Stage 3: Process each detected face position
         attendance_results = []
-        for face_data in detected_faces:
-            # Calculate positioning
-            position = self.calculate_camera_position(face_data)
-            
-            # Move camera to position
-            self.arduino_interface.move_to_position(position)
+        for face_position_data in detected_faces:
+            # Move camera to calculated position
+            self.arduino_interface.move_to_position(face_position_data)
             
             # Capture and recognize
-            result = self.capture_and_recognize_face(position)
+            result = self.capture_and_recognize_face(face_position_data)
             if result:
                 attendance_results.append(result)
         
@@ -341,7 +373,223 @@ class AttendanceSystemCore:
 - **Role-Based Access Control**: Granular permissions for different user roles
 - **Audit Logging**: Comprehensive system activity tracking
 
-#### 2.2.3 Core System Modules
+#### 2.2.4 Custom Face Detection Script Architecture
+
+##### 2.2.4.1 Local Face Detection Implementation
+```python
+class CustomFaceDetectionScript:
+    """
+    Local face detection system with direct Arduino integration
+    """
+    
+    def __init__(self):
+        self.face_detector = self.initialize_face_detector()
+        self.position_calculator = PositionCalculator()
+        self.arduino_command_generator = ArduinoCommandGenerator()
+        self.quality_assessor = FaceQualityAssessor()
+    
+    def initialize_face_detector(self):
+        """Initialize local face detection using OpenCV or MediaPipe"""
+        # Option 1: OpenCV Haar Cascades (fast, reliable)
+        import cv2
+        return cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
+        
+        # Option 2: MediaPipe Face Detection (more accurate)
+        # import mediapipe as mp
+        # return mp.solutions.face_detection.FaceDetection(model_selection=1, min_detection_confidence=0.7)
+    
+    def detect_and_calculate_positions(self, wide_angle_image):
+        """
+        Main function: Detect faces and generate Arduino positioning commands
+        """
+        # Step 1: Detect faces in wide-angle image
+        detected_faces = self.detect_faces(wide_angle_image)
+        
+        # Step 2: Calculate camera positions for each face
+        positioning_commands = []
+        for i, face in enumerate(detected_faces):
+            # Calculate optimal camera position
+            position_data = self.position_calculator.calculate_position(
+                face_bbox=face['bbox'],
+                image_shape=wide_angle_image.shape,
+                face_id=i+1
+            )
+            
+            # Generate Arduino command
+            arduino_command = self.arduino_command_generator.create_command(position_data)
+            
+            positioning_commands.append({
+                'face_data': face,
+                'position_data': position_data,
+                'arduino_command': arduino_command
+            })
+        
+        return positioning_commands
+    
+    def detect_faces(self, image):
+        """Detect faces using OpenCV"""
+        import cv2
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        
+        # Detect faces
+        faces = self.face_detector.detectMultiScale(
+            gray,
+            scaleFactor=1.1,
+            minNeighbors=5,
+            minSize=(64, 64),
+            maxSize=(512, 512)
+        )
+        
+        detected_faces = []
+        for (x, y, w, h) in faces:
+            face_data = {
+                'bbox': [x, y, x+w, y+h],
+                'confidence': self.calculate_detection_confidence(gray[y:y+h, x:x+w]),
+                'quality_score': self.quality_assessor.assess_face_quality(image[y:y+h, x:x+w])
+            }
+            detected_faces.append(face_data)
+        
+        # Sort by quality score (best faces first)
+        detected_faces.sort(key=lambda x: x['quality_score'], reverse=True)
+        
+        return detected_faces
+
+class PositionCalculator:
+    """
+    Calculate precise camera positioning angles for Arduino control
+    """
+    
+    def __init__(self):
+        self.camera_specs = {
+            'horizontal_fov': 60,  # degrees
+            'vertical_fov': 34,    # degrees
+            'pan_range': (-180, 180),
+            'tilt_range': (-90, 90),
+            'zoom_range': (1, 30)
+        }
+    
+    def calculate_position(self, face_bbox, image_shape, face_id):
+        """Calculate camera position for optimal face capture"""
+        height, width = image_shape[:2]
+        
+        # Calculate face center
+        face_center_x = (face_bbox[0] + face_bbox[2]) / 2
+        face_center_y = (face_bbox[1] + face_bbox[3]) / 2
+        
+        # Convert to normalized coordinates
+        norm_x = (face_center_x / width) * 2 - 1
+        norm_y = (face_center_y / height) * 2 - 1
+        
+        # Calculate pan and tilt angles
+        pan_angle = norm_x * (self.camera_specs['horizontal_fov'] / 2)
+        tilt_angle = -norm_y * (self.camera_specs['vertical_fov'] / 2)
+        
+        # Calculate optimal zoom
+        face_width = face_bbox[2] - face_bbox[0]
+        target_ratio = 0.25  # Face should be 25% of image width
+        current_ratio = face_width / width
+        zoom_level = min(max(target_ratio / current_ratio, 1), self.camera_specs['zoom_range'][1])
+        
+        # Apply constraints
+        pan_angle = max(min(pan_angle, self.camera_specs['pan_range'][1]), self.camera_specs['pan_range'][0])
+        tilt_angle = max(min(tilt_angle, self.camera_specs['tilt_range'][1]), self.camera_specs['tilt_range'][0])
+        
+        return {
+            'face_id': face_id,
+            'pan_angle': round(pan_angle, 2),
+            'tilt_angle': round(tilt_angle, 2),
+            'zoom_level': round(zoom_level, 2),
+            'pixel_position': [face_center_x, face_center_y],
+            'normalized_position': [norm_x, norm_y]
+        }
+
+class ArduinoCommandGenerator:
+    """
+    Generate Arduino-compatible positioning commands
+    """
+    
+    def create_command(self, position_data):
+        """Create Arduino command from position data"""
+        return {
+            'command': 'MOVE_TO_POSITION',
+            'face_id': position_data['face_id'],
+            'pan_angle': position_data['pan_angle'],
+            'tilt_angle': position_data['tilt_angle'],
+            'zoom_level': position_data['zoom_level'],
+            'speed': 50,  # Movement speed (steps/second)
+            'acceleration': 100,  # Acceleration (steps/second²)
+            'timestamp': time.time()
+        }
+    
+    def save_commands_to_file(self, commands, filename='arduino_commands.json'):
+        """Save commands to file for Arduino processing"""
+        import json
+        with open(filename, 'w') as f:
+            json.dump(commands, f, indent=2)
+        return filename
+```
+
+##### 2.2.4.2 Arduino Integration Protocol
+```python
+class ArduinoIntegrationProtocol:
+    """
+    Protocol for seamless Arduino communication and control
+    """
+    
+    def __init__(self, serial_port='/dev/ttyUSB0', baud_rate=115200):
+        import serial
+        self.arduino = serial.Serial(serial_port, baud_rate)
+        self.current_position = {'pan': 0, 'tilt': 0, 'zoom': 1}
+    
+    def send_positioning_commands(self, face_positions):
+        """Send all face positioning commands to Arduino"""
+        results = []
+        
+        for position in face_positions:
+            try:
+                # Send command to Arduino
+                command = json.dumps(position['arduino_command'])
+                self.arduino.write(command.encode() + b'\n')
+                
+                # Wait for confirmation
+                response = self.arduino.readline().decode().strip()
+                result = json.loads(response)
+                
+                if result.get('status') == 'SUCCESS':
+                    # Wait for positioning to complete
+                    time.sleep(2)  # Positioning time
+                    
+                    # Capture face at this position
+                    face_capture = self.capture_face_at_position(position)
+                    results.append({
+                        'face_id': position['face_data']['face_id'],
+                        'positioning_success': True,
+                        'face_capture': face_capture
+                    })
+                else:
+                    results.append({
+                        'face_id': position['face_data']['face_id'],
+                        'positioning_success': False,
+                        'error': result.get('error', 'Unknown error')
+                    })
+                    
+            except Exception as e:
+                results.append({
+                    'face_id': position['face_data']['face_id'],
+                    'positioning_success': False,
+                    'error': str(e)
+                })
+        
+        return results
+    
+    def capture_face_at_position(self, position_data):
+        """Capture high-quality face image at current position"""
+        # This would interface with your camera system
+        # Return captured face image for recognition
+        pass
+```
+
+#### 2.2.5 Core System Modules
 
 ##### 2.2.3.1 Authentication and Authorization System (`enhanced_login.py`)
 ```python
@@ -1522,11 +1770,11 @@ async def perform_advanced_recognition(self, face_features):
 #### Phase 3: AI and Computer Vision Implementation (Weeks 7-9)
 **Objective**: Implement advanced AI-powered detection and recognition systems
 
-**Week 7: VionAgent Integration and Face Detection**
-- VionAgent API integration and configuration
-- Multi-scale face detection optimization
+**Week 7: Custom Face Detection Script Development**
+- Custom face detection algorithm implementation
+- Local processing optimization for real-time performance
 - Face quality assessment algorithms
-- Scene analysis and face prioritization
+- Position calculation and Arduino command generation
 - Detection accuracy validation and tuning
 
 **Week 8: Advanced Face Recognition System**
@@ -1541,12 +1789,12 @@ async def perform_advanced_recognition(self, face_features):
 - Performance optimization and bottleneck identification
 - Error handling and graceful degradation
 - Real-time processing optimization
-- Comprehensive testing of AI pipeline
+- Comprehensive testing of complete pipeline
 
 **Deliverables:**
-- VionAgent-powered face detection system
+- Custom face detection script with Arduino integration
 - Advanced face recognition engine
-- Integrated AI processing pipeline
+- Integrated processing pipeline
 - Performance benchmarks and accuracy metrics
 
 #### Phase 4: User Interface and Experience Development (Weeks 10-12)
@@ -1716,10 +1964,10 @@ async def perform_advanced_recognition(self, face_features):
 - **IDE Support**: VS Code, PyCharm Professional
 
 #### 5.2.2 AI and Machine Learning Specifications
-**Face Detection (VionAgent):**
-- **API Version**: Latest stable release
+**Face Detection (Custom Script):**
+- **Processing Method**: Local OpenCV/MediaPipe implementation
 - **Detection Accuracy**: >95% under optimal conditions
-- **Processing Speed**: <500ms per frame
+- **Processing Speed**: <300ms per frame
 - **Minimum Face Size**: 64×64 pixels
 - **Maximum Detections**: 50 faces per frame
 - **Angle Tolerance**: ±45° face rotation
