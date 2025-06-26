@@ -7,7 +7,17 @@
 
 This document presents a comprehensive methodology for the development and implementation of an Advanced Intelligent Face Recognition-Based University Attendance Management System. The system integrates cutting-edge computer vision technologies, automated hardware control, and sophisticated database management to provide a fully automated, accurate, and scalable solution for academic attendance tracking.
 
-The system employs a novel multi-stage approach utilizing variable zoom cameras, custom face detection scripts, Arduino-controlled pan-tilt mechanisms, and advanced face recognition algorithms to achieve unprecedented accuracy and automation in attendance management.
+The system employs a novel multi-stage approach utilizing custom face detection scripts with virtual position calculation, Arduino-controlled two-motor PTZ mechanisms, and advanced InsightFace recognition algorithms to achieve unprecedented accuracy and automation in attendance management.
+
+## **Key Implementation Steps:**
+
+1. **Wide-Angle Capture**: Camera captures classroom overview image
+2. **Custom Face Detection**: Local script detects faces and calculates virtual positions
+3. **Virtual Position Mapping**: Converts face locations to precise coordinate points
+4. **Arduino PTZ Control**: Two stepper motors position camera using calculated angles
+5. **Zoomed Face Capture**: Camera zooms in for high-resolution face images
+6. **InsightFace Recognition**: AI model extracts and matches facial features
+7. **Automated Attendance**: System logs attendance with confidence scores
 
 ---
 
@@ -56,19 +66,18 @@ The system implements a sophisticated multi-stage detection and recognition pipe
 ```mermaid
 graph TD
     A[Wide-Angle Capture Initialization] --> B[Custom Face Detection Script]
-    B --> C[Position Calculation & Mapping]
-    C --> D[Arduino Pan-Tilt Control]
-    D --> E[Precise Camera Positioning]
-    E --> F[High-Resolution Face Capture]
-    F --> G[InsightFace Feature Extraction]
-    G --> H[Database Similarity Matching]
-    H --> I[Attendance Logging]
-    I --> J[Next Position Movement]
-    J --> K{More Faces?}
-    K -->|Yes| D
-    K -->|No| L[Session Complete]
-```
-    K -->|No| L[Session Complete]
+    B --> C[Virtual Position Calculation]
+    C --> D[Arduino PTZ Motor Commands]
+    D --> E[Two-Motor Camera Positioning]
+    E --> F[Camera Zoom-In for Clear Face]
+    F --> G[High-Resolution Face Capture]
+    G --> H[InsightFace Feature Extraction]
+    H --> I[Database Similarity Matching]
+    I --> J[Attendance Logging]
+    J --> K[Next Virtual Position]
+    K --> L{More Faces?}
+    L -->|Yes| D
+    L -->|No| M[Session Complete]
 ```
 
 #### 2.1.2 Detailed Workflow Stages
@@ -122,9 +131,9 @@ arduino_commands = detect_faces_and_calculate_positions(wide_angle_image)
 - **Real-time Processing**: Optimized for classroom environment
 - **Direct Arduino Integration**: Seamless command generation
 
-##### Stage 2: Custom Face Detection Script Processing
+##### Stage 2: Custom Face Detection Script with Virtual Position Calculation
 ```python
-# Custom face detection script integration
+# Custom face detection script with virtual position calculation
 face_detection_config = {
     'detection_threshold': 0.8,    # High confidence requirement
     'minimum_face_size': 64,       # Minimum pixel size for valid face
@@ -133,17 +142,76 @@ face_detection_config = {
     'processing_method': 'local'   # Local processing for privacy
 }
 
-detected_faces = face_detection_script.detect_faces(
-    image=wide_angle_capture,
-    config=face_detection_config
-)
+# Detect faces and calculate virtual positions
+def detect_faces_with_virtual_positions(wide_angle_image, config):
+    """
+    Custom script that detects faces and calculates virtual positions
+    for Arduino PTZ motor control
+    """
+    # Face detection using local algorithms
+    detected_faces = face_detection_script.detect_faces(
+        image=wide_angle_image,
+        config=config
+    )
+    
+    # Calculate virtual positions for each detected face
+    virtual_positions = []
+    for face in detected_faces:
+        # Calculate virtual point in image coordinate space
+        virtual_point = calculate_virtual_position(
+            face_bbox=face.bbox,
+            image_dimensions=wide_angle_image.shape[:2]
+        )
+        
+        # Convert virtual position to Arduino motor angles
+        motor_commands = convert_virtual_to_motor_angles(virtual_point)
+        
+        virtual_positions.append({
+            'face_id': face.id,
+            'virtual_position': virtual_point,
+            'arduino_commands': motor_commands
+        })
+    
+    return virtual_positions
+
+def calculate_virtual_position(face_bbox, image_dimensions):
+    """
+    Calculate virtual position coordinates for face center point
+    """
+    # Get face center coordinates
+    face_center_x = (face_bbox[0] + face_bbox[2]) / 2
+    face_center_y = (face_bbox[1] + face_bbox[3]) / 2
+    
+    # Convert to normalized virtual coordinates
+    virtual_x = (face_center_x / image_dimensions[1]) * 2 - 1  # -1 to 1
+    virtual_y = (face_center_y / image_dimensions[0]) * 2 - 1  # -1 to 1
+    
+    return {'x': virtual_x, 'y': virtual_y}
+
+def convert_virtual_to_motor_angles(virtual_point):
+    """
+    Convert virtual position to Arduino pan/tilt motor commands
+    """
+    # Map virtual coordinates to motor angles
+    pan_angle = virtual_point['x'] * MAX_PAN_ANGLE   # Convert to degrees
+    tilt_angle = virtual_point['y'] * MAX_TILT_ANGLE # Convert to degrees
+    
+    # Calculate zoom level for clear face capture
+    zoom_level = calculate_optimal_zoom_for_face()
+    
+    return {
+        'pan': pan_angle,
+        'tilt': tilt_angle,
+        'zoom': zoom_level
+    }
 ```
 
-**Custom Detection Script Capabilities:**
-- **Multi-Scale Detection**: Identifies faces at various distances and scales
-- **Local Processing**: All processing done locally for privacy protection
-- **Quality Scoring**: Ranks faces by capture suitability
-- **Position Mapping**: Direct coordinate mapping for Arduino control
+**Custom Detection Script with Virtual Positioning:**
+- **Virtual Position Mapping**: Mathematical conversion from image pixels to virtual coordinates
+- **Arduino Motor Integration**: Direct calculation of pan/tilt angles for motor control
+- **Local Processing**: All computation done locally for privacy protection and speed
+- **PTZ Control**: Precise positioning for camera pan, tilt, and zoom operations
+- **Multi-Face Handling**: Calculates positions for multiple detected faces sequentially
 
 ##### Stage 3: Precision Position Calculation and Mapping
 ```python
@@ -182,13 +250,104 @@ def calculate_camera_position(face_bbox, image_dimensions, camera_specs):
     return pan_angle, tilt_angle, zoom_level
 ```
 
-##### Stage 4: Arduino-Controlled 3D Pan-Tilt Mechanism
+##### Stage 4: Arduino-Controlled Two-Motor PTZ System
 ```cpp
-// Arduino control code for precision camera positioning
+// Arduino control code for two-motor PTZ camera positioning
 #include <Stepper.h>
-#include <Servo.h>
+#include <AccelStepper.h>
 
-// Stepper motor configuration for pan-tilt control
+// Two-motor configuration for pan and tilt control
+AccelStepper panMotor(AccelStepper::DRIVER, 2, 3);    // Pan motor (step, dir)
+AccelStepper tiltMotor(AccelStepper::DRIVER, 4, 5);   // Tilt motor (step, dir)
+
+// Motor specifications
+const float STEPS_PER_DEGREE = 200.0 / 360.0;  // 200 steps per revolution
+const int MAX_SPEED = 1000;                     // Maximum steps per second
+const int ACCELERATION = 500;                   // Steps per second²
+
+// PTZ position tracking
+float currentPanAngle = 0.0;
+float currentTiltAngle = 0.0;
+int currentZoomLevel = 1;
+
+void setup() {
+    Serial.begin(115200);
+    
+    // Configure pan motor (horizontal movement)
+    panMotor.setMaxSpeed(MAX_SPEED);
+    panMotor.setAcceleration(ACCELERATION);
+    
+    // Configure tilt motor (vertical movement)
+    tiltMotor.setMaxSpeed(MAX_SPEED);
+    tiltMotor.setAcceleration(ACCELERATION);
+    
+    // Initialize position tracking
+    Serial.println("Arduino PTZ System Ready");
+}
+
+void positionCameraToVirtualPoint(float panAngle, float tiltAngle, int zoomLevel) {
+    // Calculate required steps for each motor
+    int panSteps = (panAngle - currentPanAngle) * STEPS_PER_DEGREE;
+    int tiltSteps = (tiltAngle - currentTiltAngle) * STEPS_PER_DEGREE;
+    
+    // Set target positions for synchronized movement
+    panMotor.move(panSteps);
+    tiltMotor.move(tiltSteps);
+    
+    // Execute synchronized PTZ movement
+    while (panMotor.distanceToGo() != 0 || tiltMotor.distanceToGo() != 0) {
+        panMotor.run();
+        tiltMotor.run();
+    }
+    
+    // Update current position
+    currentPanAngle = panAngle;
+    currentTiltAngle = tiltAngle;
+    currentZoomLevel = zoomLevel;
+    
+    // Send zoom command to camera (via serial or other interface)
+    sendZoomCommand(zoomLevel);
+    
+    // Wait for mechanical stabilization
+    delay(500);
+    
+    Serial.println("Position reached - ready for face capture");
+}
+
+void sendZoomCommand(int zoomLevel) {
+    // Send zoom command to camera system
+    // This could be via camera API, additional servo, or camera control protocol
+    Serial.print("ZOOM:");
+    Serial.println(zoomLevel);
+}
+
+void loop() {
+    // Listen for position commands from main system
+    if (Serial.available()) {
+        String command = Serial.readStringUntil('\n');
+        processPositionCommand(command);
+    }
+}
+
+void processPositionCommand(String command) {
+    // Parse command format: "PAN:angle,TILT:angle,ZOOM:level"
+    // Extract pan, tilt, and zoom values
+    float pan = extractValue(command, "PAN:");
+    float tilt = extractValue(command, "TILT:");
+    int zoom = (int)extractValue(command, "ZOOM:");
+    
+    // Execute PTZ movement
+    positionCameraToVirtualPoint(pan, tilt, zoom);
+}
+```
+
+**Two-Motor PTZ System Specifications:**
+- **Pan Motor**: Controls horizontal camera movement (-180° to +180°)
+- **Tilt Motor**: Controls vertical camera movement (-90° to +90°)
+- **Zoom Control**: Digital zoom commands sent to camera system
+- **Precision**: ±0.5° positioning accuracy with stepper motors
+- **Speed**: Synchronized movement completing in <2 seconds
+- **Feedback**: Position confirmation and status reporting
 const int STEPS_PER_REVOLUTION = 200;
 const int PAN_STEPS_PER_DEGREE = STEPS_PER_REVOLUTION / 360;
 const int TILT_STEPS_PER_DEGREE = STEPS_PER_REVOLUTION / 360;
@@ -1918,25 +2077,37 @@ async def perform_advanced_recognition(self, face_features):
 - **Control Protocol**: VISCA over IP/Serial
 - **Power**: 12V DC, 24W maximum consumption
 
-#### 5.1.2 Positioning System Specifications
-**3D Printed Pan-Tilt Mount:**
-- **Material**: PLA+ or PETG engineering plastic
-- **Layer Resolution**: 0.2mm for precision components
-- **Infill Density**: 100% for structural components
-- **Precision**: ±0.5° positioning accuracy
+#### 5.1.2 Two-Motor PTZ Positioning System Specifications
+**PTZ Mount System:**
+- **Design**: Custom two-motor pan-tilt-zoom mechanism
+- **Pan Motor**: NEMA 17 stepper motor for horizontal movement
+- **Tilt Motor**: NEMA 17 stepper motor for vertical movement
+- **Material**: High-strength engineering plastic (PLA+ or PETG)
+- **Precision**: ±0.5° positioning accuracy for both axes
+- **Range**: Pan ±180°, Tilt ±90°
 - **Load Capacity**: 2kg maximum camera payload
-- **Operating Temperature**: -10°C to +60°C
-- **Vibration Dampening**: Integrated dampening system
-- **Cable Management**: Integrated cable routing
+- **Movement Speed**: <2 seconds for full positioning
+- **Vibration Control**: Mechanical dampening for stable capture
 
-**Stepper Motor System:**
-- **Motors**: NEMA 17 High-Torque Stepper Motors
-- **Steps per Revolution**: 200 (1.8° per step)
-- **Microstepping**: 1/16 for smooth operation
-- **Torque Rating**: 4.4 kg⋅cm holding torque
-- **Speed**: Up to 1000 steps/second
-- **Drivers**: A4988 stepper motor drivers
-- **Power Supply**: 12V, 5A dedicated power supply
+**Dual Stepper Motor Configuration:**
+- **Pan Motor (Motor 1)**: Controls horizontal camera movement
+  - Type: NEMA 17 High-Torque Stepper Motor
+  - Steps per Revolution: 200 (1.8° per step)
+  - Torque: 4.4 kg⋅cm holding torque
+  - Driver: A4988 with 1/16 microstepping
+- **Tilt Motor (Motor 2)**: Controls vertical camera movement
+  - Type: NEMA 17 High-Torque Stepper Motor
+  - Steps per Revolution: 200 (1.8° per step)
+  - Torque: 4.4 kg⋅cm holding torque
+  - Driver: A4988 with 1/16 microstepping
+- **Power Supply**: 12V, 5A dedicated supply for both motors
+- **Control Interface**: Serial communication with Arduino
+
+**Virtual Position to Motor Mapping:**
+- **Virtual Coordinates**: Normalized (-1 to 1) position from face detection
+- **Motor Commands**: Direct conversion to pan/tilt angles in degrees
+- **Zoom Integration**: Camera zoom control for clear face capture
+- **Position Feedback**: Real-time position confirmation and tracking
 
 #### 5.1.3 Control System Specifications
 **Arduino Control Unit:**
