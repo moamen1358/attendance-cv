@@ -1,6 +1,7 @@
 """
 Centralized Database Initialization Script
-This script contains all necessary CREATE TABLE statements for the enhanced attendance system.
+This script contains CREATE TABLE statements for the implemented attendance system tables.
+This matches the actual database schema currently in use.
 All other modules should import and call initialize_database() instead of creating tables directly.
 """
 
@@ -15,6 +16,7 @@ def initialize_database():
     """
     Initialize all required tables for the attendance system.
     This is the ONLY place where CREATE TABLE statements should exist in active code.
+    Creates only the tables that are actually implemented and in use.
     """
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
@@ -115,7 +117,7 @@ def initialize_database():
         )
         ''')
         
-        # 6. Enhanced Attendance Records table (with backward compatibility)
+        # 6. Enhanced Attendance Records table
         cursor.execute('''
         CREATE TABLE IF NOT EXISTS attendance_records_enhanced (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -207,11 +209,45 @@ def initialize_database():
         )
         ''')
         
-        # Create indexes for better performance (only if they don't exist)
+        # 11. Departments table
+        cursor.execute('''
+        CREATE TABLE IF NOT EXISTS departments (
+            department_id INTEGER PRIMARY KEY,
+            department_code TEXT,
+            department_name TEXT,
+            head_name TEXT,
+            email TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        ''')
+        
+        # Create views (these exist in the actual database)
+        cursor.execute('''
+        CREATE VIEW IF NOT EXISTS attendance_with_names AS
+            SELECT 
+                ar.*,
+                COALESCE(ar.name, ar.username, ar.student_username) AS student_name
+            FROM attendance_records ar
+        ''')
+        
+        cursor.execute('''
+        CREATE VIEW IF NOT EXISTS student_profiles AS 
+            SELECT * FROM student_profiles_enhanced
+        ''')
+        
+        cursor.execute('''
+        CREATE VIEW IF NOT EXISTS student_profiles_view AS 
+            SELECT * FROM student_profiles_enhanced
+        ''')
+        
+        # Create indexes for better performance (matching actual database indexes)
         indexes = [
+            # Core attendance indexes
             "CREATE INDEX IF NOT EXISTS idx_attendance_date ON attendance_records_enhanced(attendance_date)",
             "CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance_records_enhanced(student_id)",
             "CREATE INDEX IF NOT EXISTS idx_attendance_subject ON attendance_records_enhanced(subject_id)",
+            
+            # Student and user indexes
             "CREATE INDEX IF NOT EXISTS idx_student_roll ON students_enhanced(roll_number)",
             "CREATE INDEX IF NOT EXISTS idx_subject_code ON subjects_enhanced(course_code)",
             "CREATE INDEX IF NOT EXISTS idx_teacher_employee ON teachers_enhanced(employee_id)",
@@ -228,16 +264,15 @@ def initialize_database():
         print(f"[{datetime.now()}] Database tables initialized successfully!")
         
         # Return table information for verification
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_enhanced'")
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
         tables = cursor.fetchall()
-        print(f"Enhanced tables created: {[table[0] for table in tables]}")
+        print(f"Tables created: {[table[0] for table in tables]}")
         
         return True
         
     except Exception as e:
         conn.rollback()
         print(f"[{datetime.now()}] Error initializing database: {e}")
-        # Print more detailed error information
         import traceback
         traceback.print_exc()
         return False
@@ -249,6 +284,7 @@ def check_database_integrity():
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     
+    # Only check for tables that actually exist in the database
     required_tables = [
         'students_enhanced',
         'subjects_enhanced', 
@@ -259,7 +295,8 @@ def check_database_integrity():
         'student_profiles_enhanced',
         'users_enhanced',
         'attendance_sessions_enhanced',
-        'student_enrollments_enhanced'
+        'student_enrollments_enhanced',
+        'departments'
     ]
     
     try:
@@ -273,7 +310,7 @@ def check_database_integrity():
             print(f"Missing tables: {missing_tables}")
             return False
         else:
-            print("All required enhanced tables exist")
+            print("All required tables exist")
             return True
             
     except Exception as e:
