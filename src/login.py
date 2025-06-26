@@ -152,28 +152,27 @@ def get_student_info_enhanced(username):
     cursor = conn.cursor()
     
     try:
-        # Try enhanced table first
+        # Get user info and linked student info
         cursor.execute("""
-            SELECT sp.name, sp.student_number, sp.academic_year, sp.current_semester, 
-                   d.department_name, d.department_code
-            FROM student_profiles_enhanced sp
-            JOIN departments d ON sp.department_id = d.department_id
-            WHERE sp.username = ?
+            SELECT u.full_name, s.roll_number, s.year, s.department, s.name, s.email, s.phone
+            FROM users_enhanced u
+            LEFT JOIN students_enhanced s ON u.username = LOWER(REPLACE(REPLACE(REPLACE(s.name, ' ', '_'), '.', ''), '-', '_'))
+            WHERE u.username = ? AND u.role = 'student'
         """, (username,))
         
         result = cursor.fetchone()
         if result:
             return {
-                'name': result[0],
-                'student_number': result[1],
+                'name': result[4] if result[4] else result[0],  # Use student name or full_name
+                'roll_number': result[1],
                 'academic_year': result[2],
-                'current_semester': result[3],
-                'department_name': result[4],
-                'department_code': result[5]
+                'department': result[3],
+                'email': result[5],
+                'phone': result[6]
             }
         
-        # Fall back to old tables
-        cursor.execute("SELECT name FROM student_profiles_enhanced WHERE username = ?", (username,))
+        # Fall back - just get user info
+        cursor.execute("SELECT full_name FROM users_enhanced WHERE username = ? AND role = 'student'", (username,))
         result = cursor.fetchone()
         if result:
             return {'name': result[0]}

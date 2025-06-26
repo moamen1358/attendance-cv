@@ -13,12 +13,12 @@ import time
 sys.path.append('/home/invisa/Desktop/my_grad_streamlit')
 
 # Update imports to use utils directory
-from src.database_utils import execute_query, execute_query_df, get_attendance_records_schema
-from src.time_format_utils import normalize_time_format
-from src.student_visualization import create_attendance_sunburst, create_attendance_gauge
-from src.student_visualization import create_subject_radial_chart, create_weekly_heatmap
-from src.setup_teacher_subjects import get_teacher_subjects
-from src.global_css_handler import apply_global_css, enforce_fixed_padding, ensure_consistent_padding
+from database_utils import execute_query, execute_query_df, get_attendance_records_schema
+from time_format_utils import normalize_time_format
+from student_visualization import create_attendance_sunburst, create_attendance_gauge
+from student_visualization import create_subject_radial_chart, create_weekly_heatmap
+from setup_teacher_subjects import get_teacher_subjects
+from global_css_handler import apply_global_css, enforce_fixed_padding, ensure_consistent_padding
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'

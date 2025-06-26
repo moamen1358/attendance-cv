@@ -61,19 +61,21 @@ def show_student_management():
         conn = get_db_connection()
         students_df = pd.read_sql_query("""
             SELECT 
-                sp.id,
-                sp.username,
-                sp.name,
-                sp.student_id as student_number,
-                sp.section,
-                sp.email,
-                sp.phone,
-                COUNT(sc.class_id) as enrolled_classes,
-                AVG(sc.attendance_percentage) as avg_attendance
-            FROM student_profiles_enhanced sp
-            LEFT JOIN student_classes sc ON sp.id = sc.student_id AND sc.status = 'enrolled'
-            GROUP BY sp.id
-            ORDER BY sp.name
+                s.student_id,
+                s.name,
+                s.roll_number,
+                s.email,
+                s.phone,
+                s.department,
+                s.year as academic_year,
+                s.section,
+                s.enrollment_date,
+                s.status,
+                COUNT(se.id) as enrolled_subjects
+            FROM students_enhanced s
+            LEFT JOIN student_enrollments_enhanced se ON s.student_id = se.student_id AND se.status = 'enrolled'
+            GROUP BY s.student_id
+            ORDER BY s.name
         """, conn)
         conn.close()
         

@@ -63,11 +63,11 @@ def register_student(student_data, image):
         
         # Get next sequence number for this department
         cursor.execute("""
-            SELECT COUNT(*) FROM student_profiles_enhanced 
-            WHERE student_number LIKE ?
+            SELECT COUNT(*) FROM students_enhanced 
+            WHERE roll_number LIKE ?
         """, (f"{department_code}{year}%",))
         count = cursor.fetchone()[0] + 1
-        student_number = f"{department_code}{year}{count:03d}"
+        roll_number = f"{department_code}{year}{count:03d}"
         
         # Generate password (firstname_lastname123)
         name_parts = name.split()
@@ -76,47 +76,58 @@ def register_student(student_data, image):
         password = f"{first_name}_{last_name}123"
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
         
-        # Check if username already exists
-        cursor.execute("SELECT username FROM student_profiles_enhanced WHERE username = ?", (username,))
+        # Check if username already exists in users_enhanced table
+        cursor.execute("SELECT username FROM users_enhanced WHERE username = ?", (username,))
         if cursor.fetchone():
             # If username exists, add a number suffix
             counter = 1
             original_username = username
             while True:
                 username = f"{original_username}_{counter}"
-                cursor.execute("SELECT username FROM student_profiles_enhanced WHERE username = ?", (username,))
+                cursor.execute("SELECT username FROM users_enhanced WHERE username = ?", (username,))
                 if not cursor.fetchone():
                     break
                 counter += 1
         
-        # Get department ID
-        cursor.execute("SELECT department_id FROM departments WHERE department_code = ?", (department_code,))
-        dept_result = cursor.fetchone()
-        department_id = dept_result[0] if dept_result else 1  # Default to first department
+        # Check if student name already exists in students_enhanced
+        cursor.execute("SELECT name FROM students_enhanced WHERE name = ?", (name,))
+        if cursor.fetchone():
+            # If name exists, add a number suffix to make it unique
+            counter = 1
+            original_name = name
+            while True:
+                name = f"{original_name}_{counter}"
+                cursor.execute("SELECT name FROM students_enhanced WHERE name = ?", (name,))
+                if not cursor.fetchone():
+                    break
+                counter += 1
         
-        # STEP 1: Create student profile
+        # Get department ID (we'll use the department_code directly since students_enhanced uses department TEXT)
+        department_name = department_code  # Use code directly
+        
+        # STEP 1: Create student record
         cursor.execute("""
-            INSERT INTO student_profiles_enhanced 
-            (username, name, student_number, email, phone, department_id, academic_year, current_semester)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        """, (username, name, student_number, email, phone, department_id, academic_year, semester))
+            INSERT INTO students_enhanced 
+            (name, roll_number, email, phone, department, year, section, enrollment_date, status)
+            VALUES (?, ?, ?, ?, ?, ?, 'A', ?, 'active')
+        """, (name, roll_number, email, phone, department_name, academic_year, datetime.now().date()))
         
         student_id = cursor.lastrowid
-        st.success(f"✅ Created student profile for '{name}'")
+        st.success(f"✅ Created student record for '{name}'")
         
-        # STEP 2: Create user account
+        # STEP 2: Create user account in users_enhanced table
         cursor.execute("""
-            INSERT INTO user_accounts_enhanced 
-            (username, password, role, student_id)
-            VALUES (?, ?, 'student', ?)
-        """, (username, hashed_password, student_id))
+            INSERT INTO users_enhanced 
+            (username, password_hash, role, email, full_name, linked_id, status)
+            VALUES (?, ?, 'student', ?, ?, ?, 'active')
+        """, (username, hashed_password, email, name, student_id))
         st.success("✅ Created login account")
         
-        # STEP 3: Auto-enroll in subjects for their department, year, and semester
+        # STEP 3: Auto-enroll in subjects for their department and year
         cursor.execute("""
             SELECT subject_id, subject_name FROM subjects_enhanced 
-            WHERE department_id = ? AND academic_year = ? AND semester = ?
-        """, (department_id, academic_year, semester))
+            WHERE department = ? AND year = ? AND semester = ?
+        """, (department_name, academic_year, semester))
         
         available_subjects = cursor.fetchall()
         enrolled_subjects = []
@@ -129,10 +140,10 @@ def register_student(student_data, image):
             
             for subject_id, subject_name in available_subjects:
                 cursor.execute("""
-                    INSERT INTO student_enrollments 
-                    (student_id, subject_id, term_id, status)
-                    VALUES (?, ?, ?, 'enrolled')
-                """, (student_id, subject_id, term_id))
+                    INSERT INTO student_enrollments_enhanced 
+                    (student_id, subject_id, academic_year, semester, status)
+                    VALUES (?, ?, ?, ?, 'enrolled')
+                """, (student_id, subject_id, str(academic_year), str(semester)))
                 enrolled_subjects.append(subject_name)
             
             if enrolled_subjects:
@@ -140,28 +151,91 @@ def register_student(student_data, image):
         
         # STEP 4: Process facial recognition data
         if image is not None:
-            faces = app.get(image)
-            if faces:
-                embedding = faces[0].embedding
-                normalized_embedding = embedding / np.linalg.norm(embedding)
-                embedding_json = json.dumps(normalized_embedding.tolist())
+            st.info("🔍 Processing facial recognition data...")
+            
+            # Debug: Show image info
+            st.write(f"📊 Image shape: {image.shape}")
+            
+            # Preprocess image for better face detection
+            # Convert BGR to RGB for InsightFace
+            rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            # Resize image if too large (max 1024px on longest side)
+            height, width = rgb_image.shape[:2]
+            max_size = 1024
+            if max(height, width) > max_size:
+                scale = max_size / max(height, width)
+                new_width = int(width * scale)
+                new_height = int(height * scale)
+                rgb_image = cv2.resize(rgb_image, (new_width, new_height))
+                st.info(f"📏 Resized image from {width}x{height} to {new_width}x{new_height}")
+            
+            # Try face detection
+            try:
+                faces = app.get(rgb_image)
+                st.write(f"🔍 Detected {len(faces)} face(s)")
                 
-                # Save facial embedding
-                cursor.execute("""
-                    INSERT INTO facial_embeddings 
-                    (student_id, embedding_data, confidence_threshold)
-                    VALUES (?, ?, 0.6)
-                """, (student_id, embedding_json))
-                st.success("✅ Facial recognition data saved")
+                if faces:
+                    # Show detection confidence
+                    for i, face in enumerate(faces):
+                        if hasattr(face, 'det_score'):
+                            st.write(f"Face {i+1} confidence: {face.det_score:.3f}")
+                    
+                    # Use the best face (first one, as InsightFace sorts by confidence)
+                    best_face = faces[0]
+                    embedding = best_face.embedding
+                    normalized_embedding = embedding / np.linalg.norm(embedding)
+                    embedding_json = json.dumps(normalized_embedding.tolist())
+                    
+                    # Show embedding info
+                    st.write(f"📊 Embedding size: {len(embedding)} dimensions")
+                    st.write(f"📊 Embedding norm: {np.linalg.norm(embedding):.3f}")
+                    
+                    # Draw bounding box on image for visual feedback
+                    display_image = image.copy()
+                    if hasattr(best_face, 'bbox'):
+                        bbox = best_face.bbox.astype(int)
+                        # Convert RGB bbox back to BGR image coordinates if needed
+                        scale_x = image.shape[1] / rgb_image.shape[1]
+                        scale_y = image.shape[0] / rgb_image.shape[0]
+                        bbox = (bbox * [scale_x, scale_y, scale_x, scale_y]).astype(int)
+                        
+                        cv2.rectangle(display_image, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 2)
+                        cv2.putText(display_image, f"Face: {best_face.det_score:.2f}", 
+                                  (bbox[0], bbox[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+                        
+                        st.image(display_image, channels="BGR", use_container_width=True, 
+                                caption="✅ Face Detected Successfully")
+                    
+                    # Save facial embedding to student_profiles_enhanced
+                    cursor.execute("""
+                        INSERT INTO student_profiles_enhanced 
+                        (student_id, profile_name, encoding_data, confidence_threshold, status)
+                        VALUES (?, ?, ?, 0.6, 'active')
+                    """, (student_id, name, embedding_json))
+                    st.success("✅ Facial recognition data saved successfully!")
+                    
+                else:
+                    st.error("⚠️ No face detected in the image. Please try:")
+                    st.write("• Ensure your face is clearly visible and well-lit")
+                    st.write("• Look directly at the camera")
+                    st.write("• Remove any obstructions (glasses, masks, etc.)")
+                    st.write("• Try taking the photo again")
+                    
+                    # Still show the image for debugging
+                    st.image(image, channels="BGR", use_container_width=True, 
+                            caption="❌ No Face Detected")
+                    
+            except Exception as e:
+                st.error(f"❌ Face detection error: {str(e)}")
+                st.write("This might be due to:")
+                st.write("• Image format issues")
+                st.write("• Model loading problems")
+                st.write("• GPU/CUDA issues")
+                st.write("Please try again or contact support.")
                 
-                # Also save to legacy table for compatibility
-                cursor.execute("""
-                    INSERT INTO presidents_embeds (name, facial_features) 
-                    VALUES (?, ?)
-                """, (name, embedding_json))
-                
-            else:
-                st.warning("⚠️ No face detected in the image")
+        else:
+            st.warning("⚠️ No image provided for facial recognition")
         
         conn.commit()
         
@@ -170,7 +244,7 @@ def register_student(student_data, image):
         
         with st.expander("📋 Registration Summary", expanded=True):
             st.write(f"**Name:** {name}")
-            st.write(f"**Student Number:** {student_number}")
+            st.write(f"**Roll Number:** {roll_number}")
             st.write(f"**Department:** {department_code}")
             st.write(f"**Academic Year:** {academic_year}")
             st.write(f"**Current Semester:** {semester}")
@@ -198,6 +272,22 @@ def show_registration_form():
     # Camera/Photo section at the top with full width
     st.subheader("📸 Photo Capture")
     
+    # Add instructions for better face capture
+    st.info("📋 **Photo Guidelines for Best Results:**")
+    col_a, col_b = st.columns(2)
+    with col_a:
+        st.write("✅ **Do:**")
+        st.write("• Look directly at the camera")
+        st.write("• Ensure good lighting on your face")
+        st.write("• Keep your face centered in frame")
+        st.write("• Remove glasses if possible")
+    with col_b:
+        st.write("❌ **Avoid:**")
+        st.write("• Shadows on your face")
+        st.write("• Wearing masks or face coverings")
+        st.write("• Looking away from camera")
+        st.write("• Too much distance from camera")
+    
     col1, col2 = st.columns([2, 1])
     
     with col1:
@@ -210,16 +300,41 @@ def show_registration_form():
             image_array = np.frombuffer(bytes_data, np.uint8)
             image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
             
-            # Display the captured image
-            st.image(image, channels="BGR", use_column_width=True, caption="Captured Photo")
+            # Test face detection immediately when photo is taken
+            st.write("🔍 **Testing face detection...**")
+            rgb_test_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            
+            try:
+                test_faces = app.get(rgb_test_image)
+                if test_faces:
+                    st.success(f"✅ Face detected successfully! (Confidence: {test_faces[0].det_score:.2f})")
+                    
+                    # Show image with detection box
+                    display_img = image.copy()
+                    if hasattr(test_faces[0], 'bbox'):
+                        bbox = test_faces[0].bbox.astype(int)
+                        cv2.rectangle(display_img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 3)
+                        cv2.putText(display_img, "FACE DETECTED", (bbox[0], bbox[1]-10), 
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                    
+                    st.image(display_img, channels="BGR", use_container_width=True, 
+                            caption="✅ Ready for Registration")
+                else:
+                    st.error("❌ No face detected! Please retake the photo.")
+                    st.image(image, channels="BGR", use_container_width=True, 
+                            caption="❌ Face Not Detected - Please Retake")
+            except Exception as e:
+                st.error(f"Face detection test failed: {e}")
+                st.image(image, channels="BGR", use_container_width=True, caption="Photo Captured")
         else:
             image = None
     
     with col2:
         if camera_input:
-            st.success("✅ Photo captured successfully!")
+            st.success("✅ Photo captured!")
+            st.write("**Next Step:** Fill out the form below and click Register")
         else:
-            st.info("📷 Please capture your photo")
+            st.info("📷 Click 'Take a snapshot' to capture your photo")
     
     st.divider()
     

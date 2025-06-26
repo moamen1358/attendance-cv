@@ -44,28 +44,50 @@ def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
         client = chromadb.PersistentClient(path_to_chroma)
 
         # Check if the collection already exists
-        collection_names = client.list_collections()
-        if (collection_name in collection_names):
+        try:
+            # Try to get existing collection
             collection = client.get_collection(name=collection_name)
-        else:
-            # Create a new collection if it doesn't exist
-            collection = client.create_collection(
-                name=collection_name,
-                metadata={"hnsw:space": "cosine"}
-            )
+            # Delete existing collection to ensure fresh data
+            client.delete_collection(name=collection_name)
+            print(f"Deleted existing collection: {collection_name}")
+        except Exception:
+            # Collection doesn't exist, which is fine
+            print(f"Collection {collection_name} doesn't exist yet - will create new one")
+        
+        # Create a new collection
+        collection = client.create_collection(
+            name=collection_name,
+            metadata={"hnsw:space": "cosine"}
+        )
 
         # Retrieve data from the SQLite database
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
-        # First try the newer schema
+        # Try the enhanced schema first (new format)
         try:
-            cursor.execute("SELECT name, facial_features FROM facial_recognition_data")
+            cursor.execute("""
+                SELECT sp.profile_name, sp.encoding_data 
+                FROM student_profiles_enhanced sp 
+                WHERE sp.status = 'active' AND sp.encoding_data IS NOT NULL
+            """)
             rows = cursor.fetchall()
-        except sqlite3.OperationalError:
-            # Fall back to older schema if needed
-            cursor.execute("SELECT name, facial_features FROM presidents_embeds")
-            rows = cursor.fetchall()
+            print(f"Found {len(rows)} profiles in student_profiles_enhanced")
+        except sqlite3.OperationalError as e:
+            print(f"Error reading from student_profiles_enhanced: {e}")
+            # Fall back to legacy tables
+            try:
+                cursor.execute("SELECT name, facial_features FROM facial_recognition_data")
+                rows = cursor.fetchall()
+                print(f"Found {len(rows)} profiles in facial_recognition_data")
+            except sqlite3.OperationalError:
+                try:
+                    cursor.execute("SELECT name, facial_features FROM presidents_embeds")
+                    rows = cursor.fetchall()
+                    print(f"Found {len(rows)} profiles in presidents_embeds")
+                except sqlite3.OperationalError:
+                    print("No facial recognition tables found!")
+                    rows = []
             
         conn.close()
 
@@ -73,6 +95,7 @@ def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
         for index, row in enumerate(rows):
             name, embedding_str = row
             embedding = json.loads(embedding_str)
+            print(f"Adding to ChromaDB: {name} (embedding length: {len(embedding)})")
             collection.add(
                 ids=[str(uuid.uuid4())],  # Generate a unique ID for each entry
                 documents=[name],
@@ -80,7 +103,20 @@ def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
                 metadatas=[{"name": name}],
             )
 
-        print("Data successfully stored in ChromaDB!")
+        print(f"Data successfully stored in ChromaDB! Added {len(rows)} profiles")
+        
+        # Debug: Check what's actually in the collection
+        try:
+            collection_count = collection.count()
+            print(f"ChromaDB collection now contains {collection_count} items")
+            
+            # Sample query to see what names are stored
+            if collection_count > 0:
+                sample_results = collection.get(limit=5)
+                print("Sample stored names:", [meta.get('name', 'Unknown') for meta in sample_results['metadatas']])
+        except Exception as debug_e:
+            print(f"Debug error: {debug_e}")
+        
         return collection
 
     except Exception as e:
@@ -93,17 +129,49 @@ def log_attendance(name, confidence, device_id=None):
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         
-        # Get current timestamp
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        # Get current date and time
+        current_date = datetime.now().strftime('%Y-%m-%d')
+        current_time = datetime.now().strftime('%H:%M:%S')
+        
+        # Find the student_id based on the recognized name
+        # First try to find by profile_name in student_profiles_enhanced
+        cursor.execute("""
+            SELECT sp.student_id, s.name, s.roll_number 
+            FROM student_profiles_enhanced sp
+            JOIN students_enhanced s ON sp.student_id = s.student_id
+            WHERE sp.profile_name = ? AND sp.status = 'active'
+            LIMIT 1
+        """, (name,))
+        
+        result = cursor.fetchone()
+        if not result:
+            print(f"No student found for recognized name: {name}")
+            return False
+        
+        student_id, student_name, roll_number = result
+        print(f"Found student: {student_name} (ID: {student_id}, Roll: {roll_number})")
+        
+        # Check if attendance already logged today
+        cursor.execute("""
+            SELECT id FROM attendance_records_enhanced 
+            WHERE student_id = ? AND attendance_date = ?
+        """, (student_id, current_date))
+        
+        if cursor.fetchone():
+            print(f"Attendance already logged today for {student_name}")
+            return True  # Already logged
         
         # Insert attendance record
-        cursor.execute('''
-            INSERT INTO attendance_log (name, timestamp, confidence, device_id)
-            VALUES (?, ?, ?, ?)
-        ''', (name, timestamp, confidence, device_id or 'default'))
+        cursor.execute("""
+            INSERT INTO attendance_records_enhanced 
+            (student_id, attendance_date, attendance_time, status, marked_by, notes)
+            VALUES (?, ?, ?, 'present', 'face_recognition', ?)
+        """, (student_id, current_date, current_time, f"Confidence: {confidence:.2f}"))
         
         conn.commit()
+        print(f"✅ Attendance logged for {student_name} at {current_time}")
         return True
+        
     except Exception as e:
         print(f"Error logging attendance: {e}")
         return False
@@ -114,20 +182,23 @@ def log_attendance(name, confidence, device_id=None):
 def process_frame(frame, threshold=0.6, collection=None):
     """Process a frame with face recognition"""
     faces = app.get(frame)
+    recognized = False
     
     if not faces:
-        return frame
+        return frame, recognized
     
     for face in faces:
-        x1, y1, x2, y2 = face['bbox'].astype(int)
-        embedding = face['embedding']
+        x1, y1, x2, y2 = face.bbox.astype(int)
+        embedding = face.embedding
         
         # Get recognition results
         name, confidence = cosine_similarity_search(embedding, threshold, collection)
         
-        # Log attendance if a person is recognized
+        # Check if face was recognized
         if name != "Unknown":
+            recognized = True
             log_attendance(name, confidence)
+        
         # Draw results
         color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
         label = f"{name} ({confidence:.2f})" if name != "Unknown" else "Unknown"
@@ -137,40 +208,99 @@ def process_frame(frame, threshold=0.6, collection=None):
         cv2.putText(frame, label, (x1, y1-10),
                 cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
     
-    return frame
+    return frame, recognized
 
 def cosine_similarity_search(query_embedding, threshold=0.6, collection=None):
     """Enhanced cosine similarity search with debugging"""
     if collection is None:
+        print("❌ No collection provided for search")
         return "Unknown", 0.0
 
-    # Normalize query embedding
-    query_normalized = query_embedding / np.linalg.norm(query_embedding)
-    
-    results = collection.query(
-        query_embeddings=[query_normalized.tolist()],
-        n_results=1,
-        include=["distances", "metadatas"]
-    )
-    
-    if not results['ids'][0]:
+    try:
+        # Normalize query embedding
+        query_normalized = query_embedding / np.linalg.norm(query_embedding)
+        
+        # Get collection info
+        collection_count = collection.count()
+        print(f"🔍 Searching in collection with {collection_count} faces")
+        
+        results = collection.query(
+            query_embeddings=[query_normalized.tolist()],
+            n_results=min(3, collection_count),  # Get top 3 matches for debugging
+            include=["distances", "metadatas"]
+        )
+        
+        if not results['ids'][0]:
+            print("❌ No results returned from search")
+            return "Unknown", 0.0
+        
+        # Show all top matches for debugging
+        print("🎯 Top matches:")
+        for i in range(len(results['ids'][0])):
+            name = results['metadatas'][0][i]['name']
+            distance = results['distances'][0][i]
+            similarity = 1 - distance
+            print(f"  {i+1}. {name} (Similarity: {similarity:.3f}, Distance: {distance:.3f})")
+        
+        # Get best match
+        best_name = results['metadatas'][0][0]['name']
+        best_similarity = 1 - results['distances'][0][0]
+        
+        print(f"✅ Best match: {best_name} (Similarity: {best_similarity:.3f}, Threshold: {threshold})")
+        
+        return (best_name, best_similarity) if best_similarity >= threshold else ("Unknown", best_similarity)
+        
+    except Exception as e:
+        print(f"❌ Error in similarity search: {e}")
         return "Unknown", 0.0
-    
-    # Convert distance to similarity
-    similarity = 1 - results['distances'][0][0]
-    
-    # Debug print
-    print(f"Best match: {results['metadatas'][0][0]['name']} (Similarity: {similarity:.2f})")
-    
-    return (results['metadatas'][0][0]['name'], similarity) if similarity >= threshold else ("Unknown", similarity)
 
 def show_real_time_prediction():
+    st.header("Real-Time Face Recognition")
+    
+    # Add debug section
+    with st.expander("🔍 Debug Information", expanded=False):
+        st.write("**Checking facial recognition database...**")
+        
+        # Check database
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT COUNT(*) as total, 
+                   COUNT(CASE WHEN encoding_data IS NOT NULL THEN 1 END) as with_embeddings 
+            FROM student_profiles_enhanced 
+            WHERE status = 'active'
+        """)
+        total, with_embeddings = cursor.fetchone()
+        conn.close()
+        
+        st.write(f"📊 Total active profiles: {total}")
+        st.write(f"📊 Profiles with facial embeddings: {with_embeddings}")
+        
+        if with_embeddings == 0:
+            st.error("❌ No facial embeddings found! Please register some faces first.")
+            return
+        else:
+            st.success(f"✅ Found {with_embeddings} registered faces")
+    
     # Load embeddings to ChromaDB
+    st.info("🔄 Loading facial recognition data...")
     collection = create_or_add_to_collection("face_recognition", path_to_chroma=CHROMA_STORE_PATH)
     
-    st.header("Real-Time Face Recognition")
+    if collection is None:
+        st.error("❌ Failed to load facial recognition collection")
+        return
+    
+    # Check collection contents
+    try:
+        collection_count = collection.count()
+        st.success(f"✅ Loaded {collection_count} faces into recognition system")
+    except Exception as e:
+        st.error(f"❌ Error checking collection: {e}")
+        return
+    
     threshold = st.slider("Recognition Threshold", 0.0, 1.0, 0.6)
-
+    st.info(f"🎯 Recognition threshold set to: {threshold}")
+    
     # Video capture with hic camera
     # cap = cv2.VideoCapture(RTSP_URL)
     # laptop camera
@@ -184,6 +314,13 @@ def show_real_time_prediction():
         return  # Exit the function if the camera connection fails
 
     stframe = st.empty()
+    
+    # Add recognition stats
+    recognition_stats = st.empty()
+    
+    frame_count = 0
+    recognition_count = 0
+    
     while True:
         ret, frame = cap.read()
         if not ret:
@@ -191,17 +328,21 @@ def show_real_time_prediction():
             break
         
         try:
+            frame_count += 1
             # time.sleep(5)
-            processed_frame = process_frame(frame, threshold, collection)
+            processed_frame, recognized = process_frame(frame, threshold, collection)
+            if recognized:
+                recognition_count += 1
+            
+            stframe.image(processed_frame, channels="BGR", use_container_width=True)
+            
+            # Update stats every 30 frames
+            if frame_count % 30 == 0:
+                recognition_stats.info(f"📊 Frames processed: {frame_count} | Recognitions: {recognition_count}")
+            
         except Exception as e:
-            st.error(f"Error processing frame: {e}")
-            continue
-        
-        # Convert frame to RGB
-        processed_frame = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
-        
-        # Display frame
-        stframe.image(processed_frame, channels="RGB", use_container_width=True)
+            st.error(f"Error processing frame: {str(e)}")
+            break
 
     cap.release()
 
