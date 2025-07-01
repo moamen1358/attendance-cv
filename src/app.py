@@ -7,6 +7,10 @@ st.set_page_config(
     initial_sidebar_state="auto"
 )
 
+# Apply global fixes immediately after page config
+from global_fixes import apply_global_dropdown_fixes
+apply_global_dropdown_fixes()
+
 """
 Main Application Entry Point
 

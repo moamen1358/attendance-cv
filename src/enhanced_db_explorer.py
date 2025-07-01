@@ -7,6 +7,7 @@ from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 import hashlib
+from global_fixes import apply_global_dropdown_fixes
 # Add import for professor assignments functionality
 import importlib
 # Import time utilities for better formatting
@@ -204,6 +205,9 @@ def get_primary_key(table):
 
 def show_db_explorer():
     """Display database explorer with full CRUD functionality"""
+    # Apply global dropdown and styling fixes
+    apply_global_dropdown_fixes()
+    
     st.title("SQLite Database Manager")
     st.write("Manage your database tables with this interactive tool")
     
