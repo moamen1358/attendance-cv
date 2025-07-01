@@ -755,15 +755,15 @@ def display_table_content(table):
         st.error(f"Error getting row count: {e}")
         row_count = 0
     
-    # Table header with stats - DARK CARD WITH LIGHT TEXT
+    # Table header with stats - MATCHING APP THEME
     st.markdown(f"""
-    <div class="table-info-card" style="background: #2d3748; border-radius: 15px; padding: 25px; margin: 15px 0; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+    <div class="table-info-card" style="background: #1a202c; border-radius: 15px; padding: 25px; margin: 15px 0; box-shadow: 0 8px 32px rgba(0,0,0,0.3); border: 1px solid #2d3748;">
         <div style="display: block; margin-bottom: 15px;">
-            <h2 style="margin: 0; padding: 0; color: #ffffff !important; font-size: 24px; font-weight: bold; line-height: 1.2; text-shadow: none !important;">
+            <h2 style="margin: 0; padding: 0; color: #f7fafc !important; font-size: 24px; font-weight: bold; line-height: 1.2; text-shadow: none !important;">
                 📊 {table}
             </h2>
         </div>
-        <div style="display: flex; gap: 20px; color: #e2e8f0; font-weight: 500; font-size: 14px;">
+        <div style="display: flex; gap: 20px; color: #cbd5e0; font-weight: 500; font-size: 14px;">
             <div><strong>Columns:</strong> {len(columns)}</div>
             <div><strong>Rows:</strong> {row_count}</div>
             <div><strong>Primary Key:</strong> {', '.join(primary_keys) if primary_keys else 'None'}</div>
