@@ -240,6 +240,96 @@ def initialize_database():
             SELECT * FROM student_profiles_enhanced
         ''')
         
+        # Create compatibility views for legacy code
+        print("Creating compatibility views...")
+        
+        # 1. user_accounts_enhanced view (maps users_enhanced with teacher -> professor role mapping)
+        cursor.execute('''
+        CREATE VIEW IF NOT EXISTS user_accounts_enhanced AS 
+        SELECT 
+            id, 
+            username, 
+            password_hash, 
+            email, 
+            full_name, 
+            CASE WHEN role = 'teacher' THEN 'professor' ELSE role END as role,
+            linked_id, 
+            last_login, 
+            status, 
+            created_at, 
+            updated_at,
+            id as student_id, 
+            id as professor_id 
+        FROM users_enhanced
+        ''')
+        
+        # 2. students view (maps students_enhanced to legacy students table format)
+        cursor.execute('''
+        CREATE VIEW IF NOT EXISTS students AS 
+        SELECT 
+            student_id, 
+            name, 
+            roll_number 
+        FROM students_enhanced
+        ''')
+        
+        # 3. subjects view (maps subjects_enhanced to legacy subjects table format)
+        cursor.execute('''
+        CREATE VIEW IF NOT EXISTS subjects AS 
+        SELECT 
+            subject_id, 
+            subject_name, 
+            course_code, 
+            credit_hours, 
+            description, 
+            department 
+        FROM subjects_enhanced
+        ''')
+        
+        # 4. professor_subject_assignments view (maps teacher_subjects_enhanced)
+        cursor.execute('''
+        CREATE VIEW IF NOT EXISTS professor_subject_assignments AS 
+        SELECT 
+            id, 
+            (SELECT username FROM users_enhanced WHERE linked_id = teacher_id) as professor_username,
+            subject_id, 
+            assigned_date 
+        FROM teacher_subjects_enhanced
+        ''')
+        
+        # 5. professor_profiles view (maps teachers_enhanced with users_enhanced)
+        cursor.execute('''
+        CREATE VIEW IF NOT EXISTS professor_profiles AS 
+        SELECT 
+            u.username, 
+            t.name, 
+            t.department, 
+            t.email, 
+            t.phone 
+        FROM users_enhanced u 
+        JOIN teachers_enhanced t ON u.linked_id = t.teacher_id 
+        WHERE u.role = 'teacher'
+        ''')
+        
+        # 6. user_accounts view (legacy compatibility)
+        cursor.execute('''
+        CREATE VIEW IF NOT EXISTS user_accounts AS 
+        SELECT 
+            id, 
+            username, 
+            password_hash as password, 
+            email, 
+            full_name, 
+            role, 
+            linked_id, 
+            last_login, 
+            status, 
+            created_at 
+        FROM users_enhanced
+        ''')
+        
+        print("✓ Compatibility views created successfully")
+        
         # Create indexes for better performance (matching actual database indexes)
         indexes = [
             # Core attendance indexes

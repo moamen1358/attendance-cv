@@ -22,8 +22,8 @@ def get_subjects_with_schema_detection():
     cursor = conn.cursor()
     
     try:
-        # Check if subjects table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
+        # Check if subjects table or view exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE (type='table' OR type='view') AND name='subjects'")
         if not cursor.fetchone():
             st.error("Subjects table does not exist")
             return pd.DataFrame()

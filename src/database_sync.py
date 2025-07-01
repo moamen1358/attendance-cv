@@ -19,6 +19,12 @@ def sync_user_tables():
     changes = 0
     
     try:
+        # Check if user_accounts is a view (compatibility mode)
+        cursor.execute("SELECT type FROM sqlite_master WHERE name='user_accounts'")
+        result = cursor.fetchone()
+        if result and result[0] == 'view':
+            print("Skipping sync - using compatibility views")
+            return 0
         # 1. Ensure all students in student_profiles have corresponding user_accounts entries
         cursor.execute("""
         INSERT OR IGNORE INTO user_accounts (username, password, role)

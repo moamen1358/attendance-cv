@@ -5,8 +5,17 @@ import pandas as pd
 # Constants
 DATABASE_PATH = 'attendance_system.db'
 
-# Add import for database sync - using direct import
-from database_sync import sync_user_tables
+# Add import for database sync - using conditional import
+try:
+    from database_sync import sync_user_tables
+except ImportError:
+    try:
+        from .database_sync import sync_user_tables
+    except ImportError:
+        def sync_user_tables():
+            """Fallback sync function - disabled for compatibility views"""
+            # Skip sync when using compatibility views to avoid modifying views
+            pass
 
 # Import centralized database initialization
 try:
@@ -277,7 +286,7 @@ def get_professors_list():
     
     conn = sqlite3.connect('attendance_system.db')
     query = """
-    SELECT username, COALESCE(name, username) as name
+    SELECT ua.username, COALESCE(pp.name, ua.username) as name
     FROM user_accounts_enhanced ua
     LEFT JOIN professor_profiles pp ON ua.username = pp.username
     WHERE ua.role = 'professor'
@@ -334,8 +343,8 @@ def get_subjects_list(with_id=True):
     cursor = conn.cursor()
     
     try:
-        # Check if subjects table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
+        # Check if subjects table or view exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE (type='table' OR type='view') AND name='subjects'")
         if not cursor.fetchone():
             print("Subjects table does not exist")
             return pd.DataFrame()
@@ -480,8 +489,8 @@ def ensure_subjects_table_schema():
     cursor = conn.cursor()
     
     try:
-        # Check if subjects table exists
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='subjects'")
+        # Check if subjects table or view exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE (type='table' OR type='view') AND name='subjects'")
         if not cursor.fetchone():
             # Create the subjects table if it doesn't exist
             cursor.execute('''
@@ -590,8 +599,8 @@ def ensure_student_profiles_compatibility():
         conn.commit()
         print("Created student_profiles_view")
             
-        # Verify table exists after all operations
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='student_profiles'")
+        # Verify table or view exists after all operations
+        cursor.execute("SELECT name FROM sqlite_master WHERE (type='table' OR type='view') AND name='student_profiles'")
         if cursor.fetchone():
             print("SUCCESS: student_profiles table exists!")
             return True
