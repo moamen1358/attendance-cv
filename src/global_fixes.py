@@ -22,13 +22,14 @@ def apply_global_dropdown_fixes():
     }
     
     .stSelectbox > div[data-baseweb="select"] > div {
-        background-color: #ffffff !important;
-        border: 1px solid #d0d0d0 !important;
+        background-color: #262730 !important;
+        border: 1px solid #404040 !important;
         border-radius: 6px !important;
         font-size: 14px !important;
         min-height: 38px !important;
         width: 100% !important;
         transition: border-color 0.2s ease !important;
+        color: #ffffff !important;
     }
     
     .stSelectbox > div[data-baseweb="select"] > div:hover {
@@ -42,8 +43,8 @@ def apply_global_dropdown_fixes():
     
     /* Fix dropdown menu positioning and styling */
     .stSelectbox [role="listbox"] {
-        background-color: #ffffff !important;
-        border: 1px solid #d0d0d0 !important;
+        background-color: #262730 !important;
+        border: 1px solid #404040 !important;
         border-radius: 6px !important;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
         z-index: 9999 !important;
@@ -57,15 +58,15 @@ def apply_global_dropdown_fixes():
     .stSelectbox [role="option"] {
         padding: 8px 12px !important;
         font-size: 14px !important;
-        color: #333333 !important;
-        background-color: #ffffff !important;
-        border-bottom: 1px solid #f0f0f0 !important;
+        color: #ffffff !important;
+        background-color: #262730 !important;
+        border-bottom: 1px solid #404040 !important;
         transition: background-color 0.2s ease !important;
     }
     
     .stSelectbox [role="option"]:hover {
-        background-color: #f8f9fa !important;
-        color: #007bff !important;
+        background-color: #404040 !important;
+        color: #ffffff !important;
     }
     
     .stSelectbox [role="option"][aria-selected="true"] {
@@ -86,13 +87,14 @@ def apply_global_dropdown_fixes():
     }
     
     .stMultiSelect > div[data-baseweb="select"] > div {
-        background-color: #ffffff !important;
-        border: 1px solid #d0d0d0 !important;
+        background-color: #262730 !important;
+        border: 1px solid #404040 !important;
         border-radius: 6px !important;
         font-size: 14px !important;
         min-height: 38px !important;
         width: 100% !important;
         transition: border-color 0.2s ease !important;
+        color: #ffffff !important;
     }
     
     .stMultiSelect > div[data-baseweb="select"] > div:hover {
@@ -100,8 +102,8 @@ def apply_global_dropdown_fixes():
     }
     
     .stMultiSelect [role="listbox"] {
-        background-color: #ffffff !important;
-        border: 1px solid #d0d0d0 !important;
+        background-color: #262730 !important;
+        border: 1px solid #404040 !important;
         border-radius: 6px !important;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
         z-index: 9999 !important;
@@ -115,15 +117,15 @@ def apply_global_dropdown_fixes():
     .stMultiSelect [role="option"] {
         padding: 8px 12px !important;
         font-size: 14px !important;
-        color: #333333 !important;
-        background-color: #ffffff !important;
-        border-bottom: 1px solid #f0f0f0 !important;
+        color: #ffffff !important;
+        background-color: #262730 !important;
+        border-bottom: 1px solid #404040 !important;
         transition: background-color 0.2s ease !important;
     }
     
     .stMultiSelect [role="option"]:hover {
-        background-color: #f8f9fa !important;
-        color: #007bff !important;
+        background-color: #404040 !important;
+        color: #ffffff !important;
     }
     
     .stMultiSelect [role="option"][aria-selected="true"] {
@@ -198,23 +200,53 @@ def apply_global_dropdown_fixes():
     
     /* ===== COLOR CONSISTENCY FIXES ===== */
     
-    /* Ensure consistent colors across refreshes */
+    /* Dark theme for main content area */
     .stApp {
-        background-color: #ffffff !important;
+        background-color: #0e1117 !important;
     }
     
     .main {
-        background-color: #ffffff !important;
+        background-color: #0e1117 !important;
     }
     
-    /* Text color consistency */
+    .main .block-container {
+        background-color: #0e1117 !important;
+    }
+    
+    /* Text color consistency for dark theme */
     .stMarkdown, .stText, .stWrite {
-        color: #333333 !important;
+        color: #ffffff !important;
     }
     
-    /* Header consistency */
+    /* Header consistency for dark theme */
     h1, h2, h3, h4, h5, h6 {
-        color: #1f2937 !important;
+        color: #ffffff !important;
+    }
+    
+    /* Form background for dark theme */
+    .stForm {
+        background-color: #262730 !important;
+        border: 1px solid #404040 !important;
+    }
+    
+    /* Tab content for dark theme */
+    .stTabs [data-baseweb="tab-panel"] {
+        background-color: #0e1117 !important;
+    }
+    
+    /* Tab headers for dark theme */
+    .stTabs [data-baseweb="tab-list"] {
+        background-color: #262730 !important;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: #0e1117 !important;
+        color: #ffffff !important;
     }
     
     /* ===== RESPONSIVE FIXES ===== */
@@ -245,6 +277,81 @@ def apply_global_dropdown_fixes():
     
     .main {
         z-index: 1 !important;
+    }
+    
+    /* ===== ADDITIONAL DARK THEME IMPROVEMENTS ===== */
+    
+    /* Labels and form labels */
+    .stSelectbox label, .stMultiSelect label {
+        color: #ffffff !important;
+        font-weight: 500 !important;
+    }
+    
+    /* Form input placeholders */
+    .stSelectbox input::placeholder, .stMultiSelect input::placeholder {
+        color: #cccccc !important;
+    }
+    
+    /* Expander styling for dark theme */
+    .streamlit-expanderHeader {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+    }
+    
+    .streamlit-expanderContent {
+        background-color: #0e1117 !important;
+        border: 1px solid #404040 !important;
+    }
+    
+    /* Dataframe styling for dark theme */
+    .dataframe {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+    }
+    
+    .dataframe th {
+        background-color: #404040 !important;
+        color: #ffffff !important;
+    }
+    
+    .dataframe td {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+    }
+    
+    /* Alert boxes for dark theme */
+    .stAlert {
+        background-color: #262730 !important;
+        color: #ffffff !important;
+        border: 1px solid #404040 !important;
+    }
+    
+    /* Success message styling */
+    .stSuccess {
+        background-color: #155724 !important;
+        color: #d4edda !important;
+        border: 1px solid #c3e6cb !important;
+    }
+    
+    /* Error message styling */
+    .stError {
+        background-color: #721c24 !important;
+        color: #f8d7da !important;
+        border: 1px solid #f5c6cb !important;
+    }
+    
+    /* Warning message styling */
+    .stWarning {
+        background-color: #856404 !important;
+        color: #fff3cd !important;
+        border: 1px solid #ffeaa7 !important;
+    }
+    
+    /* Info message styling */
+    .stInfo {
+        background-color: #0c5460 !important;
+        color: #d1ecf1 !important;
+        border: 1px solid #bee5eb !important;
     }
     </style>
     """, unsafe_allow_html=True)
