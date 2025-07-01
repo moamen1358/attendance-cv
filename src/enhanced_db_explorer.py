@@ -240,136 +240,245 @@ def show_db_explorer():
     # Create a tab for professor assignments at the top level
     tab_main, tab_prof_assign = st.tabs(["Database Tables", "Professor Assignments"])
     
-    # Add enhanced CSS for better styling and user experience
+    # Add enhanced CSS for better styling and user experience - matching report page style
     st.markdown("""
     <style>
+    /* Enhanced dashboard styling */
+    .dashboard-container {
+        background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+        min-height: 100vh;
+        padding: 0;
+    }
+    
     /* Enhance overall appearance */
     .main .block-container {
         padding-top: 1rem !important;
     }
     
-    /* Compact table selection styling */
-    .compact-tables {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 5px;
-        margin: 5px 0;
+    /* Modern card styling */
+    .professor-card, .db-card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        margin: 15px 0;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
+        transition: transform 0.3s ease, box-shadow 0.3s ease;
     }
     
-    /* Ultra compact table selector buttons */
-    .compact-table-selector {
-        background-color: #f8f9fa;
-        border: 1px solid #eaeaea;
-        border-radius: 4px;
-        padding: 4px 8px;
-        font-size: 0.8rem;
-        margin: 0;
+    .professor-card:hover, .db-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 12px 40px rgba(0,0,0,0.15);
+    }
+    
+    /* Header card styling */
+    .header-card {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
         text-align: center;
-        cursor: pointer;
-        transition: all 0.2s ease;
-        white-space: nowrap;
-        display: inline-block;
+        margin-bottom: 30px;
     }
-    .compact-table-selector:hover {
-        background-color: #e9f2fe;
-        border-color: #bbd6fe;
+    
+    /* Enhanced form styling */
+    .form-container {
+        background: white;
+        border-radius: 15px;
+        padding: 30px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        margin: 20px 0;
     }
-    .compact-table-selector.selected {
-        background-color: #e1f5fe;
-        border-color: #4fc3f7;
-        color: #0277bd;
+    
+    .form-section-title {
+        color: #2c3e50;
+        font-size: 1.5rem;
         font-weight: 600;
+        margin: 0 0 20px 0;
+        text-align: center;
+        position: relative;
     }
     
-    /* Category headers */
-    .table-category {
-        font-size: 0.85rem;
+    .form-section-title:after {
+        content: '';
+        position: absolute;
+        bottom: -5px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 50px;
+        height: 3px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 2px;
+    }
+    
+    /* Enhanced Selectbox Styling - Matching Report Page */
+    .stSelectbox > div > div {
+        background: white;
+        border: 2px solid #e1e8ed;
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    
+    .stSelectbox > div > div:hover {
+        border-color: #667eea;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        transform: translateY(-1px);
+    }
+    
+    .stSelectbox > div > div:focus-within {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    .stSelectbox > div > div > div {
+        color: #2c3e50;
         font-weight: 500;
-        color: #555;
-        margin: 5px 0 2px 0;
-        padding: 0;
+        padding: 12px 16px;
     }
     
-    /* Section dividers */
-    .compact-section-divider {
-        height: 1px;
-        background: #e0e0e0;
-        margin: 10px 0;
+    /* Enhanced selectbox arrow */
+    .stSelectbox > div > div::after {
+        border-top-color: #667eea;
     }
     
-    /* Horizontal scrollable container for tables */
-    .table-scroll-container {
-        display: flex;
-        overflow-x: auto;
-        padding: 5px 0;
-        margin-bottom: 8px;
-        -ms-overflow-style: none;  /* IE and Edge */
-        scrollbar-width: thin;     /* Firefox */
+    /* Selectbox dropdown menu styling */
+    .stSelectbox > div > div > div[role="listbox"] {
+        border: 2px solid #667eea;
+        border-radius: 12px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.15);
+        backdrop-filter: blur(10px);
+        background: rgba(255,255,255,0.95);
     }
     
-    /* Thin scrollbar for better appearance */
-    .table-scroll-container::-webkit-scrollbar {
-        height: 4px;
+    .stSelectbox > div > div > div[role="listbox"] > div {
+        padding: 12px 16px;
+        transition: all 0.2s ease;
+        border-radius: 8px;
+        margin: 4px;
     }
     
-    .table-scroll-container::-webkit-scrollbar-track {
-        background: #f1f1f1;
+    .stSelectbox > div > div > div[role="listbox"] > div:hover {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        transform: translateX(4px);
+    }
+    
+    /* Tab styling improvements */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 10px;
+        background: white;
         border-radius: 10px;
+        padding: 5px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
     }
     
-    .table-scroll-container::-webkit-scrollbar-thumb {
-        background: #c1c1c1;
-        border-radius: 10px;
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        border-radius: 8px;
+        color: #64748b;
+        font-weight: 600;
+        transition: all 0.3s ease;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+    }
+    
+    /* Form input styling to match selectboxes */
+    .stTextInput > div > div > input {
+        border: 2px solid #e1e8ed;
+        border-radius: 12px;
+        padding: 12px 16px;
+        transition: all 0.3s ease;
+        background: white;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    }
+    
+    .stTextInput > div > div > input:hover {
+        border-color: #667eea;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+        transform: translateY(-1px);
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+    }
+    
+    /* Button styling to match overall theme */
+    .stButton > button {
+        border: 2px solid #667eea;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        font-weight: 600;
+        padding: 12px 24px;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(102, 126, 234, 0.35);
+        background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
     }
     
     /* Table card styling */
     .table-card {
         background-color: #f8f9fa;
         border: 1px solid #eaeaea;
-        border-radius: 4px;
-        padding: 5px 12px;
+        border-radius: 12px;
+        padding: 8px 16px;
         margin-right: 8px;
         white-space: nowrap;
         cursor: pointer;
-        transition: all 0.2s ease;
+        transition: all 0.3s ease;
         font-size: 0.85rem;
         min-width: fit-content;
         display: inline-block;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
     
     .table-card:hover {
         background-color: #e9f2fe;
-        border-color: #bbd6fe;
+        border-color: #667eea;
+        transform: translateY(-2px);
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
     }
     
     .table-card.selected {
-        background-color: #e1f5fe;
-        border-color: #4fc3f7;
-        color: #0277bd;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-color: #667eea;
+        color: white;
         font-weight: 600;
+        box-shadow: 0 4px 12px rgba(102, 126, 234, 0.25);
     }
     
-    /* Category headers with icon */
-    .table-category {
-        font-size: 0.85rem;
-        font-weight: 500;
-        color: #555;
-        margin: 5px 0 2px 0;
-        padding: 0;
-        display: flex;
-        align-items: center;
+    /* Enhanced table info card */
+    .table-info-card {
+        background: white;
+        border-radius: 15px;
+        padding: 25px;
+        margin: 15px 0;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        border: 1px solid rgba(255,255,255,0.2);
     }
     
-    .category-icon {
-        margin-right: 5px;
-        opacity: 0.8;
-    }
-    
-    /* Section dividers */
-    .compact-section-divider {
-        height: 1px;
-        background: #e0e0e0;
+    /* Metric cards */
+    .metric-card {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        text-align: center;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        border-left: 4px solid;
         margin: 10px 0;
+        transition: all 0.3s ease;
+    }
+    
+    .metric-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 25px rgba(0,0,0,0.15);
     }
     </style>
     """, unsafe_allow_html=True)
@@ -438,20 +547,42 @@ def show_db_explorer():
                         subjects = []
                 
                 if professors and subjects:
+                    # Apply enhanced form container styling
+                    st.markdown('<div class="form-container">', unsafe_allow_html=True)
+                    st.markdown('<h3 class="form-section-title">👨‍🏫 Professor Subject Assignment</h3>', unsafe_allow_html=True)
+                    
                     with st.form("manual_assignment"):
-                        # Show professor selection with display names
-                        selected_prof_display = st.selectbox("Select Professor:", 
-                                                           options=[p[1] for p in professors],
-                                                           key="prof_assign_select")
-                        # Get the actual username from the selection
-                        selected_prof = next((p[0] for p in professors if p[1] == selected_prof_display), None)
+                        # Create columns for better layout matching report page
+                        col1, col2 = st.columns(2)
                         
-                        selected_subject = st.selectbox("Select Subject:", 
-                                                       options=[s[0] for s in subjects],
-                                                       format_func=lambda x: next((s[1] for s in subjects if s[0] == x), "Unknown"),
-                                                       key="subject_assign_select")
+                        with col1:
+                            # Professor selection with enhanced styling
+                            st.markdown("**👨‍🎓 Select Professor**")
+                            selected_prof_display = st.selectbox(
+                                "Choose professor",
+                                options=[p[1] for p in professors],
+                                key="prof_assign_select",
+                                help="Choose the professor to assign the subject to",
+                                label_visibility="collapsed"
+                            )
+                            # Get the actual username from the selection
+                            selected_prof = next((p[0] for p in professors if p[1] == selected_prof_display), None)
                         
-                        if st.form_submit_button("Assign Subject"):
+                        with col2:
+                            # Subject selection with enhanced styling  
+                            st.markdown("**📚 Select Subject**")
+                            selected_subject = st.selectbox(
+                                "Choose subject",
+                                options=[s[0] for s in subjects],
+                                format_func=lambda x: next((s[1] for s in subjects if s[0] == x), "Unknown"),
+                                key="subject_assign_select",
+                                help="Choose the subject to assign to the professor",
+                                label_visibility="collapsed"
+                            )
+                        
+                        # Submit button with enhanced styling
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.form_submit_button("🎯 Assign Subject", type="primary", use_container_width=True):
                             if selected_prof:
                                 try:
                                     # Check if assignment already exists
@@ -476,8 +607,12 @@ def show_db_explorer():
                             else:
                                 st.error("Please select a valid professor.")
                     
-                    # Show current assignments
-                    st.subheader("Current Assignments")
+                    # Close form container
+                    st.markdown('</div>', unsafe_allow_html=True)
+                    
+                    # Show current assignments with enhanced styling
+                    st.markdown('<div class="form-container">', unsafe_allow_html=True)
+                    st.markdown('<h3 class="form-section-title">📋 Current Assignments</h3>', unsafe_allow_html=True)
                     try:
                         # Try different column names for subjects
                         try:
@@ -499,26 +634,38 @@ def show_db_explorer():
                             assignments_df = pd.read_sql_query(assignments_query, sqlite3.connect('attendance_system.db'))
                         
                         if not assignments_df.empty:
-                            st.dataframe(assignments_df)
+                            st.dataframe(assignments_df, use_container_width=True)
                             
-                            # Add remove functionality
-                            assignment_to_remove = st.selectbox("Select assignment to remove:", 
-                                                              assignments_df['id'].tolist(),
-                                                              format_func=lambda x: f"{assignments_df[assignments_df['id']==x]['professor_username'].iloc[0]} - {assignments_df[assignments_df['id']==x]['subject_name'].iloc[0]}",
-                                                              key="remove_assignment_select")
+                            # Add remove functionality with enhanced styling
+                            col1, col2 = st.columns([3, 1])
+                            with col1:
+                                st.markdown("**🗑️ Remove Assignment**")
+                                assignment_to_remove = st.selectbox(
+                                    "Select assignment to remove", 
+                                    assignments_df['id'].tolist(),
+                                    format_func=lambda x: f"👨‍🏫 {assignments_df[assignments_df['id']==x]['professor_username'].iloc[0]} - 📚 {assignments_df[assignments_df['id']==x]['subject_name'].iloc[0]}",
+                                    key="remove_assignment_select",
+                                    help="Choose the assignment to remove",
+                                    label_visibility="collapsed"
+                                )
                             
-                            if st.button("Remove Assignment", key="remove_assignment_btn"):
-                                try:
-                                    delete_query = "DELETE FROM professor_subject_assignments WHERE id = ?"
-                                    execute_query(delete_query, (assignment_to_remove,), commit=True)
-                                    st.success("Assignment removed successfully!")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error removing assignment: {e}")
+                            with col2:
+                                st.markdown("<br>", unsafe_allow_html=True)
+                                if st.button("🗑️ Remove Assignment", key="remove_assignment_btn", type="secondary"):
+                                    try:
+                                        delete_query = "DELETE FROM professor_subject_assignments WHERE id = ?"
+                                        execute_query(delete_query, (assignment_to_remove,), commit=True)
+                                        st.success("Assignment removed successfully!")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error removing assignment: {e}")
                         else:
                             st.info("No assignments found.")
                     except Exception as e:
                         st.error(f"Error loading assignments: {e}")
+                    
+                    # Close assignments container
+                    st.markdown('</div>', unsafe_allow_html=True)
                 else:
                     st.warning("No professors or subjects found in the database.")
             except Exception as e:
@@ -753,21 +900,30 @@ def display_delete_records_section(table, columns, primary_keys):
             if delete_method == "Delete by ID" and primary_keys:
                 pk_column = primary_keys[0]  # Use first primary key
                 if pk_column in df.columns:
-                    record_id = st.selectbox(f"Select {pk_column} to delete:", 
-                                           options=df[pk_column].tolist(),
-                                           key=f"delete_record_{table}")
+                    col1, col2 = st.columns([3, 1])
+                    with col1:
+                        st.markdown(f"**🎯 Select {pk_column} to Delete**")
+                        record_id = st.selectbox(
+                            f"Choose {pk_column} to delete", 
+                            options=df[pk_column].tolist(),
+                            key=f"delete_record_{table}",
+                            help=f"Select the {pk_column} of the record you want to delete",
+                            label_visibility="collapsed"
+                        )
                     
-                    if st.button("🗑️ Delete Selected Record", type="secondary", key=f"delete_selected_record_{table}"):
-                        try:
-                            query = f"DELETE FROM {table} WHERE {pk_column} = ?"
-                            result = execute_query(query, (record_id,), commit=True)
-                            if result is not False:
-                                st.success(f"✅ Record with {pk_column}={record_id} deleted!")
-                                st.rerun()
-                            else:
-                                st.error("Failed to delete record")
-                        except Exception as e:
-                            st.error(f"Error deleting record: {e}")
+                    with col2:
+                        st.markdown("<br>", unsafe_allow_html=True)
+                        if st.button("🗑️ Delete Selected Record", type="secondary", key=f"delete_selected_record_{table}"):
+                            try:
+                                query = f"DELETE FROM {table} WHERE {pk_column} = ?"
+                                result = execute_query(query, (record_id,), commit=True)
+                                if result is not False:
+                                    st.success(f"✅ Record with {pk_column}={record_id} deleted!")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to delete record")
+                            except Exception as e:
+                                st.error(f"Error deleting record: {e}")
             
             elif delete_method == "Delete by condition":
                 condition = st.text_input("Enter WHERE condition (without WHERE):", 
@@ -815,9 +971,16 @@ def display_sql_query_section(table):
         "Table Schema": f"PRAGMA table_info({table});",
     }
     
-    query_type = st.selectbox("Choose a predefined query or write custom:", 
-                             ["Custom"] + list(predefined_queries.keys()),
-                             key=f"query_type_{table}")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown("**📋 Query Type**")
+        query_type = st.selectbox(
+            "Choose a predefined query or write custom", 
+            ["Custom"] + list(predefined_queries.keys()),
+            key=f"query_type_{table}",
+            help="Select a predefined query or choose 'Custom' to write your own",
+            label_visibility="collapsed"
+        )
     
     if query_type == "Custom":
         query = st.text_area("Enter your SQL query:", 
@@ -870,8 +1033,16 @@ def display_analytics_section(table, columns):
             # Column analysis
             if len(df.columns) > 0:
                 st.write("**Column Analysis:**")
-                selected_column = st.selectbox("Select column to analyze:", df.columns.tolist(),
-                                              key=f"analyze_column_{table}")
+                col1, col2 = st.columns([2, 1])
+                with col1:
+                    st.markdown("**📊 Select Column to Analyze**")
+                    selected_column = st.selectbox(
+                        "Choose column for detailed analysis",
+                        df.columns.tolist(),
+                        key=f"analyze_column_{table}",
+                        help="Select a column to view its statistics and distribution",
+                        label_visibility="collapsed"
+                    )
                 
                 if selected_column:
                     col_data = df[selected_column]
@@ -905,31 +1076,42 @@ def display_database_operations_section(table):
     """Display the database operations section"""
     st.subheader(f"⚙️ Database Operations for {table}")
     
-    # Export data
+    # Export data with enhanced styling
     st.write("**📤 Export Data**")
-    export_format = st.selectbox("Export format:", ["CSV", "JSON", "Excel"],
-                                key=f"export_format_{table}")
+    col1, col2 = st.columns([2, 1])
+    with col1:
+        st.markdown("**📁 Export Format**")
+        export_format = st.selectbox(
+            "Choose export format",
+            ["CSV", "JSON", "Excel"],
+            key=f"export_format_{table}",
+            help="Select the format for exporting table data",
+            format_func=lambda x: {"CSV": "📄 CSV File", "JSON": "🔧 JSON File", "Excel": "📊 Excel File"}[x],
+            label_visibility="collapsed"
+        )
     
-    if st.button("💾 Export Data", key=f"export_data_btn_{table}"):
-        try:
-            df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
-            
-            if export_format == "CSV":
-                csv_data = df.to_csv(index=False)
-                st.download_button("📥 Download CSV", csv_data, f"{table}.csv", "text/csv")
-            elif export_format == "JSON":
-                json_data = df.to_json(orient="records", indent=2)
-                st.download_button("📥 Download JSON", json_data, f"{table}.json", "application/json")
-            elif export_format == "Excel":
-                excel_buffer = io.BytesIO()
-                df.to_excel(excel_buffer, index=False)
-                excel_data = excel_buffer.getvalue()
-                st.download_button("📥 Download Excel", excel_data, f"{table}.xlsx", 
-                                 "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            
-            st.success("✅ Export ready for download!")
-        except Exception as e:
-            st.error(f"Export error: {e}")
+    with col2:
+        st.markdown("<br>", unsafe_allow_html=True)
+        if st.button("💾 Export Data", key=f"export_data_btn_{table}", use_container_width=True):
+            try:
+                df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
+                
+                if export_format == "CSV":
+                    csv_data = df.to_csv(index=False)
+                    st.download_button("📥 Download CSV", csv_data, f"{table}.csv", "text/csv")
+                elif export_format == "JSON":
+                    json_data = df.to_json(orient="records", indent=2)
+                    st.download_button("📥 Download JSON", json_data, f"{table}.json", "application/json")
+                elif export_format == "Excel":
+                    excel_buffer = io.BytesIO()
+                    df.to_excel(excel_buffer, index=False)
+                    excel_data = excel_buffer.getvalue()
+                    st.download_button("📥 Download Excel", excel_data, f"{table}.xlsx", 
+                                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                
+                st.success("✅ Export ready for download!")
+            except Exception as e:
+                st.error(f"Export error: {e}")
     
     # Table operations
     st.write("**🔧 Table Operations**")
