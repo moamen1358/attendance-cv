@@ -523,76 +523,6 @@ def show_db_explorer():
                     st.warning("No professors or subjects found in the database.")
             except Exception as e:
                 st.error(f"Error setting up manual assignment: {e}")
-        
-        # Student Table Synchronization
-        st.divider()
-        st.subheader("🔄 Student Data Synchronization")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.write("**Maintain Student Table Relationships**")
-            st.info("""
-            Keep the `students` table synchronized with:
-            • `student_profiles` (primary source)
-            • `user_accounts` where role = 'student'
-            """)
-            
-            col_a, col_b = st.columns(2)
-            with col_a:
-                if st.button("� Setup DB Relations", help="Create proper database relationships and constraints", key="setup_db_relations_btn"):
-                    with st.spinner("Setting up database relationships..."):
-                        success, message = setup_student_table_relationships()
-                        if success:
-                            st.success(message)
-                        else:
-                            st.error(message)
-            
-            with col_b:
-                if st.button("🔄 Sync Student Tables", type="primary", help="Synchronize all student data", key="sync_student_tables_btn"):
-                    with st.spinner("Synchronizing student data..."):
-                        success, message = synchronize_students_table()
-                        if success:
-                            st.success(message)
-                        else:
-                            st.error(message)
-        
-        with col2:
-            st.write("**Current Student Overview**")
-            try:
-                # Quick stats
-                conn = sqlite3.connect('attendance_system.db')
-                
-                profile_count = pd.read_sql_query("SELECT COUNT(*) as count FROM student_profiles_enhanced", conn).iloc[0]['count']
-                legacy_count = pd.read_sql_query("SELECT COUNT(*) as count FROM students", conn).iloc[0]['count']
-                user_students = pd.read_sql_query("SELECT COUNT(*) as count FROM user_accounts_enhanced WHERE role = 'student'", conn).iloc[0]['count']
-                
-                st.metric("Student Profiles", profile_count)
-                st.metric("Legacy Students", legacy_count)
-                st.metric("Student Accounts", user_students)
-                
-                conn.close()
-                
-                # Show unified student data
-                if st.button("📊 View Student Relationships", help="Show all students and their connection status", key="view_student_relationships_btn"):
-                    with st.spinner("Loading student data..."):
-                        unified_df = get_unified_student_list()
-                        if not unified_df.empty:
-                            st.dataframe(
-                                unified_df[['name', 'username', 'connection_status', 'department', 'section']].head(20), 
-                                use_container_width=True
-                            )
-                            
-                            # Show connection status summary
-                            status_counts = unified_df['connection_status'].value_counts()
-                            st.write("**Connection Status Summary:**")
-                            for status, count in status_counts.items():
-                                st.write(f"• {status}: {count}")
-                        else:
-                            st.warning("No student data found")
-                
-            except Exception as e:
-                st.error(f"Could not load student statistics: {e}")
 
     with tab_main:
         # Get fresh list of tables - ALWAYS CURRENT
@@ -618,6 +548,20 @@ def show_db_explorer():
         
         # Sort alphabetically for consistent display
         clean_tables = sorted(clean_tables)
+        
+        # Final validation - remove any remaining empty or invalid entries
+        clean_tables = [t for t in clean_tables if t and isinstance(t, str) and len(t.strip()) > 0]
+        
+        if not clean_tables:
+            st.warning("No valid tables found in the database.")
+            create_new_table()
+            return
+        
+        # Ensure selected table is valid and exists in current list
+        if ('selected_table' not in st.session_state or 
+            not st.session_state.selected_table or 
+            st.session_state.selected_table not in clean_tables):
+            st.session_state.selected_table = clean_tables[0] if clean_tables else None
         
         # Final validation - remove any remaining empty or invalid entries
         clean_tables = [t for t in clean_tables if t and isinstance(t, str) and len(t.strip()) > 0]
