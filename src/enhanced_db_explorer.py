@@ -208,8 +208,9 @@ def show_db_explorer():
     # Apply global dropdown and styling fixes
     apply_global_dropdown_fixes()
     
-    st.title("SQLite Database Manager")
-    st.write("Manage your database tables with this interactive tool")
+    # Compact title and description
+    st.markdown("# SQLite Database Manager")
+    st.caption("Manage your database tables with this interactive tool")
     
     # Add refresh button to clear any caching issues
     col1, col2 = st.columns([3, 1])
@@ -250,9 +251,22 @@ def show_db_explorer():
         padding: 0;
     }
     
-    /* Enhance overall appearance */
+    /* Reduce top padding for compact layout */
     .main .block-container {
-        padding-top: 1rem !important;
+        padding-top: 0 !important;
+        padding-bottom: 1rem !important;
+    }
+    
+    /* Reduce title margin */
+    h1 {
+        margin-top: 0 !important;
+        margin-bottom: 0.5rem !important;
+    }
+    
+    /* Reduce title margin */
+    h1 {
+        margin-top: 0 !important;
+        margin-bottom: 0.5rem !important;
     }
     
     /* Modern card styling */
@@ -390,7 +404,8 @@ def show_db_explorer():
         border-radius: 12px;
         padding: 12px 16px;
         transition: all 0.3s ease;
-        background: white;
+        background: #2d3748 !important;
+        color: #ffffff !important;
         box-shadow: 0 2px 8px rgba(0,0,0,0.05);
     }
     
@@ -403,6 +418,13 @@ def show_db_explorer():
     .stTextInput > div > div > input:focus {
         border-color: #667eea;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        background: #1a202c !important;
+        color: #ffffff !important;
+    }
+    
+    /* Placeholder text color */
+    .stTextInput > div > div > input::placeholder {
+        color: #a0aec0 !important;
     }
     
     /* Button styling to match overall theme */
@@ -963,42 +985,16 @@ def display_database_operations_section(table):
     """Display the database operations section"""
     st.subheader(f"⚙️ Database Operations for {table}")
     
-    # Export data with enhanced styling
+    # Export data with enhanced styling - CSV only
     st.write("**📤 Export Data**")
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.markdown("**📁 Export Format**")
-        export_format = st.selectbox(
-            "Choose export format",
-            ["CSV", "JSON", "Excel"],
-            key=f"export_format_{table}",
-            help="Select the format for exporting table data",
-            format_func=lambda x: {"CSV": "📄 CSV File", "JSON": "🔧 JSON File", "Excel": "📊 Excel File"}[x],
-            label_visibility="collapsed"
-        )
-    
-    with col2:
-        st.markdown("<br>", unsafe_allow_html=True)
-        if st.button("💾 Export Data", key=f"export_data_btn_{table}", use_container_width=True):
-            try:
-                df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
-                
-                if export_format == "CSV":
-                    csv_data = df.to_csv(index=False)
-                    st.download_button("📥 Download CSV", csv_data, f"{table}.csv", "text/csv")
-                elif export_format == "JSON":
-                    json_data = df.to_json(orient="records", indent=2)
-                    st.download_button("📥 Download JSON", json_data, f"{table}.json", "application/json")
-                elif export_format == "Excel":
-                    excel_buffer = io.BytesIO()
-                    df.to_excel(excel_buffer, index=False)
-                    excel_data = excel_buffer.getvalue()
-                    st.download_button("📥 Download Excel", excel_data, f"{table}.xlsx", 
-                                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-                
-                st.success("✅ Export ready for download!")
-            except Exception as e:
-                st.error(f"Export error: {e}")
+    if st.button("� Export Data as CSV", key=f"export_data_btn_{table}", use_container_width=True):
+        try:
+            df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
+            csv_data = df.to_csv(index=False)
+            st.download_button("📥 Download CSV", csv_data, f"{table}.csv", "text/csv")
+            st.success("✅ CSV export ready for download!")
+        except Exception as e:
+            st.error(f"Export error: {e}")
     
     # Table operations
     st.write("**🔧 Table Operations**")
