@@ -755,13 +755,15 @@ def display_table_content(table):
         st.error(f"Error getting row count: {e}")
         row_count = 0
     
-    # Table header with stats
+    # Table header with stats - DARK CARD WITH LIGHT TEXT
     st.markdown(f"""
-    <div class="table-info-card">
-        <h3 style="margin:0; color:#0277bd; display:flex; align-items:center;">
-            <span style="margin-right:8px;">📊</span> {table}
-        </h3>
-        <div style="margin-top:10px; display:flex; gap:15px; color:#555;">
+    <div class="table-info-card" style="background: #2d3748; border-radius: 15px; padding: 25px; margin: 15px 0; box-shadow: 0 8px 32px rgba(0,0,0,0.3);">
+        <div style="display: block; margin-bottom: 15px;">
+            <h2 style="margin: 0; padding: 0; color: #ffffff !important; font-size: 24px; font-weight: bold; line-height: 1.2; text-shadow: none !important;">
+                📊 {table}
+            </h2>
+        </div>
+        <div style="display: flex; gap: 20px; color: #e2e8f0; font-weight: 500; font-size: 14px;">
             <div><strong>Columns:</strong> {len(columns)}</div>
             <div><strong>Rows:</strong> {row_count}</div>
             <div><strong>Primary Key:</strong> {', '.join(primary_keys) if primary_keys else 'None'}</div>
@@ -769,9 +771,9 @@ def display_table_content(table):
     </div>
     """, unsafe_allow_html=True)
     
-    # Create tabs for different operations
-    view_tab, add_tab, delete_tab, sql_tab, analytics_tab, manage_tab = st.tabs(
-        ["📄 View Data", "➕ Add Row", "🗑️ Delete Records", "🔍 SQL Query", "📊 Analytics", "⚙️ Database Operations"]
+    # Create tabs for different operations - removed SQL Query and Analytics
+    view_tab, add_tab, delete_tab, manage_tab = st.tabs(
+        ["📄 View Data", "➕ Add Row", "🗑️ Delete Records", "⚙️ Database Operations"]
     )
     
     # VIEW DATA TAB
@@ -785,14 +787,6 @@ def display_table_content(table):
     # DELETE RECORDS TAB
     with delete_tab:
         display_delete_records_section(table, columns, primary_keys)
-    
-    # SQL QUERY TAB
-    with sql_tab:
-        display_sql_query_section(table)
-    
-    # ANALYTICS TAB
-    with analytics_tab:
-        display_analytics_section(table, columns)
     
     # DATABASE OPERATIONS TAB
     with manage_tab:
@@ -882,9 +876,6 @@ def display_delete_records_section(table, columns, primary_keys):
     """Display the delete records section"""
     st.subheader(f"🗑️ Delete Records from {table}")
     
-    # Warning message
-    st.warning("⚠️ **Warning:** Deleting records is permanent and cannot be undone!")
-    
     # Show current data for reference
     try:
         df = pd.read_sql_query(f"SELECT * FROM {table} LIMIT 20;", sqlite3.connect('attendance_system.db'))
@@ -898,10 +889,7 @@ def display_delete_records_section(table, columns, primary_keys):
             if primary_keys:
                 pk_column = primary_keys[0]  # Use first primary key
                 if pk_column in df.columns:
-                    # Show available IDs for reference
                     available_ids = df[pk_column].tolist()
-                    st.info(f"📋 Available {pk_column} values: {', '.join(map(str, available_ids[:10]))}" + 
-                           (f" ... and {len(available_ids)-10} more" if len(available_ids) > 10 else ""))
                     
                     col1, col2 = st.columns([3, 1])
                     with col1:
@@ -961,118 +949,15 @@ def display_delete_records_section(table, columns, primary_keys):
     except Exception as e:
         st.error(f"Error loading data: {e}")
 
-def display_sql_query_section(table):
-    """Display the SQL query section"""
-    st.subheader(f"🔍 SQL Query for {table}")
-    
-    # Predefined queries
-    predefined_queries = {
-        "Select All": f"SELECT * FROM {table};",
-        "Count Records": f"SELECT COUNT(*) FROM {table};",
-        "First 10 Records": f"SELECT * FROM {table} LIMIT 10;",
-        "Table Schema": f"PRAGMA table_info({table});",
-    }
-    
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        st.markdown("**📋 Query Type**")
-        query_type = st.selectbox(
-            "Choose a predefined query or write custom", 
-            ["Custom"] + list(predefined_queries.keys()),
-            key=f"query_type_{table}",
-            help="Select a predefined query or choose 'Custom' to write your own",
-            label_visibility="collapsed"
-        )
-    
-    if query_type == "Custom":
-        query = st.text_area("Enter your SQL query:", 
-                           value=f"SELECT * FROM {table} LIMIT 10;", 
-                           height=100,
-                           key=f"sql_query_{table}")
-    else:
-        query = predefined_queries[query_type]
-        st.code(query, language="sql")
-    
-    if st.button("▶️ Execute Query", key=f"execute_query_{table}"):
-        try:
-            if query.strip().upper().startswith(('SELECT', 'PRAGMA')):
-                # Read-only queries
-                result_df = pd.read_sql_query(query, sqlite3.connect('attendance_system.db'))
-                st.success("✅ Query executed successfully!")
-                st.dataframe(result_df, use_container_width=True)
-            else:
-                # Write queries
-                st.warning("⚠️ This appears to be a write operation. Use with caution!")
-                if st.checkbox("I understand this will modify the database", key=f"modify_db_confirm_{table}"):
-                    result = execute_query(query, commit=True)
-                    if result is not False:
-                        st.success("✅ Query executed successfully!")
-                    else:
-                        st.error("Query failed")
-        except Exception as e:
-            st.error(f"Query error: {e}")
+# COMMENTED OUT - SQL Query functionality removed
+# def display_sql_query_section(table):
+#     """Display the SQL query section - REMOVED"""
+#     pass
 
-def display_analytics_section(table, columns):
-    """Display the analytics section"""
-    st.subheader(f"📊 Analytics for {table}")
-    
-    try:
-        df = pd.read_sql_query(f"SELECT * FROM {table};", sqlite3.connect('attendance_system.db'))
-        
-        if not df.empty:
-            # Basic statistics
-            st.write("**Basic Statistics:**")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                st.metric("Total Records", len(df))
-            with col2:
-                st.metric("Total Columns", len(df.columns))
-            with col3:
-                null_count = df.isnull().sum().sum()
-                st.metric("Null Values", null_count)
-            
-            # Column analysis
-            if len(df.columns) > 0:
-                st.write("**Column Analysis:**")
-                col1, col2 = st.columns([2, 1])
-                with col1:
-                    st.markdown("**📊 Select Column to Analyze**")
-                    selected_column = st.selectbox(
-                        "Choose column for detailed analysis",
-                        df.columns.tolist(),
-                        key=f"analyze_column_{table}",
-                        help="Select a column to view its statistics and distribution",
-                        label_visibility="collapsed"
-                    )
-                
-                if selected_column:
-                    col_data = df[selected_column]
-                    
-                    # Show column stats
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write(f"**{selected_column} Statistics:**")
-                        st.write(f"- Unique values: {col_data.nunique()}")
-                        st.write(f"- Null values: {col_data.isnull().sum()}")
-                        st.write(f"- Data type: {col_data.dtype}")
-                    
-                    with col2:
-                        if col_data.dtype in ['int64', 'float64']:
-                            st.write(f"**Numeric Statistics:**")
-                            st.write(f"- Mean: {col_data.mean():.2f}")
-                            st.write(f"- Min: {col_data.min()}")
-                            st.write(f"- Max: {col_data.max()}")
-                    
-                    # Value counts
-                    if col_data.nunique() < 50:  # Only for columns with reasonable unique values
-                        st.write(f"**Value Distribution for {selected_column}:**")
-                        value_counts = col_data.value_counts().head(10)
-                        st.bar_chart(value_counts)
-        else:
-            st.info("No data available for analysis.")
-    except Exception as e:
-        st.error(f"Error loading analytics: {e}")
+# COMMENTED OUT - Analytics functionality removed
+# def display_analytics_section(table, columns):
+#     """Display the analytics section - REMOVED"""
+#     pass
 
 def display_database_operations_section(table):
     """Display the database operations section"""
