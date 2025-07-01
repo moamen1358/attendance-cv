@@ -269,72 +269,43 @@ def show_registration_form():
     """Display the student registration form"""
     st.header("🎓 Student Registration")
     
-    # Camera/Photo section at the top with full width
-    st.subheader("📸 Photo Capture")
+    # Camera input - full width
+    camera_input = st.camera_input("")
     
-    # Add instructions for better face capture
-    st.info("📋 **Photo Guidelines for Best Results:**")
-    col_a, col_b = st.columns(2)
-    with col_a:
-        st.write("✅ **Do:**")
-        st.write("• Look directly at the camera")
-        st.write("• Ensure good lighting on your face")
-        st.write("• Keep your face centered in frame")
-        st.write("• Remove glasses if possible")
-    with col_b:
-        st.write("❌ **Avoid:**")
-        st.write("• Shadows on your face")
-        st.write("• Wearing masks or face coverings")
-        st.write("• Looking away from camera")
-        st.write("• Too much distance from camera")
-    
-    col1, col2 = st.columns([2, 1])
-    
-    with col1:
-        # Camera input
-        camera_input = st.camera_input("Take a photo for facial recognition")
+    if camera_input is not None:
+        # Convert the uploaded file to cv2 image
+        bytes_data = camera_input.read()
+        image_array = np.frombuffer(bytes_data, np.uint8)
+        image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
         
-        if camera_input is not None:
-            # Convert the uploaded file to cv2 image
-            bytes_data = camera_input.read()
-            image_array = np.frombuffer(bytes_data, np.uint8)
-            image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-            
-            # Test face detection immediately when photo is taken
-            st.write("🔍 **Testing face detection...**")
-            rgb_test_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-            
-            try:
-                test_faces = app.get(rgb_test_image)
-                if test_faces:
-                    st.success(f"✅ Face detected successfully! (Confidence: {test_faces[0].det_score:.2f})")
-                    
-                    # Show image with detection box
-                    display_img = image.copy()
-                    if hasattr(test_faces[0], 'bbox'):
-                        bbox = test_faces[0].bbox.astype(int)
-                        cv2.rectangle(display_img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 3)
-                        cv2.putText(display_img, "FACE DETECTED", (bbox[0], bbox[1]-10), 
-                                  cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
-                    
-                    st.image(display_img, channels="BGR", use_container_width=True, 
-                            caption="✅ Ready for Registration")
-                else:
-                    st.error("❌ No face detected! Please retake the photo.")
-                    st.image(image, channels="BGR", use_container_width=True, 
-                            caption="❌ Face Not Detected - Please Retake")
-            except Exception as e:
-                st.error(f"Face detection test failed: {e}")
-                st.image(image, channels="BGR", use_container_width=True, caption="Photo Captured")
-        else:
-            image = None
-    
-    with col2:
-        if camera_input:
-            st.success("✅ Photo captured!")
-            st.write("**Next Step:** Fill out the form below and click Register")
-        else:
-            st.info("📷 Click 'Take a snapshot' to capture your photo")
+        # Test face detection immediately when photo is taken
+        st.write("🔍 **Testing face detection...**")
+        rgb_test_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        
+        try:
+            test_faces = app.get(rgb_test_image)
+            if test_faces:
+                st.success(f"✅ Face detected successfully! (Confidence: {test_faces[0].det_score:.2f})")
+                
+                # Show image with detection box
+                display_img = image.copy()
+                if hasattr(test_faces[0], 'bbox'):
+                    bbox = test_faces[0].bbox.astype(int)
+                    cv2.rectangle(display_img, (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 255, 0), 3)
+                    cv2.putText(display_img, "FACE DETECTED", (bbox[0], bbox[1]-10), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                
+                st.image(display_img, channels="BGR", use_container_width=True, 
+                        caption="✅ Ready for Registration")
+            else:
+                st.error("❌ No face detected! Please retake the photo.")
+                st.image(image, channels="BGR", use_container_width=True, 
+                        caption="❌ Face Not Detected - Please Retake")
+        except Exception as e:
+            st.error(f"Face detection test failed: {e}")
+            st.image(image, channels="BGR", use_container_width=True, caption="Photo Captured")
+    else:
+        image = None
     
     st.divider()
     
