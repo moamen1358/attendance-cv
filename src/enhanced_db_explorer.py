@@ -375,8 +375,6 @@ def show_db_explorer():
     """, unsafe_allow_html=True)
     
     with tab_prof_assign:
-        st.header("Professor Subject Assignments")
-        
         # Try to import the professor_subject_assignment module
         try:
             # Import dynamically to avoid issues if the module isn't available
