@@ -257,33 +257,22 @@ def cosine_similarity_search(query_embedding, threshold=0.6, collection=None):
 def show_real_time_prediction():
     st.header("Real-Time Face Recognition")
     
-    # Add debug section
-    with st.expander("🔍 Debug Information", expanded=False):
-        st.write("**Checking facial recognition database...**")
-        
-        # Check database
-        conn = sqlite3.connect(DATABASE_PATH)
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT COUNT(*) as total, 
-                   COUNT(CASE WHEN encoding_data IS NOT NULL THEN 1 END) as with_embeddings 
-            FROM student_profiles_enhanced 
-            WHERE status = 'active'
-        """)
-        total, with_embeddings = cursor.fetchone()
-        conn.close()
-        
-        st.write(f"📊 Total active profiles: {total}")
-        st.write(f"📊 Profiles with facial embeddings: {with_embeddings}")
-        
-        if with_embeddings == 0:
-            st.error("❌ No facial embeddings found! Please register some faces first.")
-            return
-        else:
-            st.success(f"✅ Found {with_embeddings} registered faces")
+    # Check database for facial embeddings
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT COUNT(CASE WHEN encoding_data IS NOT NULL THEN 1 END) as with_embeddings 
+        FROM student_profiles_enhanced 
+        WHERE status = 'active'
+    """)
+    with_embeddings = cursor.fetchone()[0]
+    conn.close()
+    
+    if with_embeddings == 0:
+        st.error("❌ No facial embeddings found! Please register some faces first.")
+        return
     
     # Load embeddings to ChromaDB
-    st.info("🔄 Loading facial recognition data...")
     collection = create_or_add_to_collection("face_recognition", path_to_chroma=CHROMA_STORE_PATH)
     
     if collection is None:
@@ -293,7 +282,7 @@ def show_real_time_prediction():
     # Check collection contents
     try:
         collection_count = collection.count()
-        st.success(f"✅ Loaded {collection_count} faces into recognition system")
+        # Silently count faces without displaying message
     except Exception as e:
         st.error(f"❌ Error checking collection: {e}")
         return
