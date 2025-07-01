@@ -892,68 +892,70 @@ def display_delete_records_section(table, columns, primary_keys):
             st.write("**Current records (showing first 20):**")
             st.dataframe(df, use_container_width=True)
             
-            # Delete options
-            delete_method = st.radio("Choose delete method:", 
-                                   ["Delete by ID", "Delete by condition", "Delete all records"],
-                                   key=f"delete_method_{table}")
+            # Simplified delete options - only show Delete by ID
+            st.markdown("### 🗑️ Delete Record by ID")
             
-            if delete_method == "Delete by ID" and primary_keys:
+            if primary_keys:
                 pk_column = primary_keys[0]  # Use first primary key
                 if pk_column in df.columns:
+                    # Show available IDs for reference
+                    available_ids = df[pk_column].tolist()
+                    st.info(f"📋 Available {pk_column} values: {', '.join(map(str, available_ids[:10]))}" + 
+                           (f" ... and {len(available_ids)-10} more" if len(available_ids) > 10 else ""))
+                    
                     col1, col2 = st.columns([3, 1])
                     with col1:
-                        st.markdown(f"**🎯 Select {pk_column} to Delete**")
-                        record_id = st.selectbox(
-                            f"Choose {pk_column} to delete", 
-                            options=df[pk_column].tolist(),
+                        st.markdown(f"**🎯 Enter {pk_column} to Delete**")
+                        record_id = st.text_input(
+                            f"Enter the {pk_column} value",
                             key=f"delete_record_{table}",
-                            help=f"Select the {pk_column} of the record you want to delete",
+                            help=f"Type the {pk_column} of the record you want to delete",
+                            placeholder=f"e.g., {available_ids[0] if available_ids else '1'}",
                             label_visibility="collapsed"
                         )
                     
                     with col2:
                         st.markdown("<br>", unsafe_allow_html=True)
-                        if st.button("🗑️ Delete Selected Record", type="secondary", key=f"delete_selected_record_{table}"):
-                            try:
-                                query = f"DELETE FROM {table} WHERE {pk_column} = ?"
-                                result = execute_query(query, (record_id,), commit=True)
-                                if result is not False:
-                                    st.success(f"✅ Record with {pk_column}={record_id} deleted!")
-                                    st.rerun()
-                                else:
-                                    st.error("Failed to delete record")
-                            except Exception as e:
-                                st.error(f"Error deleting record: {e}")
-            
-            elif delete_method == "Delete by condition":
-                condition = st.text_input("Enter WHERE condition (without WHERE):", 
-                                        placeholder="e.g., name = 'John' OR age > 30",
-                                        key=f"condition_input_{table}")
-                if condition and st.button("🗑️ Delete Matching Records", type="secondary", key=f"delete_matching_records_{table}"):
-                    try:
-                        query = f"DELETE FROM {table} WHERE {condition}"
-                        result = execute_query(query, commit=True)
-                        if result is not False:
-                            st.success("✅ Records deleted successfully!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to delete records")
-                    except Exception as e:
-                        st.error(f"Error deleting records: {e}")
-            
-            elif delete_method == "Delete all records":
-                confirm = st.text_input("Type 'DELETE ALL' to confirm:", "", key=f"confirm_delete_all_{table}")
-                if confirm == "DELETE ALL" and st.button("🗑️ Delete All Records", type="secondary", key=f"delete_all_records_{table}"):
-                    try:
-                        query = f"DELETE FROM {table}"
-                        result = execute_query(query, commit=True)
-                        if result is not False:
-                            st.success("✅ All records deleted!")
-                            st.rerun()
-                        else:
-                            st.error("Failed to delete records")
-                    except Exception as e:
-                        st.error(f"Error deleting records: {e}")
+                        # Only enable button if record_id is provided and exists in the table
+                        button_disabled = not record_id or (record_id.isdigit() and int(record_id) not in available_ids) or (not record_id.isdigit() and record_id not in [str(x) for x in available_ids])
+                        
+                        if st.button("🗑️ Delete Record", 
+                                   type="secondary", 
+                                   key=f"delete_selected_record_{table}",
+                                   disabled=button_disabled,
+                                   help="Click to delete the specified record"):
+                            # Validate the record ID exists
+                            if record_id:
+                                # Convert to appropriate type
+                                try:
+                                    # Try to convert to int if it's numeric
+                                    if record_id.isdigit():
+                                        record_id_value = int(record_id)
+                                    else:
+                                        record_id_value = record_id
+                                    
+                                    # Check if record exists
+                                    if record_id_value in available_ids:
+                                        try:
+                                            query = f"DELETE FROM {table} WHERE {pk_column} = ?"
+                                            result = execute_query(query, (record_id_value,), commit=True)
+                                            if result is not False:
+                                                st.success(f"✅ Record with {pk_column}={record_id_value} deleted!")
+                                                st.rerun()
+                                            else:
+                                                st.error("Failed to delete record")
+                                        except Exception as e:
+                                            st.error(f"Error deleting record: {e}")
+                                    else:
+                                        st.error(f"❌ Record with {pk_column}='{record_id}' not found in the table.")
+                                except ValueError:
+                                    st.error(f"❌ Invalid {pk_column} format. Please enter a valid value.")
+                            else:
+                                st.warning("Please enter a valid record ID.")
+                else:
+                    st.warning(f"Primary key column '{pk_column}' not found in the table data.")
+            else:
+                st.warning(f"No primary key found for table {table}. Cannot delete by ID.")
         else:
             st.info("No records to delete.")
     except Exception as e:
