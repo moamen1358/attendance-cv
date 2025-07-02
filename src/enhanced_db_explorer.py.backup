@@ -24,48 +24,6 @@ except ImportError:
         def convert_to_db_time_format(timestamp):
             return timestamp
 
-def is_view(table_name):
-    """Check if a table is actually a view"""
-    conn = None
-    try:
-        conn = sqlite3.connect('attendance_system.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT type FROM sqlite_master WHERE name=?", (table_name,))
-        result = cursor.fetchone()
-        return result and result[0] == 'view'
-    except Exception as e:
-        st.error(f"Error checking if table is a view: {e}")
-        return False
-    finally:
-        if conn:
-            conn.close()
-
-def get_underlying_table(view_name):
-    """Get the underlying table for a view"""
-    conn = None
-    try:
-        conn = sqlite3.connect('attendance_system.db')
-        cursor = conn.cursor()
-        cursor.execute("SELECT sql FROM sqlite_master WHERE name=?", (view_name,))
-        result = cursor.fetchone()
-        if result and result[0]:
-            # This is a simple extraction that works for basic views
-            sql = result[0].lower()
-            from_pos = sql.find(" from ")
-            if from_pos > 0:
-                remaining = sql[from_pos + 6:]  # Skip " from "
-                # Find the first table name
-                parts = remaining.split()
-                if parts:
-                    return parts[0].strip()
-        return None
-    except Exception as e:
-        st.error(f"Error getting underlying table: {e}")
-        return None
-    finally:
-        if conn:
-            conn.close()
-
 # Define a list of tables that should be hidden from the UI
 HIDDEN_TABLES = [
     'sqlite_sequence',  # SQLite internal table for autoincrement
@@ -968,8 +926,8 @@ def display_delete_records_section(table, columns, primary_keys):
                     
                     with col2:
                         st.markdown("<br>", unsafe_allow_html=True)
-                        # Simplified button logic - only check if record_id is provided
-                        button_disabled = not record_id
+                        # Only enable button if record_id is provided and exists in the table
+                        button_disabled = not record_id or (record_id.isdigit() and int(record_id) not in available_ids) or (not record_id.isdigit() and record_id not in [str(x) for x in available_ids])
                         
                         if st.button("🗑️ Delete Record", 
                                    type="secondary", 
@@ -986,26 +944,20 @@ def display_delete_records_section(table, columns, primary_keys):
                                     else:
                                         record_id_value = record_id
                                     
-                                    # Check if table is a view (cannot delete directly from views)
-                                    if is_view(table):
-                                        underlying_table = get_underlying_table(table)
-                                        error_msg = f"⚠️ Cannot delete from '{table}' because it is a view, not a table."
-                                        if underlying_table:
-                                            error_msg += f" Try deleting from the underlying table: '{underlying_table}'"
-                                        st.error(error_msg)
-                                        return
-                                    
-                                    # Always attempt to delete regardless of available_ids
-                                    try:
-                                        query = f"DELETE FROM {table} WHERE {pk_column} = ?"
-                                        result = execute_query(query, (record_id_value,), commit=True)
-                                        if result is not False:
-                                            st.success(f"✅ Record with {pk_column}={record_id_value} deleted!")
-                                            st.rerun()
-                                        else:
-                                            st.error("Failed to delete record")
-                                    except Exception as e:
-                                        st.error(f"Error deleting record: {e}")
+                                    # Check if record exists
+                                    if record_id_value in available_ids:
+                                        try:
+                                            query = f"DELETE FROM {table} WHERE {pk_column} = ?"
+                                            result = execute_query(query, (record_id_value,), commit=True)
+                                            if result is not False:
+                                                st.success(f"✅ Record with {pk_column}={record_id_value} deleted!")
+                                                st.rerun()
+                                            else:
+                                                st.error("Failed to delete record")
+                                        except Exception as e:
+                                            st.error(f"Error deleting record: {e}")
+                                    else:
+                                        st.error(f"❌ Record with {pk_column}='{record_id}' not found in the table.")
                                 except ValueError:
                                     st.error(f"❌ Invalid {pk_column} format. Please enter a valid value.")
                             else:
