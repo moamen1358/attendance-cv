@@ -263,23 +263,21 @@ def ensure_database_consistency():
 
 # Modify login_page function to call the sync first
 def login_page():
-    # Apply modern, professional styling for login page that matches the provided image
+    # Apply modern, professional styling for login page
     st.markdown("""
     <style>
     /* Import Google Fonts */
-    @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
     
     /* Global styling */
     * {
-        font-family: 'Roboto', sans-serif !important;
-        box-sizing: border-box;
+        font-family: 'Inter', sans-serif !important;
     }
     
     html, body {
         margin: 0 !important;
         padding: 0 !important;
         height: 100% !important;
-        background-color: #f5f5f5 !important;
     }
     
     /* Hide Streamlit elements */
@@ -302,9 +300,9 @@ def login_page():
         display: none !important;
     }
     
-    /* Main background */
+    /* Full page background */
     .stApp {
-        background-color: #f7f9fc !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
         margin: 0;
         padding: 0;
@@ -317,48 +315,66 @@ def login_page():
         justify-content: center;
         align-items: center;
         min-height: 100vh;
-        padding: 0;
+        padding: 0 20px;
         margin: 0;
+        padding-top: 0;
     }
     
-    /* Login card - exact match with image */
+    /* Login card */
     .login-card {
-        background-color: white;
-        width: 80%;
-        max-width: 900px;
-        margin: 0 auto;
-        border-radius: 10px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(10px);
+        border-radius: 20px;
         padding: 40px;
-        position: relative;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        width: 100%;
+        max-width: 450px;
+        margin: 0 auto;
     }
     
-    /* Login form area */
-    .login-form-area {
-        display: flex;
-        flex-direction: column;
-    }
-    
-    /* Login header */
+    /* Header styling */
     .login-header {
-        margin-bottom: 30px;
+        text-align: center;
+        margin-bottom: 40px;
     }
     
     .login-title {
-        font-size: 24px;
+        font-size: 2.5rem;
         font-weight: 700;
-        color: #000;
-        margin: 0;
+        color: #2c3e50;
+        margin-bottom: 10px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
     }
     
-    /* Input styling - exact match with image */
+    .login-subtitle {
+        font-size: 1.1rem;
+        color: #7f8c8d;
+        font-weight: 400;
+        margin-bottom: 0;
+    }
+    
+    /* University logo/icon */
+    .university-icon {
+        font-size: 4rem;
+        margin-bottom: 20px;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    /* Input styling */
     .stTextInput {
         margin-bottom: 25px;
     }
     
     .stTextInput > label {
-        font-weight: 500 !important;
-        color: #333 !important;
+        font-weight: 600 !important;
+        color: #2c3e50 !important;
         font-size: 14px !important;
         margin-bottom: 8px !important;
         display: block !important;
@@ -366,309 +382,57 @@ def login_page():
     
     .stTextInput > div > div > input {
         width: 100% !important;
-        height: 50px !important;
-        border-radius: 8px !important;
-        border: 1px solid #e0e0e0 !important;
-        padding: 0 15px !important;
-        font-size: 15px !important;
-        background-color: white !important;
-        color: #333 !important;
-    }
-    
-    .stTextInput > div > div > input:focus {
-        border-color: #4a6cf7 !important;
-        box-shadow: 0 0 0 2px rgba(74, 108, 247, 0.1) !important;
-    }
-    
-    /* Button styling - exact match with image */
-    .stButton > button {
-        width: 100% !important;
-        height: 50px !important;
-        background-color: #4a6cf7 !important;
-        color: white !important;
-        border: none !important;
-        border-radius: 8px !important;
+        height: 55px !important;
+        border-radius: 12px !important;
+        border: 2px solid #e1e8ed !important;
+        padding: 0 20px !important;
         font-size: 16px !important;
-        font-weight: 500 !important;
-        cursor: pointer !important;
-        transition: all 0.3s !important;
-    }
-    
-    .stButton > button:hover {
-        background-color: #3a5bd8 !important;
-    }
-    
-    /* Two-column layout */
-    .login-columns {
-        display: flex;
-        flex-direction: row;
-    }
-    
-    .left-column {
-        flex: 1;
-        padding-right: 30px;
-    }
-    
-    .right-column {
-        flex: 1;
-        display: flex;
-        justify-content: center;
-        align-items: center;
-    }
-    
-    .right-column img {
-        width: 100%;
-        max-width: 350px;
-        border-radius: 10px;
-    }
-    
-    /* Footer links */
-    .footer-links {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 20px;
-    }
-    
-    .footer-link {
-        color: #333;
-        text-decoration: none;
-        font-size: 14px;
-    }
-    
-    .footer-link:hover {
-        color: #4a6cf7;
-        text-decoration: underline;
-    }
-    
-    /* Responsive adjustments */
-    @media (max-width: 768px) {
-        .login-card {
-            width: 95%;
-            padding: 30px;
-        }
-        
-        .login-columns {
-            flex-direction: column;
-        }
-        
-        .left-column {
-            padding-right: 0;
-            margin-bottom: 30px;
-        }
-    }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    st.markdown("""
-    <style>
-    /* Full page background */
-    .stApp {
-        background: url('https://images.unsplash.com/photo-1517842645767-c639042777db?ixlib=rb-1.2.1&auto=format&fit=crop&w=1350&q=80');
-        background-size: cover;
-        background-position: center;
-        min-height: 100vh;
-        margin: 0;
-        padding: 0;
-        overflow-x: hidden;
-    }
-    
-    /* Login container */
-    .login-container {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        min-height: 100vh;
-        padding: 0;
-        margin: 0;
-    
-    }
-    
-    /* Login card - match exactly with image */
-    .login-card {
-        background-color: transparent;
-        width: 100%;
-        max-width: 1080px;
-        margin: 0 auto;
-        position: relative;
-        padding: 0;
-        box-shadow: none;
-    }
-    
-    /* Header styling - match exactly with image */
-    .login-header {
-        text-align: left;
-        margin-bottom: 15px;
-        margin-left: 95px;
-        margin-top: 30px;
-    }
-    
-    .login-title {
-        font-size: 2.2rem;
-        font-weight: 700;
-        color: #000000;
-        margin-bottom: 5px;
-    }
-    
-    /* Logo styling */
-    .logo {
-        position: absolute;
-        top: 30px;
-        left: 30px;
-    }
-    
-    /* Navigation */
-    .nav-buttons {
-        position: absolute;
-        top: 30px;
-        right: 30px;
-        display: flex;
-        gap: 10px;
-    }
-    
-    .nav-btn {
-        background-color: rgba(255, 255, 255, 0.9);
-        color: #333;
-        border-radius: 20px;
-        padding: 8px 16px;
-        font-size: 14px;
-        font-weight: 500;
-        text-decoration: none;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-    
-    .signup-btn {
-        background-color: #e2bdff;
-        color: #333;
-    }
-    
-    /* Form area */
-    .login-form-area {
-        width: 50%;
-        float: left;
-        padding-left: 30px;
-    }
-    
-    /* Right side image area */
-    .right-image-area {
-        width: 50%;
-        float: right;
-        text-align: center;
-    }
-    
-    .right-image-area img {
-        width: 80%;
-        max-width: 350px;
-        border-radius: 100%;
-        box-shadow: 0px 0px 10px rgba(0, 0, 0, 0.1);
-        margin-top: 50px;
-        height: 100%;
-        object-fit: cover;
-    }
-    
-    /* Input styling - match exactly with image */
-    .stTextInput {
-        margin-bottom: 20px;
-    }
-    
-    .stTextInput > label {
-        font-weight: 500 !important;
-        color: #333333 !important;
-        font-size: 14px !important;
-        margin-bottom: 8px !important;
-        display: block !important;
-        opacity: 0.9 !important;
-    }
-    
-    .stTextInput > div > div > input {
-        width: 100% !important;
-        height: 45px !important;
-        border-radius: 10px !important;
-        border: 1px solid #DDDDDD !important;
-        padding: 0 15px !important;
-        font-size: 15px !important;
-        background-color: #FFFFFF !important;
-        color: #333333 !important;
+        background-color: #ffffff !important;
+        color: #2c3e50 !important;
         box-sizing: border-box !important;
         transition: all 0.3s ease !important;
-        font-weight: 400 !important;
+        font-weight: 500 !important;
     }
     
     .stTextInput > div > div > input:focus {
-        border-color: #AAAAAA !important;
+        border-color: #667eea !important;
         outline: none !important;
-        box-shadow: 0 0 3px rgba(0, 0, 0, 0.1) !important;
-        background-color: #FFFFFF !important;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+        transform: translateY(-1px) !important;
     }
     
     .stTextInput > div > div > input::placeholder {
-        color: #CCCCCC !important;
+        color: #95a5a6 !important;
         font-weight: 400 !important;
     }
     
-    /* Label styling */
-    .input-label {
-        color: rgba(255, 255, 255, 0.7) !important;
-        font-size: 0.9rem;
-        margin-bottom: 5px;
-        display: flex;
-        align-items: center;
-    }
-    
-    .input-label-dot {
-        display: inline-block;
-        width: 8px;
-        height: 8px;
-        background-color: #e2bdff;
-        border-radius: 50%;
-        margin-right: 8px;
-    }
-    
-    /* Login button styling - match exactly with image */
+    /* Login button styling */
     .stButton {
-        margin-top: 15px;
-        margin-bottom: 15px;
-        display: inline-block;
+        margin-top: 30px;
+        margin-bottom: 20px;
     }
     
     .stButton > button {
-        width: auto !important;
-        min-width: 120px !important;
-        height: 40px !important;
-        background: #e6f2f5 !important;
-        color: #333333 !important;
-        border-radius: 5px !important;
+        width: 100% !important;
+        height: 55px !important;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: white !important;
+        border-radius: 12px !important;
         border: none !important;
-        font-size: 15px !important;
-        font-weight: 500 !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
         cursor: pointer !important;
-        transition: all 0.2s ease !important;
-        box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1) !important;
-        padding: 0 30px !important;
+        transition: all 0.3s ease !important;
+        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.3) !important;
     }
     
     .stButton > button:hover {
-        background: #d6e8ec !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 8px 25px rgba(102, 126, 234, 0.4) !important;
     }
     
     .stButton > button:active {
-        transform: translateY(1px) !important;
-    }
-    
-    /* Remember me checkbox */
-    .remember-me {
-        display: flex;
-        align-items: center;
-        margin-top: 15px;
-        color: rgba(255, 255, 255, 0.7);
-        font-size: 14px;
-    }
-    
-    .stCheckbox {
-        margin-bottom: 0 !important;
-    }
-    
-    .stCheckbox > div > div > label {
-        color: rgba(255, 255, 255, 0.7) !important;
+        transform: translateY(0px) !important;
     }
     
     /* Expander styling */
@@ -811,58 +575,46 @@ def login_page():
     </style>
     """, unsafe_allow_html=True)
     
-    # Create the login interface to match exactly with the image
+    # Create the login interface with modern styling
     st.markdown("""
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
-                <h1 class="login-title">Log In</h1>
-            </div>
-            <div class="login-columns">
-                <div class="left-column">
-                    <!-- Form will be inserted here by Streamlit -->
-                </div>
-                <div class="right-column">
-                    <img src="https://img.freepik.com/free-vector/secure-login-concept-illustration_114360-4582.jpg" alt="Login illustration">
-                </div>
+                <div class="university-icon">🎓</div>
+                <h1 class="login-title">University Portal</h1>
+                <p class="login-subtitle">Egyptian University Attendance System</p>
             </div>
         </div>
     </div>
     """, unsafe_allow_html=True)
     
-    # Display sample credentials with style matching the new design
-    with st.expander("Sample Login Credentials", expanded=False):
+    # Display sample Egyptian credentials with enhanced styling
+    with st.expander("� Sample Login Credentials", expanded=False):
         st.markdown("""
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-            <h4 style="color: #333; font-weight: 600; margin-bottom: 10px;">👨‍💼 Administrator</h4>
-            <div style="background: white; padding: 8px 12px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #e0e0e0;">
-                Username: admin | Password: admin
-            </div>
+        <div class="credential-section">
+            <h4>👨‍💼 Administrator</h4>
+            <div class="credential-item">Username: admin | Password: admin</div>
+            <div class="credential-item">Username: dean | Password: dean</div>
         </div>
         
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-            <h4 style="color: #333; font-weight: 600; margin-bottom: 10px;">👨‍🏫 Teachers/Professors</h4>
-            <div style="background: white; padding: 8px 12px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #e0e0e0;">
-                Username: emp2024001 | Password: emp2024001
-            </div>
-            <div style="background: white; padding: 8px 12px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #e0e0e0;">
-                Username: emp2024002 | Password: emp2024002
-            </div>
+        <div class="credential-section">
+            <h4>👨‍🏫 Teachers/Professors</h4>
+            <div class="credential-item">Username: emp2024001 | Password: emp2024001</div>
+            <div class="credential-item">Username: emp2024002 | Password: emp2024002</div>
+            <div class="credential-item">Username: emp2024003 | Password: emp2024003</div>
         </div>
         
-        <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 15px;">
-            <h4 style="color: #333; font-weight: 600; margin-bottom: 10px;">👨‍🎓 Students</h4>
-            <div style="background: white; padding: 8px 12px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #e0e0e0;">
-                Username: 2024001 | Password: 2024001
-            </div>
-            <div style="background: white; padding: 8px 12px; border-radius: 6px; margin-bottom: 5px; border: 1px solid #e0e0e0;">
-                Username: 2024002 | Password: 2024002
-            </div>
+        <div class="credential-section">
+            <h4>👨‍🎓 Students</h4>
+            <div class="credential-item">Username: 2024001 | Password: 2024001</div>
+            <div class="credential-item">Username: 2024002 | Password: 2024002</div>
+            <div class="credential-item">Username: 2024003 | Password: 2024003</div>
         </div>
         
-        <div style="background: #e9f0ff; padding: 15px; border-radius: 8px; border-left: 4px solid #4a6cf7;">
-            <p style="margin: 0; color: #333; font-size: 14px;">
-                <strong>📝 Note:</strong> All passwords match their respective usernames for easy testing.
+        <div style="margin-top: 15px; padding: 15px; background: rgba(102, 126, 234, 0.1); border-radius: 8px; border-left: 4px solid #667eea;">
+            <p style="margin: 0; color: #2c3e50; font-size: 13px;">
+                <strong>📝 Note:</strong> All passwords match their respective usernames for easy testing. 
+                This system contains authentic Egyptian university data with real names and departments.
             </p>
         </div>
         """, unsafe_allow_html=True)
@@ -891,30 +643,34 @@ def login_page():
         else:
             st.error("User accounts table not found. Login functionality may be unavailable.")
     
-    # Create login form that matches exactly with the image
-    col1, col2 = st.columns([1, 1])
+    # Create a centered login form
+    col1, col2, col3 = st.columns([1, 2, 1])
     
-    with col1:
-        # Username field
+    with col2:
+        # Add some spacing
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        # Username field with icon
+        st.markdown("**👤 Username**")
         username = st.text_input(
             "Username", 
-            placeholder="Enter your username",
+            placeholder="Enter your username (e.g., admin, emp2024001, 2024001)",
+            label_visibility="collapsed",
             key="username_input"
         )
         
-        # Password field
+        # Password field with icon
+        st.markdown("**🔒 Password**")
         password = st.text_input(
             "Password", 
             type="password",
             placeholder="Enter your password",
+            label_visibility="collapsed",
             key="password_input"
         )
-        
-        # Forgot password link
-        st.markdown('<div style="text-align: right; margin-bottom: 20px;"><a href="#" style="color: #4a6cf7; text-decoration: none; font-size: 14px;">Forgot Password?</a></div>', unsafe_allow_html=True)
 
-        # Login button
-        if st.button("Login", use_container_width=True):
+        # Login button with icon
+        if st.button("🚀 Login to System", type="primary", use_container_width=True):
             success, role = verify_credentials(username, password)
             if success:
                 # Set session state variables
