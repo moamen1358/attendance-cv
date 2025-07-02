@@ -104,7 +104,7 @@ def get_schedule_for_day(day_name, student_name=None):
     conn = get_db_connection()
     
     if student_name:
-        # Get schedule only for subjects the student is enrolled in
+        # Get schedule only for subjects the student is enrolled in, using their section
         query = """
         SELECT 
             s.subject_name as subject, 
@@ -116,11 +116,9 @@ def get_schedule_for_day(day_name, student_name=None):
         FROM class_schedules_enhanced cs
         JOIN subjects_enhanced s ON cs.subject_id = s.subject_id
         JOIN teachers_enhanced t ON cs.teacher_id = t.teacher_id
-        JOIN student_enrollments_enhanced se ON s.subject_id = se.subject_id
-        JOIN students_enhanced st ON se.student_id = st.student_id
+        JOIN students_enhanced st ON cs.section = st.section
         WHERE cs.day_of_week = ? 
           AND st.name = ?
-          AND se.status = 'active'
           AND cs.status = 'active'
           AND s.subject_name != ''
         ORDER BY cs.start_time

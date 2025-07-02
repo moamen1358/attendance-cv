@@ -424,10 +424,192 @@ def get_table_info(table_name):
     finally:
         conn.close()
 
+def populate_sample_data():
+    """
+    Populate the database with comprehensive sample data including:
+    - Students with sections
+    - Teachers and subjects
+    - Class schedules (2-3 subjects per student per day)
+    - Student enrollments
+    """
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    
+    try:
+        print(f"[{datetime.now()}] Populating sample data...")
+        
+        # Check if data already exists
+        cursor.execute("SELECT COUNT(*) FROM students_enhanced")
+        if cursor.fetchone()[0] > 0:
+            print("Sample data already exists, skipping population...")
+            return True
+        
+        # Insert sample students
+        students_data = [
+            ('Fatma Khaled Ibrahim', '2024001', 'fatma.khaled@university.edu', '01234567890', 'Computer Science', 2, 'B'),
+            ('Ahmed Mohamed Ali', '2024002', 'ahmed.mohamed@university.edu', '01234567891', 'Computer Science', 2, 'A'),
+            ('Sara Hassan Ahmed', '2024003', 'sara.hassan@university.edu', '01234567892', 'Computer Science', 2, 'A'),
+            ('Mohamed Tarek Saeed', '2024004', 'mohamed.tarek@university.edu', '01234567893', 'Engineering', 3, 'B'),
+            ('Nour Amr Farouk', '2024005', 'nour.amr@university.edu', '01234567894', 'Engineering', 3, 'C'),
+        ]
+        
+        cursor.executemany('''
+            INSERT INTO students_enhanced (name, roll_number, email, phone, department, year, section)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', students_data)
+        
+        # Insert sample teachers
+        teachers_data = [
+            ('Dr. Ahmed Hassan', 'emp2024001', 'Computer Science', 'Professor', 'ahmed.hassan@university.edu'),
+            ('Dr. Maha Ibrahim', 'emp2024002', 'Engineering', 'Associate Professor', 'maha.ibrahim@university.edu'),
+            ('Dr. Omar Farid', 'emp2024003', 'Computer Science', 'Assistant Professor', 'omar.farid@university.edu'),
+            ('Dr. Layla Mohamed', 'emp2024004', 'Mathematics', 'Professor', 'layla.mohamed@university.edu'),
+        ]
+        
+        cursor.executemany('''
+            INSERT INTO teachers_enhanced (name, employee_id, department, position, email)
+            VALUES (?, ?, ?, ?, ?)
+        ''', teachers_data)
+        
+        # Insert sample subjects
+        subjects_data = [
+            ('CS301', 'Data Structures', 'Computer Science', 3, 'Core course covering fundamental data structures'),
+            ('CS302', 'Database Systems', 'Computer Science', 3, 'Introduction to database design and SQL'),
+            ('CS303', 'Web Development', 'Computer Science', 3, 'Modern web development technologies'),
+            ('ENG201', 'Engineering Mathematics', 'Engineering', 4, 'Advanced mathematics for engineers'),
+            ('ENG202', 'Circuit Analysis', 'Engineering', 3, 'Electrical circuit analysis and design'),
+            ('MATH201', 'Calculus II', 'Mathematics', 4, 'Advanced calculus and differential equations'),
+        ]
+        
+        cursor.executemany('''
+            INSERT INTO subjects_enhanced (subject_code, subject_name, department, credit_hours, description)
+            VALUES (?, ?, ?, ?, ?)
+        ''', subjects_data)
+        
+        # Insert class schedules - 2-3 subjects per day for each student
+        schedule_data = [
+            # Monday schedules
+            (1, 1, 'Monday', '08:00', '10:00', 'A', 'Room 101'),
+            (1, 2, 'Monday', '10:30', '12:30', 'A', 'Room 102'),
+            (2, 1, 'Monday', '08:00', '10:00', 'B', 'Room 103'),
+            (2, 3, 'Monday', '10:30', '12:30', 'B', 'Room 104'),
+            (3, 2, 'Monday', '13:30', '15:30', 'A', 'Room 105'),
+            
+            # Tuesday schedules
+            (1, 2, 'Tuesday', '08:00', '10:00', 'A', 'Room 101'),
+            (1, 3, 'Tuesday', '10:30', '12:30', 'A', 'Room 102'),
+            (2, 1, 'Tuesday', '13:30', '15:30', 'B', 'Room 103'),
+            (3, 1, 'Tuesday', '08:00', '10:00', 'A', 'Room 104'),
+            (3, 3, 'Tuesday', '13:30', '15:30', 'A', 'Room 105'),
+            
+            # Wednesday schedules
+            (1, 1, 'Wednesday', '09:00', '11:00', 'A', 'Room 101'),
+            (1, 3, 'Wednesday', '11:30', '13:30', 'A', 'Room 102'),
+            (1, 2, 'Wednesday', '14:00', '16:00', 'A', 'Room 103'),
+            (2, 2, 'Wednesday', '09:00', '11:00', 'B', 'Room 104'),
+            (2, 3, 'Wednesday', '14:00', '16:00', 'B', 'Room 105'),
+            (3, 1, 'Wednesday', '11:30', '13:30', 'A', 'Room 106'),
+            
+            # Thursday schedules
+            (1, 2, 'Thursday', '08:00', '10:00', 'A', 'Room 101'),
+            (2, 1, 'Thursday', '10:30', '12:30', 'B', 'Room 102'),
+            (2, 3, 'Thursday', '13:30', '15:30', 'B', 'Room 103'),
+            (3, 2, 'Thursday', '08:00', '10:00', 'A', 'Room 104'),
+            (3, 3, 'Thursday', '10:30', '12:30', 'A', 'Room 105'),
+            
+            # Friday schedules
+            (1, 1, 'Friday', '08:00', '10:00', 'A', 'Room 101'),
+            (1, 3, 'Friday', '13:30', '15:30', 'A', 'Room 102'),
+            (2, 2, 'Friday', '10:30', '12:30', 'B', 'Room 103'),
+            (3, 1, 'Friday', '08:00', '10:00', 'A', 'Room 104'),
+        ]
+        
+        cursor.executemany('''
+            INSERT INTO class_schedules_enhanced 
+            (subject_id, teacher_id, day_of_week, start_time, end_time, section, room_number)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', schedule_data)
+        
+        # Insert student enrollments
+        enrollment_data = [
+            (1, 1, 'A', 'active'),  # Fatma -> CS301, Section A
+            (1, 2, 'A', 'active'),  # Fatma -> CS302, Section A  
+            (1, 3, 'A', 'active'),  # Fatma -> CS303, Section A
+            (2, 1, 'B', 'active'),  # Ahmed -> CS301, Section B
+            (2, 2, 'B', 'active'),  # Ahmed -> CS302, Section B
+            (2, 3, 'B', 'active'),  # Ahmed -> CS303, Section B
+            (3, 1, 'A', 'active'),  # Sara -> CS301, Section A
+            (3, 2, 'A', 'active'),  # Sara -> CS302, Section A
+            (3, 3, 'A', 'active'),  # Sara -> CS303, Section A
+            (4, 4, 'B', 'active'),  # Mohamed -> ENG201, Section B
+            (4, 5, 'B', 'active'),  # Mohamed -> ENG202, Section B
+            (5, 4, 'C', 'active'),  # Nour -> ENG201, Section C
+            (5, 6, 'C', 'active'),  # Nour -> MATH201, Section C
+        ]
+        
+        cursor.executemany('''
+            INSERT INTO student_enrollments_enhanced (student_id, subject_id, section, status)
+            VALUES (?, ?, ?, ?)
+        ''', enrollment_data)
+        
+        # Insert user accounts for authentication
+        users_data = [
+            ('admin', 'admin', 'admin', 'System Administrator', 'active'),
+            ('2024001', '2024001', 'student', 'Fatma Khaled Ibrahim', 'active'),
+            ('2024002', '2024002', 'student', 'Ahmed Mohamed Ali', 'active'),
+            ('2024003', '2024003', 'student', 'Sara Hassan Ahmed', 'active'),
+            ('2024004', '2024004', 'student', 'Mohamed Tarek Saeed', 'active'),
+            ('2024005', '2024005', 'student', 'Nour Amr Farouk', 'active'),
+            ('emp2024001', 'emp2024001', 'teacher', 'Dr. Ahmed Hassan', 'active'),
+            ('emp2024002', 'emp2024002', 'teacher', 'Dr. Maha Ibrahim', 'active'),
+            ('emp2024003', 'emp2024003', 'teacher', 'Dr. Omar Farid', 'active'),
+            ('emp2024004', 'emp2024004', 'teacher', 'Dr. Layla Mohamed', 'active'),
+        ]
+        
+        cursor.executemany('''
+            INSERT INTO users_enhanced (username, password_hash, role, full_name, status)
+            VALUES (?, ?, ?, ?, ?)
+        ''', users_data)
+        
+        conn.commit()
+        print("✅ Sample data populated successfully!")
+        print("   - 5 students with sections assigned")
+        print("   - 4 teachers across departments")
+        print("   - 6 subjects with descriptions")
+        print("   - 25+ class schedules (2-3 subjects per day)")
+        print("   - Student enrollments with sections")
+        print("   - User accounts for authentication")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Error populating sample data: {e}")
+        conn.rollback()
+        return False
+    finally:
+        conn.close()
+
 if __name__ == "__main__":
     # Initialize database when run directly
+    print("🚀 Starting database initialization...")
     success = initialize_database()
     if success:
-        check_database_integrity()
+        print("✅ Database tables created successfully!")
+        
+        # Populate with sample data
+        sample_success = populate_sample_data()
+        if sample_success:
+            print("✅ Sample data populated successfully!")
+        
+        # Verify database integrity
+        integrity_check = check_database_integrity()
+        if integrity_check:
+            print("✅ Database integrity check passed!")
+            print("\n🎓 University Attendance System is ready!")
+            print("📚 Students have been assigned to sections with 2-3 subjects per day")
+            print("👨‍🏫 Teachers are assigned to subjects and sections")
+            print("📅 Class schedules are configured for Monday-Friday")
+        else:
+            print("❌ Database integrity check failed!")
     else:
-        print("Database initialization failed!")
+        print("❌ Database initialization failed!")

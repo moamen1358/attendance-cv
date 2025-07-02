@@ -75,6 +75,13 @@ A modern, AI-powered attendance management system using face recognition technol
    ```bash
    python src/db_init.py
    ```
+   
+   This will create:
+   - All required database tables
+   - Sample student, teacher, and subject data
+   - Class schedule assignments (2-3 subjects per student per day)
+   - Student enrollments with section assignments
+   - Default user accounts with proper roles
 
 4. **Run the application**
    ```bash
@@ -87,11 +94,17 @@ A modern, AI-powered attendance management system using face recognition technol
 
 ### 🔐 Default Credentials
 
-| Role | Username | Password |
-|------|----------|----------|
-| Admin | `admin` | `admin` |
-| Teacher | `professor` | `professor` |
-| Student | `student` | `student` |
+| Role | Username | Password | Notes |
+|------|----------|----------|-------|
+| Admin | `admin` | `admin` | Full system access |
+| Teacher | `emp2024001` | `emp2024001` | Sample teacher account |
+| Teacher | `emp2024002` | `emp2024002` | Sample teacher account |
+| Teacher | `emp2024003` | `emp2024003` | Sample teacher account |
+| Student | `2024001` | `2024001` | Fatma Khaled Ibrahim - Section B |
+| Student | `2024002` | `2024002` | Ahmed Mohamed Ali - Section A |
+| Student | `2024003` | `2024003` | Sara Hassan Ahmed - Section A |
+
+**Note**: All sample accounts come with pre-configured schedules and enrollments.
 
 ## 📋 System Architecture
 
@@ -107,13 +120,22 @@ The system uses a normalized SQLite database with the following core tables:
 
 #### Relationship Tables
 - **`teacher_subjects_enhanced`** - Teacher-subject assignments
-- **`student_enrollments_enhanced`** - Student course enrollments
-- **`class_schedules_enhanced`** - Class timing and scheduling
+- **`student_enrollments_enhanced`** - Student course enrollments with sections
+- **`class_schedules_enhanced`** - Comprehensive class timing and scheduling
+- **`sections`** - Student section/group management
 
 #### Attendance & Recognition
 - **`attendance_records_enhanced`** - Attendance tracking records
 - **`attendance_sessions_enhanced`** - Class session management
 - **`student_profiles_enhanced`** - Face recognition profiles and embeddings
+
+#### Scheduling System
+The system now includes a comprehensive class scheduling module:
+- **Daily Schedules**: Each student assigned to 2-3 subjects per day
+- **Time Slots**: 8:00 AM - 4:00 PM with proper intervals
+- **Section Management**: Students grouped by sections (A, B, C, etc.)
+- **Subject Rotation**: Balanced distribution across departments
+- **Teacher Assignments**: Automatic teacher-subject-section mapping
 
 ### File Structure
 ```
@@ -160,6 +182,14 @@ my_grad_streamlit_last/
 5. **Monitor academic progress**
 
 ## 📈 Features in Detail
+
+### Class Scheduling System
+- **Automated Schedule Generation** for all students
+- **Multi-subject Daily Assignment** (2-3 subjects per day)
+- **Section-based Organization** with balanced class sizes
+- **Time Slot Management** (8:00 AM - 4:00 PM)
+- **Teacher-Subject-Section Mapping** for optimal resource allocation
+- **Real-time Schedule Updates** and conflict resolution
 
 ### Face Recognition System
 - **High-accuracy detection** using InsightFace models
