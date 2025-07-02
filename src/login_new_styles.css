@@ -1,0 +1,416 @@
+    /* Import Google Fonts */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800&display=swap');
+    
+    /* Global styling */
+    * {
+        font-family: 'Inter', sans-serif !important;
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+    }
+    
+    /* Hide Streamlit elements */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+    
+    /* Main container styling */
+    .main .block-container {
+        max-width: 100% !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+    }
+    
+    /* Hide sidebar */
+    [data-testid="stSidebar"] {
+        display: none !important;
+    }
+    
+    /* Professional full page background */
+    .stApp {
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 25%, #334155 50%, #475569 75%, #64748b 100%);
+        min-height: 100vh !important;
+        position: relative;
+        overflow-x: hidden;
+    }
+    
+    /* Add subtle animated background pattern */
+    .stApp::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: 
+            radial-gradient(circle at 25% 25%, rgba(255,255,255,0.08) 2px, transparent 2px),
+            radial-gradient(circle at 75% 75%, rgba(255,255,255,0.04) 1px, transparent 1px);
+        background-size: 80px 80px;
+        pointer-events: none;
+        z-index: 0;
+        animation: backgroundFloat 20s ease-in-out infinite;
+    }
+    
+    @keyframes backgroundFloat {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-10px); }
+    }
+    
+    /* Login container with professional layout */
+    .login-container {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        padding: 40px 20px;
+        position: relative;
+        z-index: 1;
+    }
+    
+    /* Modern login card with glassmorphism effect */
+    .login-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 24px;
+        padding: 48px;
+        box-shadow: 
+            0 25px 50px rgba(0, 0, 0, 0.25),
+            0 0 0 1px rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        width: 100%;
+        max-width: 480px;
+        margin: 0 auto;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    /* Add subtle glow effect */
+    .login-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 2px;
+        background: linear-gradient(90deg, #3b82f6, #8b5cf6, #06b6d4, #3b82f6);
+        background-size: 200% 100%;
+        animation: shimmer 3s ease-in-out infinite;
+    }
+    
+    @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+    
+    /* Professional header styling */
+    .login-header {
+        text-align: center;
+        margin-bottom: 48px;
+        position: relative;
+    }
+    
+    .login-title {
+        font-family: 'Poppins', sans-serif !important;
+        font-size: 2.75rem;
+        font-weight: 800;
+        color: #1e293b;
+        margin-bottom: 12px;
+        background: linear-gradient(135deg, #1e293b 0%, #3b82f6 50%, #8b5cf6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        line-height: 1.2;
+        letter-spacing: -0.02em;
+    }
+    
+    .login-subtitle {
+        font-size: 1.125rem;
+        color: #64748b;
+        font-weight: 500;
+        margin-bottom: 0;
+        letter-spacing: 0.01em;
+    }
+    
+    /* Modern university icon with animation */
+    .university-icon {
+        font-size: 4.5rem;
+        margin-bottom: 24px;
+        background: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+        animation: iconPulse 4s ease-in-out infinite;
+        display: inline-block;
+    }
+    
+    @keyframes iconPulse {
+        0%, 100% { transform: scale(1); }
+        50% { transform: scale(1.05); }
+    }
+    
+    /* Professional form styling */
+    .stTextInput {
+        margin-bottom: 28px;
+    }
+    
+    .stTextInput > label {
+        font-weight: 600 !important;
+        color: #374151 !important;
+        font-size: 15px !important;
+        margin-bottom: 12px !important;
+        display: block !important;
+        letter-spacing: 0.01em;
+    }
+    
+    .stTextInput > div > div > input {
+        width: 100% !important;
+        height: 58px !important;
+        border-radius: 16px !important;
+        border: 2px solid #e5e7eb !important;
+        padding: 0 24px !important;
+        font-size: 16px !important;
+        background-color: #ffffff !important;
+        color: #374151 !important;
+        box-sizing: border-box !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        font-weight: 500 !important;
+        letter-spacing: 0.01em;
+    }
+    
+    .stTextInput > div > div > input:focus {
+        border-color: #3b82f6 !important;
+        outline: none !important;
+        box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.1) !important;
+        transform: translateY(-1px) !important;
+        background-color: #fafafa !important;
+    }
+    
+    .stTextInput > div > div > input:hover {
+        border-color: #d1d5db !important;
+        transform: translateY(-0.5px) !important;
+    }
+    
+    .stTextInput > div > div > input::placeholder {
+        color: #9ca3af !important;
+        font-weight: 400 !important;
+    }
+    
+    /* Modern login button with gradient and animation */
+    .stButton {
+        margin-top: 32px;
+        margin-bottom: 24px;
+    }
+    
+    .stButton > button {
+        width: 100% !important;
+        height: 58px !important;
+        background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+        color: white !important;
+        border-radius: 16px !important;
+        border: none !important;
+        font-size: 16px !important;
+        font-weight: 600 !important;
+        cursor: pointer !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3) !important;
+        letter-spacing: 0.02em;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .stButton > button::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+        transition: left 0.5s;
+    }
+    
+    .stButton > button:hover::before {
+        left: 100%;
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px) !important;
+        box-shadow: 0 15px 35px rgba(59, 130, 246, 0.4) !important;
+        background: linear-gradient(135deg, #2563eb 0%, #1e40af 100%) !important;
+    }
+    
+    .stButton > button:active {
+        transform: translateY(0px) !important;
+        box-shadow: 0 5px 15px rgba(59, 130, 246, 0.3) !important;
+    }
+    
+    /* Professional credential section styling */
+    .streamlit-expanderHeader {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.95) 100%) !important;
+        border-radius: 16px !important;
+        border: 1px solid rgba(148, 163, 184, 0.2) !important;
+        margin-top: 32px !important;
+        padding: 18px 24px !important;
+        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        backdrop-filter: blur(10px);
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .streamlit-expanderHeader::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent);
+    }
+    
+    .streamlit-expanderHeader:hover {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 1) 100%) !important;
+        border-color: rgba(59, 130, 246, 0.3) !important;
+        transform: translateY(-1px) !important;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1) !important;
+    }
+    
+    .streamlit-expanderContent {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 252, 0.98) 100%) !important;
+        border-radius: 0 0 16px 16px !important;
+        border: 1px solid rgba(148, 163, 184, 0.2) !important;
+        border-top: none !important;
+        padding: 24px !important;
+        backdrop-filter: blur(10px);
+    }
+    
+    /* Enhanced credential sections */
+    .credential-section {
+        margin-bottom: 24px;
+        padding: 16px;
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.05) 0%, rgba(139, 92, 246, 0.05) 100%);
+        border-radius: 12px;
+        border: 1px solid rgba(59, 130, 246, 0.1);
+    }
+    
+    .credential-section h4 {
+        color: #1e293b !important;
+        font-weight: 700 !important;
+        margin-bottom: 12px !important;
+        font-size: 16px !important;
+        letter-spacing: 0.01em;
+    }
+    
+    .credential-item {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(248, 250, 252, 0.9) 100%);
+        padding: 12px 16px;
+        border-radius: 10px;
+        margin-bottom: 8px;
+        font-family: 'JetBrains Mono', 'Monaco', 'Menlo', monospace;
+        font-size: 14px;
+        color: #374151;
+        border: 1px solid rgba(148, 163, 184, 0.15);
+        transition: all 0.2s ease;
+        font-weight: 500;
+    }
+    
+    .credential-item:hover {
+        transform: translateX(4px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        background: linear-gradient(135deg, rgba(255, 255, 255, 1) 0%, rgba(248, 250, 252, 1) 100%);
+    }
+    
+    /* Professional alert styling */
+    .stAlert {
+        margin-top: 24px !important;
+        border-radius: 16px !important;
+        border: none !important;
+        box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1) !important;
+        backdrop-filter: blur(10px);
+    }
+    
+    .stSuccess {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%) !important;
+        color: white !important;
+    }
+    
+    .stError {
+        background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%) !important;
+        color: white !important;
+    }
+    
+    .stWarning {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%) !important;
+        color: white !important;
+    }
+    
+    .stInfo {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%) !important;
+        color: white !important;
+    }
+    
+    /* Professional responsive design */
+    @media (max-width: 768px) {
+        .login-card {
+            padding: 32px 24px;
+            margin: 20px;
+            border-radius: 20px;
+        }
+        
+        .login-title {
+            font-size: 2.25rem;
+        }
+        
+        .university-icon {
+            font-size: 3.5rem;
+        }
+        
+        .stTextInput > div > div > input {
+            height: 54px !important;
+            padding: 0 20px !important;
+        }
+        
+        .stButton > button {
+            height: 54px !important;
+        }
+    }
+    
+    @media (max-width: 480px) {
+        .login-container {
+            padding: 20px 10px;
+        }
+        
+        .login-card {
+            padding: 28px 20px;
+        }
+        
+        .login-title {
+            font-size: 2rem;
+        }
+    }
+    
+    /* Smooth entrance animation */
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(40px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+    
+    .login-card {
+        animation: fadeInUp 0.8s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+    
+    /* Subtle loading state animation */
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.8; }
+    }
+    
+    .loading {
+        animation: pulse 2s ease-in-out infinite;
+    }

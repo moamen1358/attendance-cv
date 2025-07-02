@@ -268,12 +268,6 @@ def login_page():
         font-family: 'Inter', sans-serif !important;
     }
     
-    html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        height: 100% !important;
-    }
-    
     /* Hide Streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -285,8 +279,6 @@ def login_page():
         width: 100% !important;
         padding: 0 !important;
         margin: 0 !important;
-        padding-top: 0 !important;
-        margin-top: 0 !important;
     }
     
     /* Hide sidebar */
@@ -298,9 +290,6 @@ def login_page():
     .stApp {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
-        margin: 0;
-        padding: 0;
-        overflow-x: hidden;
     }
     
     /* Login container */
@@ -309,9 +298,7 @@ def login_page():
         justify-content: center;
         align-items: center;
         min-height: 100vh;
-        padding: 0 20px;
-        margin: 0;
-        padding-top: 0;
+        padding: 20px;
     }
     
     /* Login card */
@@ -510,11 +497,6 @@ def login_page():
     @media (max-width: 768px) {
         .login-card {
             padding: 30px 25px;
-        }
-        
-        .login-container {
-            padding: 0 15px;
-            margin: 0;
         }
         
         .login-title {
