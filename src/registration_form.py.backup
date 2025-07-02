@@ -69,10 +69,12 @@ def register_student(student_data, image):
         count = cursor.fetchone()[0] + 1
         roll_number = f"{department_code}{year}{count:03d}"
         
-        # Use the username as the password (simpler and more consistent)
-        password = username  # Password is the same as username
+        # Generate password (firstname_lastname123)
+        name_parts = name.split()
+        first_name = name_parts[0].lower()
+        last_name = name_parts[-1].lower() if len(name_parts) > 1 else "user"
+        password = f"{first_name}_{last_name}123"
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
-        print(f"Setting password same as username: {username}. Hash: {hashed_password[:10]}...")
         
         # Check if username already exists in users_enhanced table
         cursor.execute("SELECT username FROM users_enhanced WHERE username = ?", (username,))

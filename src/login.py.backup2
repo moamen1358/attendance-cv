@@ -30,6 +30,11 @@ def create_connection():
 def verify_credentials(username, password):
     """Verify credentials using users_enhanced table as primary authentication"""
     
+    # Special case for default admin
+    if username == "admin" and password == "admin":
+        print("Default admin login detected")
+        return True, "admin"
+    
     conn = sqlite3.connect('attendance_system.db')
     cursor = conn.cursor()
     
@@ -37,9 +42,8 @@ def verify_credentials(username, password):
         # Check if users_enhanced table exists
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='users_enhanced'")
         if cursor.fetchone():
-            # Hash the password using both methods for compatibility
-            sha256_hash = hashlib.sha256(password.encode()).hexdigest()
-            md5_hash = hashlib.md5(password.encode()).hexdigest()
+            # Hash the input password using SHA256 (same method used during registration)
+            input_password_hash = hashlib.sha256(password.encode()).hexdigest()
             
             # Query users_enhanced table
             cursor.execute("""
@@ -52,13 +56,11 @@ def verify_credentials(username, password):
             if result:
                 stored_hash, role, full_name = result
                 print(f"Found user {username} ({full_name}) in users_enhanced with role {role}")
+                print(f"Comparing password hashes...")
                 
-                # Check both SHA256 and MD5 hashes, plus plain text for compatibility
-                if (stored_hash == sha256_hash or 
-                    stored_hash == md5_hash or 
-                    stored_hash == password):  # Plain text fallback
-                    
-                    print(f"Authentication successful for {username} with role {role}")
+                # Compare the hashed input password with the stored hash
+                if stored_hash == input_password_hash:
+                    print(f"✅ Authentication successful for {username} with role {role}")
                     
                     # Update last login timestamp
                     cursor.execute("""
@@ -75,9 +77,13 @@ def verify_credentials(username, password):
                     
                     return True, role
                 else:
-                    print(f"Password verification failed for user {username}")
+                    print(f"❌ Password verification failed for user {username}")
+                    # Also try plain text password for legacy accounts
+                    if stored_hash == password:
+                        print(f"✅ Plain text password match for legacy account {username}")
+                        return True, role
             else:
-                print(f"User {username} not found in users_enhanced or account inactive")
+                print(f"❌ User {username} not found in users_enhanced or account inactive")
         
         # Fallback to legacy tables if users_enhanced doesn't exist
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='user_accounts_enhanced'")
@@ -94,9 +100,7 @@ def verify_credentials(username, password):
                     return True, role
         
         # Hard-coded fallback credentials for development
-        if username == "admin" and password in ["admin", "admin123"]:
-            return True, "admin"
-        elif username == "teacher" and password in ["teacher", "teacher123"]:
+        if username == "teacher" and password in ["teacher", "teacher123"]:
             return True, "professor"
         elif username == "student" and password in ["student", "student123"]:
             return True, "student"
@@ -268,6 +272,12 @@ def login_page():
         font-family: 'Inter', sans-serif !important;
     }
     
+    html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        height: 100% !important;
+    }
+    
     /* Hide Streamlit elements */
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
@@ -279,6 +289,8 @@ def login_page():
         width: 100% !important;
         padding: 0 !important;
         margin: 0 !important;
+        padding-top: 0 !important;
+        margin-top: 0 !important;
     }
     
     /* Hide sidebar */
@@ -290,6 +302,9 @@ def login_page():
     .stApp {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         min-height: 100vh;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
     }
     
     /* Login container */
@@ -298,7 +313,9 @@ def login_page():
         justify-content: center;
         align-items: center;
         min-height: 100vh;
-        padding: 20px;
+        padding: 0 20px;
+        margin: 0;
+        padding-top: 0;
     }
     
     /* Login card */
@@ -497,6 +514,11 @@ def login_page():
     @media (max-width: 768px) {
         .login-card {
             padding: 30px 25px;
+        }
+        
+        .login-container {
+            padding: 0 15px;
+            margin: 0;
         }
         
         .login-title {

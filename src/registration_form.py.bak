@@ -73,10 +73,10 @@ def register_student(student_data, image):
         password = username  # Password is the same as username
         hashed_password = hashlib.sha256(password.encode()).hexdigest()
         print(f"Setting password same as username: {username}. Hash: {hashed_password[:10]}...")
+        hashed_password = hashlib.sha256(password.encode()).hexdigest()
         
         # Check if username already exists in users_enhanced table
         cursor.execute("SELECT username FROM users_enhanced WHERE username = ?", (username,))
-        if cursor.fetchone():
             # If username exists, add a number suffix
             counter = 1
             original_username = username
