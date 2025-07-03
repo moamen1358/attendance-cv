@@ -23,7 +23,7 @@ MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit/insightface_model'
 MODEL_NAME = 'buffalo_sc'
 
 DETECTION_SIZE = (640, 640)
-RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/101"
+RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/102"
 CHROMA_STORE_PATH = "./store"
 DATABASE_PATH = 'attendance_system.db'
 
@@ -262,28 +262,45 @@ def cosine_similarity_search(query_embedding, threshold=0.6, collection=None):
         return "Unknown", 0.0
 
 def capture_frame_from_camera():
-    """Capture a single frame from the camera for attendance processing"""
+    """Capture a single frame from the Hikvision camera for attendance processing"""
     try:
-        # Use laptop camera for testing - can switch to RTSP later
-        cap = cv2.VideoCapture(0)
-        # For Hikvision camera, uncomment below:
-        # cap = cv2.VideoCapture(RTSP_URL)
+        # Use Hikvision RTSP camera
+        cap = cv2.VideoCapture(RTSP_URL)
+        st.info("📹 Using Hikvision RTSP camera")
         
         if not cap.isOpened():
-            st.error("❌ Could not open camera for frame capture")
+            st.error("❌ Could not open Hikvision camera for frame capture")
+            st.error(f"❌ Check RTSP URL: {RTSP_URL}")
             return None
         
+        # Show live preview for a few seconds before capture
+        st.info("📹 Showing live preview before capture...")
+        preview_placeholder = st.empty()
+        
+        for i in range(10):  # Show 10 frames as preview
+            ret, preview_frame = cap.read()
+            if ret:
+                preview_placeholder.image(preview_frame, channels="BGR", 
+                                        caption=f"📹 Live Preview ({10-i} seconds until capture)", 
+                                        use_container_width=True)
+                time.sleep(1)
+        
+        # Now capture the actual frame
         ret, frame = cap.read()
         cap.release()
         
         if not ret:
-            st.error("❌ Could not capture frame from camera")
+            st.error("❌ Could not capture frame from Hikvision camera")
             return None
         
         # Save the captured frame temporarily
         temp_image_path = "/tmp/attendance_capture.jpg"
         cv2.imwrite(temp_image_path, frame)
+        
+        # Display the captured frame in Streamlit
         st.success(f"✅ Frame captured and saved to {temp_image_path}")
+        st.image(frame, channels="BGR", caption="📸 Captured Frame for Face Detection", use_container_width=True)
+        
         return temp_image_path
         
     except Exception as e:
@@ -321,24 +338,40 @@ def run_attendance_workflow():
         # Step 3: Run YOLO face detection
         st.info("🎯 Step 3: Detecting faces in captured frame...")
         json_output_path = "/tmp/face_detection_results.json"
+        annotated_output_path = "/tmp/face_detection_annotated.jpg"
         result = subprocess.run([
             "python",
             str(camera_scripts_path / "yolo_image _count.py"),
             image_path,
             "--confidence", "0.3",
-            "--json-output", json_output_path
+            "--json-output", json_output_path,
+            "--output", annotated_output_path
         ], capture_output=True, text=True, timeout=60)
         
         if result.returncode != 0:
-            st.error(f"❌ Face detection failed: {result.stderr}")
-            return False
+            # Check if it's just "no faces detected" vs a real error
+            if "No faces detected" in result.stdout and result.returncode == 1:
+                st.warning("⚠️ No faces detected in the captured frame")
+                face_count = 0
+            else:
+                st.error(f"❌ Face detection failed: {result.stderr}")
+                st.error(f"❌ Face detection stdout: {result.stdout}")
+                return False
+        else:
+            # Parse face detection output
+            face_count = 0
+            if "Total faces detected:" in result.stdout:
+                face_count = int(result.stdout.split("Total faces detected:")[1].split()[0])
         
-        # Parse face detection output
-        face_count = 0
-        if "Total faces detected:" in result.stdout:
-            face_count = int(result.stdout.split("Total faces detected:")[1].split()[0])
+        st.success(f"✅ Face detection completed - Found {face_count} faces")
         
-        st.success(f"✅ Detected {face_count} faces")
+        # Show annotated image with detected faces
+        if os.path.exists(annotated_output_path):
+            annotated_img = cv2.imread(annotated_output_path)
+            if annotated_img is not None:
+                st.image(annotated_img, channels="BGR", 
+                        caption=f"🎯 Detected Faces: {face_count} faces found", 
+                        use_container_width=True)
         
         if face_count == 0:
             st.warning("⚠️ No faces detected in the frame")
@@ -415,7 +448,7 @@ def show_real_time_prediction():
                     st.balloons()
     
     with col2:
-        st.info("💡 Ensure Arduino is connected and camera is properly positioned before taking attendance.")
+        st.info("💡 Ensure Arduino is connected and Hikvision camera is properly positioned before taking attendance.")
     
     st.divider()
     
@@ -464,10 +497,7 @@ def show_real_time_prediction():
         return
     
     # Video capture with camera
-    # cap = cv2.VideoCapture(RTSP_URL)  # Hikvision camera
-    cap = cv2.VideoCapture(0)  # Laptop camera
-    # video_path = '/home/invisa/Desktop/my_grad_streamlit/sisi.mp4'
-    # cap = cv2.VideoCapture(video_path)
+    cap = cv2.VideoCapture(RTSP_URL)  # Hikvision camera
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
 
     if not cap.isOpened():
