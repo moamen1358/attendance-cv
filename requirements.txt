@@ -32,3 +32,7 @@ networkx>=2.8.0
 
 # Enhanced database explorer dependencies
 
+# Camera control dependencies
+requests>=2.28.0
+opencv-python>=4.5.5
+
