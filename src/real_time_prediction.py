@@ -11,6 +11,13 @@ import uuid
 import os
 from datetime import datetime
 import time
+import sys
+import subprocess
+from pathlib import Path
+
+# Add camera_scripts to path for imports
+camera_scripts_path = Path(__file__).parent.parent / "camera_scripts"
+sys.path.append(str(camera_scripts_path))
 
 MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit/insightface_model'
 MODEL_NAME = 'buffalo_sc'
@@ -254,6 +261,126 @@ def cosine_similarity_search(query_embedding, threshold=0.6, collection=None):
         print(f"❌ Error in similarity search: {e}")
         return "Unknown", 0.0
 
+def capture_frame_from_camera():
+    """Capture a single frame from the camera for attendance processing"""
+    try:
+        # Use laptop camera for testing - can switch to RTSP later
+        cap = cv2.VideoCapture(0)
+        # For Hikvision camera, uncomment below:
+        # cap = cv2.VideoCapture(RTSP_URL)
+        
+        if not cap.isOpened():
+            st.error("❌ Could not open camera for frame capture")
+            return None
+        
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret:
+            st.error("❌ Could not capture frame from camera")
+            return None
+        
+        # Save the captured frame temporarily
+        temp_image_path = "/tmp/attendance_capture.jpg"
+        cv2.imwrite(temp_image_path, frame)
+        st.success(f"✅ Frame captured and saved to {temp_image_path}")
+        return temp_image_path
+        
+    except Exception as e:
+        st.error(f"❌ Error capturing frame: {e}")
+        return None
+
+def run_attendance_workflow():
+    """Execute the complete attendance workflow"""
+    st.info("🎬 Starting attendance workflow...")
+    
+    try:
+        # Step 1: Zoom out 4x
+        st.info("🔍 Step 1: Zooming camera out for wide view...")
+        result = subprocess.run([
+            "python", 
+            str(camera_scripts_path / "simple_4x_zoom.py"), 
+            "--zoom-out"
+        ], capture_output=True, text=True, timeout=30)
+        
+        if result.returncode != 0:
+            st.warning(f"⚠️ Zoom out warning: {result.stderr}")
+        else:
+            st.success("✅ Camera zoomed out successfully")
+        
+        # Wait for camera to stabilize
+        time.sleep(2)
+        
+        # Step 2: Capture frame
+        st.info("📷 Step 2: Capturing frame for face detection...")
+        image_path = capture_frame_from_camera()
+        if not image_path:
+            st.error("❌ Failed to capture frame")
+            return False
+        
+        # Step 3: Run YOLO face detection
+        st.info("🎯 Step 3: Detecting faces in captured frame...")
+        json_output_path = "/tmp/face_detection_results.json"
+        result = subprocess.run([
+            "python",
+            str(camera_scripts_path / "yolo_image _count.py"),
+            image_path,
+            "--confidence", "0.3",
+            "--json-output", json_output_path
+        ], capture_output=True, text=True, timeout=60)
+        
+        if result.returncode != 0:
+            st.error(f"❌ Face detection failed: {result.stderr}")
+            return False
+        
+        # Parse face detection output
+        face_count = 0
+        if "Total faces detected:" in result.stdout:
+            face_count = int(result.stdout.split("Total faces detected:")[1].split()[0])
+        
+        st.success(f"✅ Detected {face_count} faces")
+        
+        if face_count == 0:
+            st.warning("⚠️ No faces detected in the frame")
+            return True
+        
+        # Step 4: Send face positions to Arduino
+        st.info("🤖 Step 4: Sending face positions to Arduino...")
+        result = subprocess.run([
+            "python",
+            str(camera_scripts_path / "minimal_face_processor.py"),
+            json_output_path,
+            "--confidence", "0.3"
+        ], capture_output=True, text=True, timeout=120)
+        
+        if result.returncode != 0:
+            st.warning(f"⚠️ Arduino communication warning: {result.stderr}")
+        else:
+            st.success("✅ Face positions sent to Arduino")
+        
+        # Step 5: Zoom in 4x
+        st.info("🔍 Step 5: Zooming camera in for detailed view...")
+        result = subprocess.run([
+            "python",
+            str(camera_scripts_path / "simple_4x_zoom.py"),
+            "--zoom-in"
+        ], capture_output=True, text=True, timeout=30)
+        
+        if result.returncode != 0:
+            st.warning(f"⚠️ Zoom in warning: {result.stderr}")
+        else:
+            st.success("✅ Camera zoomed in successfully")
+        
+        st.success("🎉 Attendance workflow completed successfully!")
+        return True
+        
+    except subprocess.TimeoutExpired:
+        st.error("❌ Workflow timed out")
+        return False
+    except Exception as e:
+        st.error(f"❌ Workflow error: {e}")
+        return False
+
 def show_real_time_prediction():
     st.header("Real-Time Face Recognition")
     
@@ -271,6 +398,29 @@ def show_real_time_prediction():
     if with_embeddings == 0:
         st.error("❌ No facial embeddings found! Please register some faces first.")
         return
+    
+    # Add Take Attendance section at the top
+    st.subheader("📋 Automated Attendance System")
+    st.markdown("""
+    **Workflow:** Camera zooms out → Captures frame → Detects faces → Sends positions to Arduino → Camera zooms in → Moves to each face
+    """)
+    
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        if st.button("🎬 Take Attendance", type="primary", use_container_width=True):
+            with st.spinner("Processing attendance workflow..."):
+                success = run_attendance_workflow()
+                if success:
+                    st.balloons()
+    
+    with col2:
+        st.info("💡 Ensure Arduino is connected and camera is properly positioned before taking attendance.")
+    
+    st.divider()
+    
+    # Original real-time recognition section
+    st.subheader("🎥 Live Face Recognition")
     
     # Load embeddings to ChromaDB
     collection = create_or_add_to_collection("face_recognition", path_to_chroma=CHROMA_STORE_PATH)
@@ -290,10 +440,32 @@ def show_real_time_prediction():
     threshold = st.slider("Recognition Threshold", 0.0, 1.0, 0.6)
     st.info(f"🎯 Recognition threshold set to: {threshold}")
     
-    # Video capture with hic camera
-    # cap = cv2.VideoCapture(RTSP_URL)
-    # laptop camera
-    cap = cv2.VideoCapture(0)
+    # Add start/stop controls for live feed
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        start_live = st.button("▶️ Start Live Recognition", type="secondary")
+    
+    with col2:
+        stop_live = st.button("⏹️ Stop Live Recognition", type="secondary")
+    
+    # Initialize session state for live feed control
+    if 'live_recognition_active' not in st.session_state:
+        st.session_state.live_recognition_active = False
+    
+    if start_live:
+        st.session_state.live_recognition_active = True
+    
+    if stop_live:
+        st.session_state.live_recognition_active = False
+    
+    if not st.session_state.live_recognition_active:
+        st.info("👆 Click 'Start Live Recognition' to begin the camera feed")
+        return
+    
+    # Video capture with camera
+    # cap = cv2.VideoCapture(RTSP_URL)  # Hikvision camera
+    cap = cv2.VideoCapture(0)  # Laptop camera
     # video_path = '/home/invisa/Desktop/my_grad_streamlit/sisi.mp4'
     # cap = cv2.VideoCapture(video_path)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
@@ -310,7 +482,7 @@ def show_real_time_prediction():
     frame_count = 0
     recognition_count = 0
     
-    while True:
+    while st.session_state.live_recognition_active:
         ret, frame = cap.read()
         if not ret:
             st.error("Error: Could not read frame from stream. Please check the camera connection.")
@@ -328,6 +500,9 @@ def show_real_time_prediction():
             # Update stats every 30 frames
             if frame_count % 30 == 0:
                 recognition_stats.info(f"📊 Frames processed: {frame_count} | Recognitions: {recognition_count}")
+            
+            # Add a small delay to allow Streamlit to process stop button
+            time.sleep(0.01)
             
         except Exception as e:
             st.error(f"Error processing frame: {str(e)}")

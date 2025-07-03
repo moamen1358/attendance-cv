@@ -2,12 +2,15 @@
 """
 Simple Hikvision Camera Zoom Script
 Two functions: zoom_in_4x() and zoom_out_4x()
+Can be used as command line tool or imported as module
 """
 
 import requests
 from requests.auth import HTTPDigestAuth
 import time
 import urllib3
+import argparse
+import sys
 
 # Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -128,41 +131,63 @@ class SimpleZoom:
             return False
 
 def main():
-    """Main function with menu"""
+    parser = argparse.ArgumentParser(description='Simple Hikvision Camera Zoom Control')
+    parser.add_argument('--zoom-in', action='store_true', help='Zoom in 4 times')
+    parser.add_argument('--zoom-out', action='store_true', help='Zoom out 4 times')
+    parser.add_argument('--interactive', action='store_true', help='Run in interactive mode')
+    
+    args = parser.parse_args()
+    
+    # If no arguments provided, default to interactive mode
+    if not any(vars(args).values()):
+        args.interactive = True
+    
     zoom_controller = SimpleZoom()
     
-    # Test connection
+    # Test connection first
     if not zoom_controller.test_connection():
-        print("❌ Cannot connect to camera!")
-        return
+        print("❌ Failed to connect to camera")
+        sys.exit(1)
     
-    print("\n🎮 ZOOM OPTIONS")
-    print("=" * 25)
-    print("1 - Zoom In 4 Times")
-    print("2 - Zoom Out 4 Times")
-    print("q - Quit")
-    print()
+    if args.zoom_in:
+        print("🔍 Zooming in 4 times...")
+        success = zoom_controller.zoom_in_4x()
+        sys.exit(0 if success else 1)
     
-    while True:
-        try:
-            choice = input("👉 Enter choice (1/2/q): ").strip().lower()
-            
-            if choice == 'q' or choice == 'quit':
-                break
-            elif choice == '1':
-                zoom_controller.zoom_in_4x()
-            elif choice == '2':
-                zoom_controller.zoom_out_4x()
-            else:
-                print("❌ Invalid choice. Enter 1, 2, or q")
+    elif args.zoom_out:
+        print("🔍 Zooming out 4 times...")
+        success = zoom_controller.zoom_out_4x()
+        sys.exit(0 if success else 1)
+    
+    elif args.interactive:
+        # Interactive mode (original menu)
+        print("\n🎮 ZOOM OPTIONS")
+        print("=" * 25)
+        print("1 - Zoom In 4 Times")
+        print("2 - Zoom Out 4 Times")
+        print("q - Quit")
+        print()
+        
+        while True:
+            try:
+                choice = input("👉 Enter choice (1/2/q): ").strip().lower()
                 
-        except KeyboardInterrupt:
-            print("\n👋 Goodbye!")
-            break
-        except Exception as e:
-            print(f"❌ Error: {e}")
-    
-    print("👋 Goodbye!")
+                if choice == 'q' or choice == 'quit':
+                    break
+                elif choice == '1':
+                    zoom_controller.zoom_in_4x()
+                elif choice == '2':
+                    zoom_controller.zoom_out_4x()
+                else:
+                    print("❌ Invalid choice. Enter 1, 2, or q")
+                    
+            except KeyboardInterrupt:
+                print("\n👋 Goodbye!")
+                break
+            except Exception as e:
+                print(f"❌ Error: {e}")
+        
+        print("👋 Goodbye!")
 
 # Example usage as functions
 def zoom_in_4_times():

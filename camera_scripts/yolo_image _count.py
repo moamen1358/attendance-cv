@@ -3,6 +3,9 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 from typing import List, Tuple
+import argparse
+import sys
+import json
 
 def detect_face_positions(image_path: str, confidence_threshold: float = 0.5) -> List[Tuple[int, int, int, int, float]]:
     """
@@ -78,11 +81,18 @@ def save_annotated_image(image_path: str, face_positions: List[Tuple[int, int, i
 
 # Main execution
 if __name__ == "__main__":
-    # Example usage
-    image_path = '/home/invisa/Desktop/my_grad_streamlit_last /images/2.png'
+    parser = argparse.ArgumentParser(description='YOLO Face Detection')
+    parser.add_argument('image_path', nargs='?', default='/home/invisa/Desktop/my_grad_streamlit_last /images/2.png',
+                       help='Path to the input image')
+    parser.add_argument('--confidence', type=float, default=0.3,
+                       help='Confidence threshold for face detection (default: 0.3)')
+    parser.add_argument('--output', help='Output path for annotated image')
+    parser.add_argument('--json-output', help='Save face positions as JSON to this file')
+    
+    args = parser.parse_args()
     
     print("🎯 Detecting face positions...")
-    face_positions = detect_face_positions(image_path, confidence_threshold=0.3)
+    face_positions = detect_face_positions(args.image_path, confidence_threshold=args.confidence)
     
     print(f"\n📊 Results:")
     print(f"Total faces detected: {len(face_positions)}")
@@ -97,10 +107,29 @@ if __name__ == "__main__":
             print(f"Face {i}: Position({x1}, {y1}, {x2}, {y2}) Center({center_x}, {center_y}) Size({width}x{height}) Conf({conf:.2f})")
         
         # Save annotated image
-        output_path = save_annotated_image(image_path, face_positions)
-        print(f"\n✅ Processing complete! Check {output_path}")
+        output_path = args.output if args.output else f'face_detection_result_{len(face_positions)}_faces.jpg'
+        annotated_path = save_annotated_image(args.image_path, face_positions, output_path)
+        print(f"\n✅ Processing complete! Check {annotated_path}")
+        
+        # Save JSON output if requested
+        if args.json_output:
+            face_data = {
+                'total_faces': len(face_positions),
+                'faces': [
+                    {
+                        'id': i,
+                        'bbox': [x1, y1, x2, y2],
+                        'center': [x1 + (x2-x1)//2, y1 + (y2-y1)//2],
+                        'confidence': conf
+                    }
+                    for i, (x1, y1, x2, y2, conf) in enumerate(face_positions, 1)
+                ]
+            }
+            with open(args.json_output, 'w') as f:
+                json.dump(face_data, f, indent=2)
+            print(f"📄 Face data saved to {args.json_output}")
     else:
         print("❌ No faces detected!")
     
-    # Return the list for external use
-    print(f"\n🔄 Returned list: {face_positions}")
+    # Return appropriate exit code
+    sys.exit(0 if face_positions else 1)
