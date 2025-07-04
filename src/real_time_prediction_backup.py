@@ -25,7 +25,7 @@ sys.path.insert(0, str(insightface_path))
 # Import the adjusted FaceAnalysis
 from insightface.app import FaceAnalysis
 
-MODEL_ROOT = os.path.join(os.path.dirname(__file__), "..", "models")
+MODEL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root directory
 MODEL_NAME = 'buffalo_sc'
 
 DETECTION_SIZE = (640, 640)

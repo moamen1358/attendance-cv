@@ -14,7 +14,7 @@ sys.path.insert(0, str(insightface_path))
 # Import our custom FaceAnalysis with YOLO integration
 from custom_face_analysis import CustomFaceAnalysis as FaceAnalysis
 
-MODEL_ROOT = os.path.join("..", "models")
+MODEL_ROOT = ".."  # Parent directory contains models/ subdirectory
 MODEL_NAME = 'buffalo_l'
 DETECTION_SIZE = (640, 640)
 

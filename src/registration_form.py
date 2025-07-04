@@ -12,7 +12,7 @@ import hashlib  # Added for password hashing
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
-MODEL_ROOT = os.path.join(os.path.dirname(__file__), "..", "models")
+MODEL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root directory
 MODEL_NAME = 'buffalo_sc'
 
 DETECTION_SIZE = (640, 640)

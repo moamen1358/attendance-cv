@@ -25,7 +25,7 @@ sys.path.insert(0, str(insightface_path))
 # Import our custom FaceAnalysis with YOLO integration
 from custom_face_analysis import CustomFaceAnalysis as FaceAnalysis
 
-MODEL_ROOT = os.path.join(os.getcwd(), "models")
+MODEL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root directory
 MODEL_NAME = 'buffalo_sc'  # Changed from buffalo_sc to buffalo_l for better recognition
 
 # FPS Optimization Settings - ASYNC PROCESSING
