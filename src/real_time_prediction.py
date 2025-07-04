@@ -35,7 +35,7 @@ DATABASE_PATH = 'attendance_system.db'
 # Initialize face analysis model
 try:
     # Use smaller YOLO model for low memory situations
-    yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11n-face.pt")  # Using smaller model
+    yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11l-face.pt")  # Using smaller model
     app = FaceAnalysis(
         name=MODEL_NAME, 
         root=MODEL_ROOT, 
