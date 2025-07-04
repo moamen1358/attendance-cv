@@ -19,7 +19,7 @@ DETECTION_SIZE = (640, 640)
 
 # Initialize face analysis model
 try:
-    app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, providers=['CUDAExecutionProvider'])
+    app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'], gpu_mode='HYBRID')
     app.prepare(ctx_id=0, det_size=DETECTION_SIZE)
 except Exception as e:
     st.error(f"Failed to initialize face analysis model: {str(e)}")

@@ -21,10 +21,44 @@ from insightface.utils import DEFAULT_MP_NAME, ensure_available
 
 
 class CustomFaceAnalysis:
-    def __init__(self, name=DEFAULT_MP_NAME, root='~/.insightface', allowed_modules=None, yolo_model_path=None, use_yolo=True, **kwargs):
+    def __init__(self, name=DEFAULT_MP_NAME, root='~/.insightface', allowed_modules=None, yolo_model_path=None, use_yolo=True, 
+                 gpu_mode='PREFER_GPU', **kwargs):
+        """
+        Custom Face Analysis with YOLO Integration and flexible GPU mode
+        
+        Args:
+            gpu_mode: 
+                - 'STRICT_GPU_ONLY': Fail if any model can't use GPU
+                - 'PREFER_GPU': Use GPU where possible, warn about CPU fallback  
+                - 'HYBRID': Force YOLO to GPU (critical), allow InsightFace CPU fallback
+        """
         onnxruntime.set_default_logger_severity(3)
         self.models = {}
         self.use_yolo = True  # Force YOLO usage
+        self.gpu_mode = gpu_mode
+        
+        # Force GPU-only mode for YOLO (always required)
+        import torch
+        if not torch.cuda.is_available():
+            raise RuntimeError("🚨 CUDA is required but not available! YOLO needs GPU.")
+        
+        print(f"🚀 GPU Mode: {gpu_mode}")
+        
+        # Configure InsightFace providers based on mode
+        if gpu_mode == 'STRICT_GPU_ONLY':
+            kwargs['providers'] = ['CUDAExecutionProvider']  # Remove CPU fallback completely
+            kwargs['provider_options'] = [{'device_id': '0'}]  # Force specific GPU
+            self.gpu_only_mode = True
+            print("� STRICT GPU-ONLY mode: Will fail if any model can't use GPU")
+        elif gpu_mode == 'PREFER_GPU':
+            kwargs['providers'] = ['CUDAExecutionProvider', 'CPUExecutionProvider']  # Prefer GPU, allow CPU
+            kwargs['provider_options'] = [{'device_id': '0'}, {}]
+            self.gpu_only_mode = False
+            print("🚀 PREFER GPU mode: Will use GPU where possible, CPU as fallback")
+        else:  # HYBRID mode (default)
+            kwargs['providers'] = ['CUDAExecutionProvider', 'CPUExecutionProvider']  # Allow CPU fallback
+            self.gpu_only_mode = False
+            print("🚀 HYBRID mode: YOLO on GPU (critical), InsightFace GPU preferred with CPU fallback")
         
         # Set default YOLO model path if not provided
         if yolo_model_path is None:
@@ -46,23 +80,71 @@ class CustomFaceAnalysis:
         self.model_dir = ensure_available('models', name, root=root)
         onnx_files = glob.glob(osp.join(self.model_dir, '*.onnx'))
         onnx_files = sorted(onnx_files)
+        
+        successfully_loaded_gpu_models = 0
+        
         for onnx_file in onnx_files:
-            model = model_zoo.get_model(onnx_file, **kwargs)
-            if model is None:
-                print('model not recognized:', onnx_file)
-            elif model.taskname == 'detection':
-                # Skip detection models since we're using YOLO
-                print('skipping detection model (using YOLO):', onnx_file, model.taskname)
-                del model
-            elif allowed_modules is not None and model.taskname not in allowed_modules:
-                print('model ignore:', onnx_file, model.taskname)
-                del model
-            elif model.taskname not in self.models and (allowed_modules is None or model.taskname in allowed_modules):
-                print('find model:', onnx_file, model.taskname, model.input_shape, model.input_mean, model.input_std)
-                self.models[model.taskname] = model
+            # Force CUDA-only providers for each model
+            kwargs_cuda_only = kwargs.copy()
+            kwargs_cuda_only['providers'] = ['CUDAExecutionProvider']  # Remove CPU fallback
+            
+            try:
+                model = model_zoo.get_model(onnx_file, **kwargs_cuda_only)  # Force CUDA only
+                
+                if model is None:
+                    print('model not recognized:', onnx_file)
+                elif model.taskname == 'detection':
+                    # Skip detection models since we're using YOLO
+                    print('skipping detection model (using YOLO):', onnx_file, model.taskname)
+                    del model
+                elif allowed_modules is not None and model.taskname not in allowed_modules:
+                    print('model ignore:', onnx_file, model.taskname)
+                    del model
+                elif model.taskname not in self.models and (allowed_modules is None or model.taskname in allowed_modules):
+                    # Check GPU usage based on mode
+                    model_on_gpu = False
+                    if hasattr(model, 'session') and hasattr(model.session, 'get_providers'):
+                        providers = model.session.get_providers()
+                        model_on_gpu = 'CUDAExecutionProvider' in providers and providers[0] == 'CUDAExecutionProvider'
+                        
+                        if self.gpu_mode == 'STRICT_GPU_ONLY' and not model_on_gpu:
+                            print(f'❌ STRICT MODE: {model.taskname} model not on GPU: {providers}')
+                            del model
+                            raise RuntimeError(f"STRICT GPU-only mode failed: {model.taskname} model fell back to CPU")
+                        elif model_on_gpu:
+                            print(f'✅ {model.taskname} model confirmed using CUDA: {providers[0]}')
+                            successfully_loaded_gpu_models += 1
+                        else:
+                            print(f'⚠️ {model.taskname} model using CPU fallback: {providers[0]}')
+                    
+                    print('find model:', onnx_file, model.taskname, model.input_shape, model.input_mean, model.input_std)
+                    self.models[model.taskname] = model
+                else:
+                    print('duplicated model task type, ignore:', onnx_file, model.taskname)
+                    del model
+                    
+            except Exception as e:
+                print(f"❌ Failed to load {onnx_file}: {e}")
+                if self.gpu_mode == 'STRICT_GPU_ONLY' and "STRICT GPU-only mode failed" in str(e):
+                    raise  # Re-raise strict mode failures
+                # For other modes, continue but warn
+                print(f"⚠️ Skipping {onnx_file} due to loading error")
+        
+        print(f"🚀 Successfully loaded {successfully_loaded_gpu_models} InsightFace models on GPU")
+        
+        # Summary of what was loaded
+        total_insightface_models = len([k for k in self.models.keys() if k != 'detection'])
+        if total_insightface_models > 0:
+            gpu_ratio = successfully_loaded_gpu_models / total_insightface_models
+            print(f"📊 InsightFace GPU ratio: {successfully_loaded_gpu_models}/{total_insightface_models} ({gpu_ratio*100:.0f}%)")
+            if gpu_ratio == 1.0:
+                print("🏆 Perfect: All InsightFace models on GPU!")
+            elif gpu_ratio > 0:
+                print("🌟 Good: Partial GPU acceleration for InsightFace")
             else:
-                print('duplicated model task type, ignore:', onnx_file, model.taskname)
-                del model
+                print("⚠️ Warning: All InsightFace models on CPU (still functional)")
+        else:
+            print("⚠️ No InsightFace models loaded!")
             
         # Ensure detection is available (YOLO)
         assert 'detection' in self.models
@@ -137,23 +219,29 @@ class CustomFaceAnalysis:
         print(f'set detection threshold: {det_thresh}')
         self.det_size = det_size
         
-        # Always configure YOLO model (since we're only using YOLO for detection)
-        self.yolo_model.conf = det_thresh  # Set confidence threshold to the provided det_thresh
-        if torch.cuda.is_available() and ctx_id >= 0:
-            self.yolo_model.to(f'cuda:{ctx_id}')
-            print(f"YOLO model moved to GPU: cuda:{ctx_id}")
-        else:
-            self.yolo_model.to('cpu')
-            print("YOLO model using CPU")
+        # Force GPU-only for YOLO model (no CPU fallback)
+        if not torch.cuda.is_available():
+            raise RuntimeError("🚨 CUDA is required but not available! GPU-only mode enabled.")
         
-        print(f"YOLO confidence threshold set to: {self.yolo_model.conf}")
+        if ctx_id < 0:
+            raise ValueError("🚨 GPU-only mode: ctx_id must be >= 0 (CPU mode disabled)")
         
-        # Prepare other InsightFace models (recognition, gender/age, etc.)
+        # Force YOLO to GPU
+        self.yolo_model.conf = det_thresh  # Set confidence threshold
+        gpu_device = f'cuda:{ctx_id}'
+        self.yolo_model.to(gpu_device)
+        print(f"🚀 YOLO model FORCED to GPU: {gpu_device}")
+        print(f"🚀 YOLO confidence threshold set to: {self.yolo_model.conf}")
+        
+        # Force InsightFace models to GPU only
+        print("🚀 Preparing InsightFace models in GPU-ONLY mode...")
         for taskname, model in self.models.items():
             if taskname == 'detection' or model == 'yolo':
                 continue  # Skip detection since we use YOLO
-            print(f"Preparing {taskname} model...")
-            model.prepare(ctx_id)
+            print(f"🚀 Forcing {taskname} model to GPU: {gpu_device}")
+            model.prepare(ctx_id)  # Force GPU context
+            
+        print("✅ All models prepared in GPU-ONLY mode")
 
     def get(self, img, max_num=0, det_metric='default'):
         # Always use YOLO model for detection

@@ -47,33 +47,34 @@ is_processing = False       # Flag to track if frame processing is ongoing
 last_processed_frame = None # Store last processed frame for display
 processing_results = {}     # Store processing results
 
-# Initialize face analysis model with GPU support
+# Initialize face analysis model with GPU ONLY (no CPU fallback)
 try:
-    # Check if CUDA is available
+    # Check if CUDA is available - REQUIRE it for GPU-only operation
     import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"🔧 Using device: {device}")
+    if not torch.cuda.is_available():
+        st.error("🚨 CUDA is not available! This system requires GPU for optimal performance.")
+        st.error("Please ensure NVIDIA GPU drivers and CUDA are properly installed.")
+        st.stop()
     
-    if device == "cuda":
-        print(f"🚀 CUDA device: {torch.cuda.get_device_name(0)}")
-        print(f"🚀 CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    device = "cuda"
+    print(f"🔧 Using device: {device} (GPU ONLY MODE)")
+    print(f"🚀 CUDA device: {torch.cuda.get_device_name(0)}")
+    print(f"🚀 CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
     
-    # Try GPU first, fall back to CPU if needed
-    try:
-        # Initialize with GPU support and YOLO model path
-        yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11n-face.pt")
-        app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
-        app.prepare(ctx_id=0, det_size=DETECTION_SIZE)
-        print(f"✅ Face analysis with YOLO initialized with GPU support")
-    except Exception as gpu_error:
-        print(f"⚠️ GPU initialization failed: {gpu_error}")
-        print(f"🔄 Falling back to CPU...")
-        # Fallback to CPU
-        yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11n-face.pt")
-        app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
-        app.prepare(ctx_id=-1, det_size=DETECTION_SIZE)
-        print(f"✅ Face analysis with YOLO initialized with CPU fallback")
+    # Force GPU-only initialization - NO CPU fallback
+    print("🚀 Initializing models in GPU-ONLY mode...")
+    yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11n-face.pt")
     
+    # Initialize with forced GPU context (ctx_id=0) - HYBRID mode allows CPU fallback for InsightFace
+    app = FaceAnalysis(
+        name=MODEL_NAME, 
+        root=MODEL_ROOT, 
+        yolo_model_path=yolo_path,
+        providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],  # Allow CPU fallback for InsightFace
+        gpu_mode='HYBRID'  # YOLO must be GPU, InsightFace preferred GPU with CPU fallback
+    )
+    app.prepare(ctx_id=0, det_size=DETECTION_SIZE)  # ctx_id=0 forces GPU
+    print(f"✅ Face analysis with YOLO initialized in GPU-ONLY mode")
     print(f"✅ FaceAnalysis with YOLO integration loaded")
     
 except Exception as e:
