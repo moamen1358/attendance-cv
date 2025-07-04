@@ -1,7 +1,6 @@
 import streamlit as st
 import cv2
 import numpy as np
-from insightface.app import FaceAnalysis
 import sqlite3
 from database_utils import execute_query, execute_query_df
 import json
@@ -9,6 +8,19 @@ from datetime import datetime
 import os
 import uuid
 import hashlib  # Added for password hashing
+import sys
+from pathlib import Path
+
+# Add camera_scripts to path for imports
+camera_scripts_path = Path(__file__).parent.parent / "camera_scripts"
+sys.path.append(str(camera_scripts_path))
+
+# Add local insightface to path BEFORE importing
+insightface_path = Path(__file__).parent.parent / "insightface" / "python-package"
+sys.path.insert(0, str(insightface_path))
+
+# Import our custom FaceAnalysis with YOLO integration
+from custom_face_analysis import CustomFaceAnalysis as FaceAnalysis
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
@@ -19,8 +31,15 @@ DETECTION_SIZE = (640, 640)
 
 # Initialize face analysis model
 try:
-    app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'], gpu_mode='HYBRID')
-    app.prepare(ctx_id=0, det_size=DETECTION_SIZE)
+    yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11n-face.pt")
+    app = FaceAnalysis(
+        name=MODEL_NAME, 
+        root=MODEL_ROOT, 
+        yolo_model_path=yolo_path,
+        providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
+        gpu_mode='HYBRID'
+    )
+    app.prepare(ctx_id=0, det_size=DETECTION_SIZE, det_thresh=0.25)
 except Exception as e:
     st.error(f"Failed to initialize face analysis model: {str(e)}")
     st.stop()
@@ -206,8 +225,9 @@ def register_student(student_data, image):
                                 caption="✅ Face Detected Successfully")
                     
                     # Save facial embedding to student_profiles_enhanced
+                    # Use INSERT OR REPLACE to handle existing profiles
                     cursor.execute("""
-                        INSERT INTO student_profiles_enhanced 
+                        INSERT OR REPLACE INTO student_profiles_enhanced 
                         (student_id, profile_name, encoding_data, confidence_threshold, status)
                         VALUES (?, ?, ?, 0.6, 'active')
                     """, (student_id, name, embedding_json))
