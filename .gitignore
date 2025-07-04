@@ -14,3 +14,4 @@ src/__pycache__/
 
 yolo11x.pt
 yolo11n.pt
+models/
