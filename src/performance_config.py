@@ -2,6 +2,11 @@
 # Adjust these settings to optimize performance vs accuracy
 # Updated to use antelopev2 + yolov11n models with low-memory optimization
 
+# MODEL SELECTION SETTINGS
+INSIGHTFACE_MODEL = "antelopev2"     # InsightFace model: "antelopev2", "buffalo_sc", "buffalo_l", etc.
+YOLO_MODEL_SIZE = "l"                # YOLO model size: "n", "s", "m", "l", "x"
+                                     # n=nano (fastest, least memory), l=large (slower, more accurate)
+
 # PROCESSING SETTINGS
 DETECTION_SIZE = (480, 480)    # Detection resolution - optimized for low memory
                                # Options: (320, 320), (480, 480), (640, 640)
@@ -39,7 +44,9 @@ GPU_MODE = "LOW_MEMORY"        # GPU mode: LOW_MEMORY, HYBRID, PREFER_GPU, STRIC
 # CAMERA SETTINGS
 CAMERA_BUFFER_SIZE = 1         # Camera buffer size (lower = less latency)
 USE_RTSP = False               # Use RTSP camera vs local camera
-RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/102"
+# RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/101"
+RTSP_URL = 0 # Use local camera (0 for default webcam)
+
 
 # PERFORMANCE PRESETS
 # Uncomment one of these presets or customize individual settings above

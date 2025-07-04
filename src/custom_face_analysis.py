@@ -19,15 +19,25 @@ from insightface.app.common import Face
 from insightface.model_zoo import model_zoo
 from insightface.utils import DEFAULT_MP_NAME, ensure_available
 
+# Import performance configuration for defaults
+try:
+    from performance_config import INSIGHTFACE_MODEL, YOLO_MODEL_SIZE
+    DEFAULT_INSIGHTFACE_MODEL = INSIGHTFACE_MODEL
+    DEFAULT_YOLO_SIZE = YOLO_MODEL_SIZE
+except ImportError:
+    # Fallback if performance_config not available
+    DEFAULT_INSIGHTFACE_MODEL = 'antelopev2'
+    DEFAULT_YOLO_SIZE = 'n'
+
 
 class CustomFaceAnalysis:
-    def __init__(self, name='antelopev2', root='~/.insightface', allowed_modules=None, yolo_model_path=None, use_yolo=True, 
+    def __init__(self, name=None, root='~/.insightface', allowed_modules=None, yolo_model_path=None, use_yolo=True, 
                  gpu_mode='LOW_MEMORY', low_memory=True, **kwargs):
         """
         Custom Face Analysis with YOLO Integration and flexible GPU mode
         
         Args:
-            name: Model name - using 'antelopev2' for better embeddings
+            name: Model name - defaults to performance config or 'antelopev2'
             gpu_mode: 
                 - 'STRICT_GPU_ONLY': Fail if any model can't use GPU
                 - 'PREFER_GPU': Use GPU where possible, warn about CPU fallback  
@@ -40,6 +50,10 @@ class CustomFaceAnalysis:
         self.use_yolo = True  # Force YOLO usage
         self.gpu_mode = gpu_mode
         self.low_memory = low_memory
+        
+        # Use default from performance config if not specified
+        if name is None:
+            name = DEFAULT_INSIGHTFACE_MODEL
         
         # Check GPU memory
         import torch
@@ -78,12 +92,14 @@ class CustomFaceAnalysis:
         # Set default YOLO model path if not provided
         if yolo_model_path is None:
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            # Use smaller YOLO model for low memory situations
+            # Use model size from performance config or default to 'n' for low memory
+            yolo_size = DEFAULT_YOLO_SIZE if gpu_mode != 'LOW_MEMORY' else 'n'
             if gpu_mode == 'LOW_MEMORY' or gpu_memory_gb < 3.0:
-                yolo_model_path = os.path.join(project_root, "models", "yolov11n-face.pt")  # Smaller model
-                print("🧠 Using yolov11n for low memory configuration")
+                yolo_size = 'n'  # Force nano for low memory
+                print(f"🧠 Using yolov11{yolo_size} for low memory configuration")
             else:
-                yolo_model_path = os.path.join(project_root, "models", "yolov11l-face.pt")  # Larger model
+                print(f"🚀 Using yolov11{yolo_size} from performance config")
+            yolo_model_path = os.path.join(project_root, "models", f"yolov11{yolo_size}-face.pt")
         
         # Load YOLO model for detection (required)
         try:

@@ -24,28 +24,33 @@ sys.path.insert(0, str(insightface_path))
 # Import our custom FaceAnalysis with YOLO integration
 from custom_face_analysis import CustomFaceAnalysis as FaceAnalysis
 
-MODEL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root directory
-MODEL_NAME = 'antelopev2'  # Changed to antelopev2 for better embeddings
+# Import performance configuration
+from performance_config import (
+    INSIGHTFACE_MODEL, YOLO_MODEL_SIZE, DETECTION_SIZE, 
+    CONFIDENCE_THRESHOLD, GPU_MODE ,RTSP_URL
+)
 
-DETECTION_SIZE = (640, 640)
-RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/101"
+MODEL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root directory
+MODEL_NAME = INSIGHTFACE_MODEL  # Use model from performance config
+
+# RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/101"
 CHROMA_STORE_PATH = "./store"
 DATABASE_PATH = 'attendance_system.db'
 
 # Initialize face analysis model
 try:
-    # Use smaller YOLO model for low memory situations
-    yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11l-face.pt")  # Using smaller model
+    # Use model size from performance config
+    yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", f"yolov11{YOLO_MODEL_SIZE}-face.pt")
     app = FaceAnalysis(
         name=MODEL_NAME, 
         root=MODEL_ROOT, 
         yolo_model_path=yolo_path,
         providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
-        gpu_mode='LOW_MEMORY',  # Enable low memory mode
+        gpu_mode=GPU_MODE,  # Use GPU mode from performance config
         low_memory=True,
         allowed_modules=['recognition']  # Only load essential models
     )
-    app.prepare(ctx_id=0, det_size=(480, 480))  # Smaller detection size for memory
+    app.prepare(ctx_id=0, det_size=DETECTION_SIZE, det_thresh=CONFIDENCE_THRESHOLD)  # Use config values
 except Exception as e:
     st.error(f"Failed to initialize face analysis model: {str(e)}")
     st.stop()
@@ -313,9 +318,9 @@ def show_real_time_prediction():
     st.info(f"🎯 Recognition threshold set to: {threshold}")
     
     # Video capture with hic camera
-    # cap = cv2.VideoCapture(RTSP_URL)
+    cap = cv2.VideoCapture(RTSP_URL)
     # laptop camera
-    cap = cv2.VideoCapture(0)
+    # cap = cv2.VideoCapture(0)
     # video_path = '/home/invisa/Desktop/my_grad_streamlit/sisi.mp4'
     # cap = cv2.VideoCapture(video_path)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 2)
