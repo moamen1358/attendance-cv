@@ -28,7 +28,7 @@ def detect_face_positions(image_path: str, confidence_threshold: float = 0.5) ->
         print(f"🚀 GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
     
     # Load the YOLO model
-    model = YOLO("/home/invisa/Desktop/my_grad_streamlit_last /yolov11l-face.pt")
+    model = YOLO("/home/invisa/Desktop/my_grad_streamlit_last /yolo_models/yolov11l-face.pt")
     
     # Explicitly move model to GPU if available
     if device == "cuda":
