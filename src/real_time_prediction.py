@@ -1,7 +1,6 @@
 import streamlit as st
 import cv2
 import numpy as np
-from custom_face_analysis import CustomFaceAnalysis
 import onnxruntime as ort
 import chromadb
 import sqlite3
@@ -22,6 +21,9 @@ sys.path.append(str(camera_scripts_path))
 # Add local insightface to path BEFORE importing
 insightface_path = Path(__file__).parent.parent / "insightface" / "python-package"
 sys.path.insert(0, str(insightface_path))
+
+# Import the adjusted FaceAnalysis
+from insightface.app import FaceAnalysis
 
 MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit_last/insightface_model'
 MODEL_NAME = 'buffalo_sc'
@@ -46,19 +48,19 @@ try:
     try:
         # Initialize with GPU support and YOLO model path (note the space in directory name)
         yolo_path = "/home/invisa/Desktop/my_grad_streamlit_last /yolov11l-face.pt"
-        app = CustomFaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
+        app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
         app.prepare(ctx_id=0, det_size=DETECTION_SIZE)
-        print(f"✅ Custom Face analysis with YOLO initialized with GPU support")
+        print(f"✅ Face analysis with YOLO initialized with GPU support")
     except Exception as gpu_error:
         print(f"⚠️ GPU initialization failed: {gpu_error}")
         print(f"🔄 Falling back to CPU...")
         # Fallback to CPU
         yolo_path = "/home/invisa/Desktop/my_grad_streamlit_last/yolov11l-face.pt"
-        app = CustomFaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
+        app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
         app.prepare(ctx_id=-1, det_size=DETECTION_SIZE)
-        print(f"✅ Custom Face analysis with YOLO initialized with CPU fallback")
+        print(f"✅ Face analysis with YOLO initialized with CPU fallback")
     
-    print(f"✅ Custom FaceAnalysis with YOLO integration loaded")
+    print(f"✅ FaceAnalysis with YOLO integration loaded")
     
 except Exception as e:
     st.error(f"Failed to initialize face analysis model: {str(e)}")
@@ -497,7 +499,8 @@ def run_attendance_workflow_simple():
             
             # Step 2: Capture wide angle frame and process with YOLO
             st.info("📷 Step 2: Capturing wide angle frame and processing...")
-            cap = cv2.VideoCapture(RTSP_URL)
+            # cap = cv2.VideoCapture(RTSP_URL)
+            cap = cv2.VideoCapture(0)
             if not cap.isOpened():
                 st.error("❌ Could not connect to camera")
                 return False
