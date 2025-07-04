@@ -12,7 +12,7 @@ import hashlib  # Added for password hashing
 
 # Constants
 DATABASE_PATH = 'attendance_system.db'
-MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit/insightface_model'
+MODEL_ROOT = os.path.join(os.path.dirname(__file__), "..", "models")
 MODEL_NAME = 'buffalo_sc'
 
 DETECTION_SIZE = (640, 640)

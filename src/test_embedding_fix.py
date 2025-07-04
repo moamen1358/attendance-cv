@@ -14,12 +14,12 @@ sys.path.insert(0, str(insightface_path))
 # Import our custom FaceAnalysis with YOLO integration
 from custom_face_analysis import CustomFaceAnalysis as FaceAnalysis
 
-MODEL_ROOT = os.path.join("..", "insightface_model")
+MODEL_ROOT = os.path.join("..", "models")
 MODEL_NAME = 'buffalo_l'
 DETECTION_SIZE = (640, 640)
 
 try:
-    yolo_path = os.path.join("..", "yolo_models", "yolov11l-face.pt")
+    yolo_path = os.path.join("..", "models", "yolov11l-face.pt")
     print(f'Testing YOLO path: {yolo_path}')
     print(f'YOLO exists: {os.path.exists(yolo_path)}')
     

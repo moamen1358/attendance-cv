@@ -21,10 +21,15 @@ from insightface.utils import DEFAULT_MP_NAME, ensure_available
 
 
 class CustomFaceAnalysis:
-    def __init__(self, name=DEFAULT_MP_NAME, root='~/.insightface', allowed_modules=None, yolo_model_path='/home/invisa/Desktop/my_grad_streamlit_last /yolo_models/yolov11n-face.pt', use_yolo=True, **kwargs):
+    def __init__(self, name=DEFAULT_MP_NAME, root='~/.insightface', allowed_modules=None, yolo_model_path=None, use_yolo=True, **kwargs):
         onnxruntime.set_default_logger_severity(3)
         self.models = {}
         self.use_yolo = True  # Force YOLO usage
+        
+        # Set default YOLO model path if not provided
+        if yolo_model_path is None:
+            project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            yolo_model_path = os.path.join(project_root, "models", "yolov11n-face.pt")
         
         # Load YOLO model for detection (required)
         try:
@@ -87,11 +92,11 @@ class CustomFaceAnalysis:
             if not os.path.isabs(model_path):
                 # Get the project root directory
                 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                yolo_models_dir = os.path.join(project_root, "yolo_models")
+                models_dir = os.path.join(project_root, "models")
                 
                 # Try different model paths
                 possible_paths = [
-                    os.path.join(yolo_models_dir, model_path),  # yolo_models/model.pt
+                    os.path.join(models_dir, model_path),       # models/model.pt
                     os.path.join(project_root, model_path),     # root/model.pt
                     model_path,                                 # as provided
                     os.path.join(os.getcwd(), model_path)       # current_dir/model.pt

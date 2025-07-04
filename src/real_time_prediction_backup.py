@@ -25,7 +25,7 @@ sys.path.insert(0, str(insightface_path))
 # Import the adjusted FaceAnalysis
 from insightface.app import FaceAnalysis
 
-MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit_last/insightface_model'
+MODEL_ROOT = os.path.join(os.path.dirname(__file__), "..", "models")
 MODEL_NAME = 'buffalo_sc'
 
 DETECTION_SIZE = (640, 640)
@@ -47,7 +47,7 @@ try:
     # Try GPU first, fall back to CPU if needed
     try:
         # Initialize with GPU support and YOLO model path (note the space in directory name)
-        yolo_path = "/home/invisa/Desktop/my_grad_streamlit_last /yolo_models/yolov11l-face.pt"
+        yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11l-face.pt")
         app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
         app.prepare(ctx_id=0, det_size=DETECTION_SIZE)
         print(f"✅ Face analysis with YOLO initialized with GPU support")
@@ -55,7 +55,7 @@ try:
         print(f"⚠️ GPU initialization failed: {gpu_error}")
         print(f"🔄 Falling back to CPU...")
         # Fallback to CPU
-        yolo_path = "/home/invisa/Desktop/my_grad_streamlit_last/yolov11l-face.pt"
+        yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11l-face.pt")
         app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
         app.prepare(ctx_id=-1, det_size=DETECTION_SIZE)
         print(f"✅ Face analysis with YOLO initialized with CPU fallback")
