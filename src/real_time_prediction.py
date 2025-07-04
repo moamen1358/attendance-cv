@@ -25,16 +25,39 @@ sys.path.insert(0, str(insightface_path))
 # Import our custom FaceAnalysis with YOLO integration
 from custom_face_analysis import CustomFaceAnalysis as FaceAnalysis
 
+# Import performance monitor
+from performance_monitor import get_global_monitor
+
+# Import performance configuration
+try:
+    from performance_config import *
+except ImportError:
+    # Fallback to default settings if config file doesn't exist
+    DETECTION_SIZE = (480, 480)
+    CONFIDENCE_THRESHOLD = 0.25
+    MAX_FACES_PER_FRAME = 3
+    UI_UPDATE_INTERVAL = 3
+    SKIP_FRAME_INTERVAL = 1
+    CACHE_DURATION = 30
+    RECOGNITION_THRESHOLD = 0.6
+    AUTO_PERFORMANCE_ADJUST = True
+    TARGET_FPS = 15
+    FPS_CHECK_INTERVAL = 60
+    VERBOSE_LOGGING = False
+    CACHE_LOG_INTERVAL = 20
+    DETECTION_LOG_INTERVAL = 10
+    PERFORMANCE_LOG_INTERVAL = 3
+    GPU_MODE = "HYBRID"
+    CAMERA_BUFFER_SIZE = 1
+    USE_RTSP = False
+    RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/102"
+
 MODEL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root directory
 MODEL_NAME = 'buffalo_sc'  # Changed from buffalo_sc to buffalo_l for better recognition
 
-# FPS Optimization Settings - ASYNC PROCESSING
-DETECTION_SIZE = (480, 480)  # Reduced from 640x640 for 30% speed boost
-UI_UPDATE_INTERVAL = 3      # Update UI every 3 frames for 3x less overhead
-MAX_FACES_PER_FRAME = 3     # Limit faces per frame to reduce processing time
-CACHE_DURATION = 30         # Cache recognition results for 30 seconds
+# Use configuration from performance_config.py
+# Settings are now imported from performance_config.py - see that file for customization
 
-RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/102"
 CHROMA_STORE_PATH = "./store"
 DATABASE_PATH = 'attendance_system.db'
 
@@ -49,6 +72,10 @@ processing_results = {}     # Store processing results
 
 # Initialize face analysis model with GPU ONLY (no CPU fallback)
 try:
+    # Suppress PyTorch warnings and errors that don't affect functionality
+    import warnings
+    warnings.filterwarnings("ignore", category=UserWarning)
+    
     # Check if CUDA is available - REQUIRE it for GPU-only operation
     import torch
     if not torch.cuda.is_available():
@@ -57,29 +84,36 @@ try:
         st.stop()
     
     device = "cuda"
-    print(f"🔧 Using device: {device} (GPU ONLY MODE)")
+    print(f"🔧 Using device: {device} (GPU MODE: {GPU_MODE})")
     print(f"🚀 CUDA device: {torch.cuda.get_device_name(0)}")
     print(f"🚀 CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
     
-    # Force GPU-only initialization - NO CPU fallback
-    print("🚀 Initializing models in GPU-ONLY mode...")
+    # Force GPU-only initialization - Handle PyTorch class errors gracefully
+    print(f"🚀 Initializing models in {GPU_MODE} mode...")
     yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11n-face.pt")
     
-    # Initialize with forced GPU context (ctx_id=0) - HYBRID mode allows CPU fallback for InsightFace
-    app = FaceAnalysis(
-        name=MODEL_NAME, 
-        root=MODEL_ROOT, 
-        yolo_model_path=yolo_path,
-        providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],  # Allow CPU fallback for InsightFace
-        gpu_mode='HYBRID'  # YOLO must be GPU, InsightFace preferred GPU with CPU fallback
-    )
-    app.prepare(ctx_id=0, det_size=DETECTION_SIZE)  # ctx_id=0 forces GPU
-    print(f"✅ Face analysis with YOLO initialized in GPU-ONLY mode")
+    # Suppress specific torch.classes errors that don't affect functionality
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        # Initialize with forced GPU context (ctx_id=0) - HYBRID mode allows CPU fallback for InsightFace
+        app = FaceAnalysis(
+            name=MODEL_NAME, 
+            root=MODEL_ROOT, 
+            yolo_model_path=yolo_path,
+            providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],  # Allow CPU fallback for InsightFace
+            gpu_mode=GPU_MODE  # Use configured GPU mode
+        )
+        app.prepare(ctx_id=0, det_size=DETECTION_SIZE, det_thresh=CONFIDENCE_THRESHOLD)  # Use configured settings
+    
+    print(f"✅ Face analysis with YOLO initialized in {GPU_MODE} mode")
     print(f"✅ FaceAnalysis with YOLO integration loaded")
     
 except Exception as e:
     st.error(f"Failed to initialize face analysis model: {str(e)}")
     print(f"❌ Face analysis error: {e}")
+    # Print more details for debugging
+    import traceback
+    traceback.print_exc()
     st.stop()
 
 def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
@@ -175,10 +209,23 @@ def log_attendance(name, confidence, device_id=None):
         
         result = cursor.fetchone()
         if not result:
-            print(f"No student found for recognized name: {name}")
-            return False
+            print(f"⚠️ No student found for recognized name: {name}")
+            # Try alternative lookup in case profile_name doesn't match exactly
+            cursor.execute("""
+                SELECT sp.student_id, s.name, s.roll_number 
+                FROM student_profiles_enhanced sp
+                JOIN students_enhanced s ON sp.student_id = s.student_id
+                WHERE s.name LIKE ? AND sp.status = 'active'
+                LIMIT 1
+            """, (f"%{name}%",))
+            
+            result = cursor.fetchone()
+            if not result:
+                print(f"❌ No student found for name: {name} (exact or partial match)")
+                return False
         
         student_id, student_name, roll_number = result
+        print(f"🔍 Found student: {student_name} (ID: {student_id})")
         
         # Check if attendance already logged today
         cursor.execute("""
@@ -186,9 +233,10 @@ def log_attendance(name, confidence, device_id=None):
             WHERE student_id = ? AND attendance_date = ?
         """, (student_id, current_date))
         
-        if cursor.fetchone():
-            print(f"Attendance already logged today for {student_name}")
-            return True  # Already logged
+        existing_record = cursor.fetchone()
+        if existing_record:
+            print(f"ℹ️ Attendance already logged today for {student_name}")
+            return True  # Already logged, but this is success
         
         # Insert attendance record
         cursor.execute("""
@@ -198,11 +246,13 @@ def log_attendance(name, confidence, device_id=None):
         """, (student_id, current_date, current_time, f"Confidence: {confidence:.2f}"))
         
         conn.commit()
-        print(f"✅ Attendance logged for {student_name} at {current_time} (Confidence: {confidence:.2f})")
+        print(f"✅ NEW ATTENDANCE logged for {student_name} at {current_time} (Confidence: {confidence:.2f})")
         return True
         
     except Exception as e:
-        print(f"Error logging attendance: {e}")
+        print(f"❌ Error logging attendance: {e}")
+        import traceback
+        traceback.print_exc()
         return False
     finally:
         if 'conn' in locals():
@@ -233,7 +283,17 @@ def cosine_similarity_search(query_embedding, threshold=0.6, collection=None):
     # Check cache first
     if cache_key in recognition_cache:
         cached_result = recognition_cache[cache_key]
-        print(f"💾 Cache hit: {cached_result[0]} (confidence: {cached_result[1]:.3f})")
+        # Only log cache hits occasionally to reduce spam
+        if not hasattr(cosine_similarity_search, '_cache_log_counter'):
+            cosine_similarity_search._cache_log_counter = 0
+        cosine_similarity_search._cache_log_counter += 1
+        
+        if cosine_similarity_search._cache_log_counter % CACHE_LOG_INTERVAL == 0:  # Use configured interval
+            if VERBOSE_LOGGING:  # Only log if verbose logging is enabled
+                print(f"💾 Cache hit: {cached_result[0]} (confidence: {cached_result[1]:.3f})")
+        
+        # Log cache hit for performance monitoring
+        get_global_monitor().log_cache_hit()
         return cached_result
 
     try:
@@ -250,6 +310,7 @@ def cosine_similarity_search(query_embedding, threshold=0.6, collection=None):
         )
         
         if not results['ids'][0]:
+            get_global_monitor().log_cache_miss()
             return "Unknown", 0.0
         
         # Get best match
@@ -261,15 +322,19 @@ def cosine_similarity_search(query_embedding, threshold=0.6, collection=None):
         # Cache the result for future use
         recognition_cache[cache_key] = result
         
+        # Log cache miss for performance monitoring
+        get_global_monitor().log_cache_miss()
+        
         return result
         
     except Exception as e:
         print(f"❌ Error in similarity search: {e}")
+        get_global_monitor().log_cache_miss()
         return "Unknown", 0.0
 
 def process_frame_with_attendance(frame, threshold=0.6, collection=None, attendance_logged=None):
-    """Process a frame with face recognition and attendance logging - ASYNC VERSION"""
-    global is_processing, last_processed_frame, processing_results
+    """Process a frame with face recognition and attendance logging - OPTIMIZED ASYNC VERSION"""
+    global is_processing, last_processed_frame, processing_results, frame_count
     
     if attendance_logged is None:
         attendance_logged = {}
@@ -284,6 +349,11 @@ def process_frame_with_attendance(frame, threshold=0.6, collection=None, attenda
         else:
             return frame, recognized_faces
     
+    # Skip frames for performance optimization
+    if frame_count % SKIP_FRAME_INTERVAL != 0:
+        # Return current frame without processing for smooth display
+        return frame, recognized_faces
+    
     # Mark as processing to prevent overlap
     is_processing = True
     
@@ -297,7 +367,15 @@ def process_frame_with_attendance(frame, threshold=0.6, collection=None, attenda
         
         # Limit max faces per frame for performance
         faces = faces[:MAX_FACES_PER_FRAME]
-        print(f"🔍 Processing {len(faces)} faces (limited to {MAX_FACES_PER_FRAME} for performance)")
+        
+        # Only log face processing occasionally to reduce spam
+        if not hasattr(process_frame_with_attendance, '_log_counter'):
+            process_frame_with_attendance._log_counter = 0
+        process_frame_with_attendance._log_counter += 1
+        
+        if process_frame_with_attendance._log_counter % (30 if VERBOSE_LOGGING else 60) == 0:  # Configurable logging
+            if VERBOSE_LOGGING:
+                print(f"🔍 Processing {len(faces)} faces (limited to {MAX_FACES_PER_FRAME} for performance)")
         
         for face in faces:
             x1, y1, x2, y2 = face.bbox.astype(int)
@@ -325,6 +403,8 @@ def process_frame_with_attendance(frame, threshold=0.6, collection=None, attenda
                             'time': datetime.now().strftime('%H:%M:%S')
                         }
                         recognized_faces.append(name)
+                        # Log attendance for performance monitoring
+                        get_global_monitor().log_attendance_logged()
             
             # Draw results
             color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
@@ -344,6 +424,10 @@ def process_frame_with_attendance(frame, threshold=0.6, collection=None, attenda
         # Store processed frame and results
         last_processed_frame = frame.copy()
         processing_results['recognized_faces'] = recognized_faces
+        
+        # Log performance metrics
+        get_global_monitor().log_frame_processed()
+        get_global_monitor().log_faces_detected(len(faces))
         
         return frame, recognized_faces
     
@@ -377,6 +461,29 @@ def check_gpu_status():
         print(f"Error checking GPU status: {e}")
         return {"available": False, "error": str(e)}
 
+def adjust_performance_settings(fps, target_fps=15):
+    """Dynamically adjust processing settings based on current FPS"""
+    global SKIP_FRAME_INTERVAL, UI_UPDATE_INTERVAL, MAX_FACES_PER_FRAME
+    
+    # Prevent adjustment if FPS is 0 (initial startup)
+    if fps <= 0:
+        return "INITIALIZING"
+    
+    if fps < target_fps * 0.7:  # Performance is too low
+        # Reduce processing load
+        SKIP_FRAME_INTERVAL = min(3, SKIP_FRAME_INTERVAL + 1)
+        UI_UPDATE_INTERVAL = min(5, UI_UPDATE_INTERVAL + 1)
+        MAX_FACES_PER_FRAME = max(1, MAX_FACES_PER_FRAME - 1)
+        return "REDUCED_LOAD"
+    elif fps > target_fps * 1.2:  # Performance is good, can increase quality
+        # Increase processing quality
+        SKIP_FRAME_INTERVAL = max(1, SKIP_FRAME_INTERVAL - 1)
+        UI_UPDATE_INTERVAL = max(2, UI_UPDATE_INTERVAL - 1)
+        MAX_FACES_PER_FRAME = min(5, MAX_FACES_PER_FRAME + 1)
+        return "INCREASED_QUALITY"
+    
+    return "STABLE"
+
 def show_real_time_prediction():
     # Page styling
     st.markdown("""
@@ -388,6 +495,30 @@ def show_real_time_prediction():
         font-weight: bold;
         margin-bottom: 20px;
     }
+    .simple-mode {
+        background-color: #f0f8ff;
+        padding: 15px;
+        border-radius: 10px;
+        margin: 10px 0;
+        text-align: center;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Main header
+    st.markdown('<div class="main-header">🎓 Live Camera System</div>', unsafe_allow_html=True)
+    
+    # Simple mode toggle
+    simple_mode = st.checkbox("📹 Simple Camera Mode (No attendance, just live stream)", value=True)
+    
+    if simple_mode:
+        st.markdown('<div class="simple-mode">📹 <b>Simple Mode</b>: Live camera stream with face detection only</div>', unsafe_allow_html=True)
+        show_simple_camera_stream()
+        return
+    
+    # Original complex mode continues below...
+    st.markdown("""
+    <style>
     .status-info {
         background-color: #f8f9fa;
         padding: 12px;
@@ -396,23 +527,9 @@ def show_real_time_prediction():
         text-align: center;
         border-left: 4px solid #1f77b4;
     }
-    .stats-container {
-        display: flex;
-        justify-content: space-around;
-        margin: 20px 0;
-    }
-    .stat-box {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        color: white;
-        padding: 15px;
-        border-radius: 10px;
-        text-align: center;
-        min-width: 120px;
-    }
     </style>
     """, unsafe_allow_html=True)
     
-    # Main header
     st.markdown('<div class="main-header">🎓 Live Attendance System</div>', unsafe_allow_html=True)
     
     # Check database for facial embeddings
@@ -442,7 +559,7 @@ def show_real_time_prediction():
         st.warning("⚠️ **Running on CPU** - For better performance, ensure GPU is available")
     
     # Controls section
-    col1, col2, col3 = st.columns([2, 2, 1])
+    col1, col2, col3, col4 = st.columns([2, 2, 1, 1])
     
     with col1:
         st.markdown('<div class="status-info">👥 Registered Students: {}</div>'.format(with_embeddings), unsafe_allow_html=True)
@@ -451,8 +568,12 @@ def show_real_time_prediction():
         st.markdown('<div class="status-info">{}</div>'.format(gpu_info), unsafe_allow_html=True)
     
     with col3:
-        threshold = st.slider("🎯 Recognition Threshold", 0.0, 1.0, 0.6, 0.05, 
+        threshold = st.slider("🎯 Recognition Threshold", 0.0, 1.0, RECOGNITION_THRESHOLD, 0.05, 
                              help="Higher values = stricter recognition")
+    
+    with col4:
+        show_performance = st.checkbox("📊 Show Performance", value=False,
+                                     help="Display real-time performance metrics")
     
     st.divider()
     
@@ -466,16 +587,27 @@ def show_real_time_prediction():
     
     st.success(f"✅ Facial recognition database loaded with {collection.count()} profiles")
     
+    # Debug database structure to help with attendance logging
+    if VERBOSE_LOGGING:
+        debug_database_structure()
+    
     # Live Stream Section
     st.subheader("📹 Live Attendance Stream")
     st.markdown("*Using InsightFace with YOLO detection for real-time face recognition and attendance logging*")
     
     # Stream controls
-    col1, col2, col3 = st.columns([2, 1, 1])
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
     with col2:
         stop_stream = st.button("🛑 Stop Stream", type="secondary")
     with col3:
         clear_attendance = st.button("🗑️ Clear Today's Attendance", type="secondary")
+    with col4:
+        show_perf_summary = st.button("📊 Performance Summary", type="secondary")
+    
+    if show_perf_summary:
+        performance_monitor = get_global_monitor()
+        performance_monitor.print_summary()
+        st.success("📊 Performance summary printed to console")
     
     if clear_attendance:
         if st.button("⚠️ Confirm Clear", type="secondary"):
@@ -493,11 +625,21 @@ def show_real_time_prediction():
     stream_placeholder = st.empty()
     status_placeholder = st.empty()
     
+    # Performance display (optional)
+    if show_performance:
+        performance_placeholder = st.empty()
+    
+    # Initialize performance monitor
+    performance_monitor = get_global_monitor()
+    performance_monitor.start_monitoring(interval=2.0)
+    
     # Video capture
-    # cap = cv2.VideoCapture(RTSP_URL)
-    cap = cv2.VideoCapture(0)
+    if USE_RTSP:
+        cap = cv2.VideoCapture(RTSP_URL)
+    else:
+        cap = cv2.VideoCapture(0)
 
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)  # Reduce buffer for lower latency
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, CAMERA_BUFFER_SIZE)  # Use configured buffer size
     
     if not cap.isOpened():
         st.error("❌ Could not connect to camera stream")
@@ -515,8 +657,13 @@ def show_real_time_prediction():
     frame_count = 0
     ui_update_count = 0  # Counter for UI updates
     start_time = time.time()
+    last_fps_calculation = time.time()
+    fps_calculation_interval = 5.0  # Calculate FPS every 5 seconds for accuracy
+    recent_frame_times = []  # Track recent frame processing times
     attendance_logged = {}  # Track logged attendance to avoid duplicates
     display_frame = None   # Store frame for display
+    last_fps_check = time.time()  # For dynamic performance adjustment
+    performance_log_counter = 0   # Reduce performance logging
     
     # Continuous live stream with face recognition
     try:
@@ -529,6 +676,28 @@ def show_real_time_prediction():
                 break
             
             frame_count += 1
+            current_frame_time = time.time()
+            recent_frame_times.append(current_frame_time)
+            
+            # Keep only recent frame times (last 30 frames for rolling FPS calculation)
+            if len(recent_frame_times) > 30:
+                recent_frame_times = recent_frame_times[-30:]
+            
+            # Calculate FPS more accurately using recent frame times
+            if len(recent_frame_times) >= 2:
+                time_span = recent_frame_times[-1] - recent_frame_times[0]
+                fps = (len(recent_frame_times) - 1) / time_span if time_span > 0 else 0
+            else:
+                fps = 0
+            
+            # Dynamic performance adjustment
+            if AUTO_PERFORMANCE_ADJUST and frame_count % FPS_CHECK_INTERVAL == 0:
+                adjustment = adjust_performance_settings(fps, target_fps=TARGET_FPS)
+                
+                performance_log_counter += 1
+                if performance_log_counter % PERFORMANCE_LOG_INTERVAL == 0:  # Use configured interval
+                    if VERBOSE_LOGGING:
+                        print(f"📊 Performance: {fps:.1f} FPS | Adjustment: {adjustment} | Skip: {SKIP_FRAME_INTERVAL}")
             
             # ASYNC PROCESSING: Always get current frame, processing happens asynchronously
             processed_frame, recognized_faces = process_frame_with_attendance(
@@ -543,12 +712,8 @@ def show_real_time_prediction():
             if ui_update_count % UI_UPDATE_INTERVAL == 0:
                 # Add frame info overlay
                 current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                fps = frame_count / (time.time() - start_time) if time.time() > start_time else 0
                 
-                # Add overlay text
-                cv2.putText(processed_frame, f"Time: {current_time}", (10, 30), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-                # Add frame info overlay to display frame
+                # Remove duplicate overlay text
                 overlay_frame = display_frame.copy()
                 cv2.putText(overlay_frame, f"Time: {current_time}", (10, 30), 
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
@@ -558,20 +723,46 @@ def show_real_time_prediction():
                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 
                 # Add processing status indicator
-                processing_status = "🔄 Processing..." if is_processing else "✅ Ready"
+                processing_status = "Processing" if is_processing else "Ready"
+                status_color = (0, 255, 255) if is_processing else (0, 255, 0)
                 cv2.putText(overlay_frame, processing_status, (10, 120), 
-                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.6, status_color, 2)
+                
+                # Add frame counter for debugging
+                cv2.putText(overlay_frame, f"Frame: {frame_count} | Skip: {SKIP_FRAME_INTERVAL}", (10, 150), 
+                           cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
                 
                 # Display the frame (only every UI_UPDATE_INTERVAL frames)
                 stream_placeholder.image(overlay_frame, channels="BGR", 
-                                   caption=f"🎥 Live Attendance Feed | FPS: {fps:.1f} | Async Processing", 
+                                   caption=f"🎥 Live Attendance Feed | FPS: {fps:.1f} | Processing Mode: {GPU_MODE}", 
                                    use_container_width=True)
+                
+                # Show performance metrics if enabled
+                if show_performance:
+                    perf_summary = performance_monitor.get_summary()
+                    perf_text = f"""
+                    **Performance Metrics:**
+                    - FPS: {perf_summary['average_fps']:.1f}
+                    - CPU: {perf_summary['average_cpu_percent']:.1f}%
+                    - RAM: {perf_summary['average_ram_percent']:.1f}%
+                    - Cache Hit Rate: {perf_summary['cache_hit_rate_percent']:.1f}%
+                    - Faces Detected: {perf_summary['faces_detected']}
+                    - Attendance Logged: {perf_summary['attendance_logged']}
+                    """
+                    if 'gpu_memory_percent' in perf_summary:
+                        perf_text += f"- GPU Memory: {perf_summary['gpu_memory_percent']:.1f}%"
+                    
+                    performance_placeholder.info(perf_text)
             
             # Update status
             if recognized_faces:
                 status_placeholder.success(f"✅ Face recognized and attendance logged for: {', '.join(recognized_faces)}")
             else:
                 status_placeholder.info("🔍 Monitoring for faces...")
+            
+            # Adjust performance settings based on current FPS
+            if PERFORMANCE_MODE == "AUTO":
+                adjust_performance_settings(fps)
             
             # Minimal delay for smooth streaming
             time.sleep(0.01)  # Very small delay for smooth stream
@@ -587,7 +778,126 @@ def show_real_time_prediction():
         status_placeholder.error(f"❌ Stream error: {e}")
     finally:
         cap.release()
+        performance_monitor.stop_monitoring()
+        performance_monitor.print_summary()
         status_placeholder.success(f"🏁 Stream ended. Processed {frame_count} frames. Attendance logged for {len(attendance_logged)} students.")
 
-if __name__ == "__main__":
-    show_real_time_prediction()
+def debug_database_structure():
+    """Debug function to check database structure and data"""
+    try:
+        conn = sqlite3.connect(DATABASE_PATH)
+        cursor = conn.cursor()
+        
+        print("🔍 DEBUG: Checking database structure...")
+        
+        # Check available tables
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        print(f"📊 Available tables: {[table[0] for table in tables]}")
+        
+        # Check student_profiles_enhanced structure
+        try:
+            cursor.execute("PRAGMA table_info(student_profiles_enhanced);")
+            columns = cursor.fetchall()
+            print(f"📋 student_profiles_enhanced columns: {[col[1] for col in columns]}")
+            
+            # Check sample data
+            cursor.execute("SELECT profile_name, student_id, status FROM student_profiles_enhanced LIMIT 5;")
+            profiles = cursor.fetchall()
+            print(f"👥 Sample profiles: {profiles}")
+        except Exception as e:
+            print(f"⚠️ Error checking student_profiles_enhanced: {e}")
+        
+        # Check students_enhanced structure  
+        try:
+            cursor.execute("PRAGMA table_info(students_enhanced);")
+            columns = cursor.fetchall()
+            print(f"📋 students_enhanced columns: {[col[1] for col in columns]}")
+            
+            cursor.execute("SELECT student_id, name FROM students_enhanced LIMIT 5;")
+            students = cursor.fetchall()
+            print(f"🎓 Sample students: {students}")
+        except Exception as e:
+            print(f"⚠️ Error checking students_enhanced: {e}")
+            
+    except Exception as e:
+        print(f"❌ Database debug error: {e}")
+    finally:
+        if 'conn' in locals():
+            conn.close()
+
+def show_simple_camera_stream():
+    """Simple camera stream without attendance logging or complex features"""
+    
+    # Simple controls
+    col1, col2 = st.columns([3, 1])
+    with col2:
+        stop_stream = st.button("🛑 Stop Stream", type="secondary")
+    
+    # Stream display
+    stream_placeholder = st.empty()
+    
+    # Initialize camera
+    cap = cv2.VideoCapture(0)  # Use local camera
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    
+    if not cap.isOpened():
+        st.error("❌ Could not open camera")
+        return
+    
+    st.info("🎥 Simple camera stream active...")
+    
+    # Simple streaming loop
+    frame_count = 0
+    start_time = time.time()
+    
+    try:
+        while not stop_stream:
+            ret, frame = cap.read()
+            if not ret:
+                st.error("❌ Failed to read from camera")
+                break
+            
+            frame_count += 1
+            
+            # Simple face detection (no recognition)
+            try:
+                faces = app.get(frame)
+                
+                for face in faces:
+                    x1, y1, x2, y2 = face.bbox.astype(int)
+                    confidence = face.det_score
+                    
+                    # Draw green box around detected face
+                    color = (0, 255, 0)
+                    cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
+                    cv2.putText(frame, f"Face {confidence:.2f}", (x1, y1-10),
+                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, color, 2)
+            except:
+                pass  # Continue even if face detection fails
+            
+            # Add simple overlay
+            current_time = datetime.now().strftime("%H:%M:%S")
+            elapsed = time.time() - start_time
+            fps = frame_count / elapsed if elapsed > 0 else 0
+            
+            cv2.putText(frame, f"Time: {current_time}", (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(frame, f"FPS: {fps:.1f} | Frames: {frame_count}", (10, 60), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+            cv2.putText(frame, "Simple Mode - Face Detection Only", (10, 90), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+            
+            # Display frame
+            stream_placeholder.image(frame, channels="BGR", 
+                                   caption=f"📹 Simple Live Camera Feed | FPS: {fps:.1f}", 
+                                   use_container_width=True)
+            
+            # Small delay for smooth streaming
+            time.sleep(0.03)
+            
+    except KeyboardInterrupt:
+        pass
+    finally:
+        cap.release()
+        st.success(f"🏁 Simple stream ended. Processed {frame_count} frames.")
