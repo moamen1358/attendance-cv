@@ -21,49 +21,69 @@ from insightface.utils import DEFAULT_MP_NAME, ensure_available
 
 
 class CustomFaceAnalysis:
-    def __init__(self, name=DEFAULT_MP_NAME, root='~/.insightface', allowed_modules=None, yolo_model_path=None, use_yolo=True, 
-                 gpu_mode='PREFER_GPU', **kwargs):
+    def __init__(self, name='antelopev2', root='~/.insightface', allowed_modules=None, yolo_model_path=None, use_yolo=True, 
+                 gpu_mode='LOW_MEMORY', low_memory=True, **kwargs):
         """
         Custom Face Analysis with YOLO Integration and flexible GPU mode
         
         Args:
+            name: Model name - using 'antelopev2' for better embeddings
             gpu_mode: 
                 - 'STRICT_GPU_ONLY': Fail if any model can't use GPU
                 - 'PREFER_GPU': Use GPU where possible, warn about CPU fallback  
                 - 'HYBRID': Force YOLO to GPU (critical), allow InsightFace CPU fallback
+                - 'LOW_MEMORY': Optimized for GPUs with <2GB memory, minimal models on GPU
+            low_memory: Enable low memory optimizations
         """
         onnxruntime.set_default_logger_severity(3)
         self.models = {}
         self.use_yolo = True  # Force YOLO usage
         self.gpu_mode = gpu_mode
+        self.low_memory = low_memory
         
-        # Force GPU-only mode for YOLO (always required)
+        # Check GPU memory
         import torch
         if not torch.cuda.is_available():
             raise RuntimeError("🚨 CUDA is required but not available! YOLO needs GPU.")
         
-        print(f"🚀 GPU Mode: {gpu_mode}")
+        # Get GPU memory info
+        gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / (1024**3)
+        print(f"🚀 GPU Mode: {gpu_mode}, GPU Memory: {gpu_memory_gb:.2f} GB")
         
-        # Configure InsightFace providers based on mode
-        if gpu_mode == 'STRICT_GPU_ONLY':
-            kwargs['providers'] = ['CUDAExecutionProvider']  # Remove CPU fallback completely
-            kwargs['provider_options'] = [{'device_id': '0'}]  # Force specific GPU
+        # Configure providers based on memory and mode
+        if gpu_mode == 'LOW_MEMORY' or gpu_memory_gb < 3.0:
+            # For low memory GPUs, only put essential models on GPU
+            print("🧠 LOW MEMORY mode: Only YOLO and recognition on GPU, others on CPU")
+            kwargs['providers'] = ['CPUExecutionProvider']  # Default to CPU for InsightFace
+            self.gpu_only_mode = False
+            self.priority_models = ['recognition']  # Only recognition model gets GPU priority
+        elif gpu_mode == 'STRICT_GPU_ONLY':
+            kwargs['providers'] = ['CUDAExecutionProvider']
+            kwargs['provider_options'] = [{'device_id': '0'}]
             self.gpu_only_mode = True
-            print("� STRICT GPU-ONLY mode: Will fail if any model can't use GPU")
+            self.priority_models = []
+            print("🔥 STRICT GPU-ONLY mode: Will fail if any model can't use GPU")
         elif gpu_mode == 'PREFER_GPU':
-            kwargs['providers'] = ['CUDAExecutionProvider', 'CPUExecutionProvider']  # Prefer GPU, allow CPU
+            kwargs['providers'] = ['CUDAExecutionProvider', 'CPUExecutionProvider']
             kwargs['provider_options'] = [{'device_id': '0'}, {}]
             self.gpu_only_mode = False
+            self.priority_models = ['recognition', 'genderage']
             print("🚀 PREFER GPU mode: Will use GPU where possible, CPU as fallback")
-        else:  # HYBRID mode (default)
-            kwargs['providers'] = ['CUDAExecutionProvider', 'CPUExecutionProvider']  # Allow CPU fallback
+        else:  # HYBRID mode
+            kwargs['providers'] = ['CUDAExecutionProvider', 'CPUExecutionProvider']
             self.gpu_only_mode = False
+            self.priority_models = ['recognition']
             print("🚀 HYBRID mode: YOLO on GPU (critical), InsightFace GPU preferred with CPU fallback")
         
         # Set default YOLO model path if not provided
         if yolo_model_path is None:
             project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            yolo_model_path = os.path.join(project_root, "models", "yolov11n-face.pt")
+            # Use smaller YOLO model for low memory situations
+            if gpu_mode == 'LOW_MEMORY' or gpu_memory_gb < 3.0:
+                yolo_model_path = os.path.join(project_root, "models", "yolov11n-face.pt")  # Smaller model
+                print("🧠 Using yolov11n for low memory configuration")
+            else:
+                yolo_model_path = os.path.join(project_root, "models", "yolov11l-face.pt")  # Larger model
         
         # Load YOLO model for detection (required)
         try:
@@ -84,24 +104,60 @@ class CustomFaceAnalysis:
         successfully_loaded_gpu_models = 0
         
         for onnx_file in onnx_files:
-            # Force CUDA-only providers for each model
-            kwargs_cuda_only = kwargs.copy()
-            kwargs_cuda_only['providers'] = ['CUDAExecutionProvider']  # Remove CPU fallback
-            
             try:
-                model = model_zoo.get_model(onnx_file, **kwargs_cuda_only)  # Force CUDA only
+                # Determine providers based on memory mode and model priority
+                model_kwargs = kwargs.copy()
                 
-                if model is None:
+                # Extract model name from filename
+                model_name = os.path.basename(onnx_file).split('.')[0]
+                
+                # Skip non-essential models in low memory mode
+                if gpu_mode == 'LOW_MEMORY' and 'landmark' in model_name:
+                    print(f'⏭️ Skipping {model_name} in LOW_MEMORY mode')
+                    continue
+                
+                # Check if this model should get GPU priority
+                temp_model = model_zoo.get_model(onnx_file, providers=['CPUExecutionProvider'])
+                if temp_model is None:
                     print('model not recognized:', onnx_file)
-                elif model.taskname == 'detection':
+                    continue
+                elif temp_model.taskname == 'detection':
                     # Skip detection models since we're using YOLO
-                    print('skipping detection model (using YOLO):', onnx_file, model.taskname)
-                    del model
-                elif allowed_modules is not None and model.taskname not in allowed_modules:
-                    print('model ignore:', onnx_file, model.taskname)
-                    del model
-                elif model.taskname not in self.models and (allowed_modules is None or model.taskname in allowed_modules):
-                    # Check GPU usage based on mode
+                    print('skipping detection model (using YOLO):', onnx_file, temp_model.taskname)
+                    del temp_model
+                    continue
+                elif allowed_modules is not None and temp_model.taskname not in allowed_modules:
+                    print('model ignore:', onnx_file, temp_model.taskname)
+                    del temp_model
+                    continue
+                elif temp_model.taskname in self.models:
+                    print('duplicated model task type, ignore:', onnx_file, temp_model.taskname)
+                    del temp_model
+                    continue
+                
+                # Decide GPU/CPU based on memory mode and priority
+                use_gpu_for_model = False
+                if gpu_mode == 'LOW_MEMORY':
+                    use_gpu_for_model = temp_model.taskname in self.priority_models
+                elif gpu_mode == 'STRICT_GPU_ONLY':
+                    use_gpu_for_model = True
+                else:
+                    use_gpu_for_model = True  # Try GPU first for other modes
+                
+                del temp_model  # Clean up temp model
+                
+                # Load with appropriate providers
+                if use_gpu_for_model:
+                    model_kwargs['providers'] = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+                    print(f'🎯 Trying GPU for priority model: {onnx_file}')
+                else:
+                    model_kwargs['providers'] = ['CPUExecutionProvider']
+                    print(f'🧠 Using CPU for model: {onnx_file}')
+                
+                model = model_zoo.get_model(onnx_file, **model_kwargs)
+                
+                if model is not None:
+                    # Check actual provider used
                     model_on_gpu = False
                     if hasattr(model, 'session') and hasattr(model.session, 'get_providers'):
                         providers = model.session.get_providers()
@@ -115,19 +171,15 @@ class CustomFaceAnalysis:
                             print(f'✅ {model.taskname} model confirmed using CUDA: {providers[0]}')
                             successfully_loaded_gpu_models += 1
                         else:
-                            print(f'⚠️ {model.taskname} model using CPU fallback: {providers[0]}')
+                            print(f'💾 {model.taskname} model using CPU: {providers[0]}')
                     
                     print('find model:', onnx_file, model.taskname, model.input_shape, model.input_mean, model.input_std)
                     self.models[model.taskname] = model
-                else:
-                    print('duplicated model task type, ignore:', onnx_file, model.taskname)
-                    del model
                     
             except Exception as e:
                 print(f"❌ Failed to load {onnx_file}: {e}")
-                if self.gpu_mode == 'STRICT_GPU_ONLY' and "STRICT GPU-only mode failed" in str(e):
+                if self.gpu_mode == 'STRICT_GPU_ONLY':
                     raise  # Re-raise strict mode failures
-                # For other modes, continue but warn
                 print(f"⚠️ Skipping {onnx_file} due to loading error")
         
         print(f"🚀 Successfully loaded {successfully_loaded_gpu_models} InsightFace models on GPU")
@@ -203,10 +255,22 @@ class CustomFaceAnalysis:
             
             # Load YOLO model using ultralytics
             from ultralytics import YOLO
-            model = YOLO(model_path)
+            
+            # Load with memory optimization for low memory mode
+            if hasattr(self, 'low_memory') and self.low_memory:
+                # Enable memory optimizations
+                torch.cuda.empty_cache()  # Clear cache first
+                model = YOLO(model_path)
+                # Reduce model precision for memory savings
+                if hasattr(model.model, 'half'):
+                    model.model.half()  # Use FP16 for less memory
+                print(f"🧠 YOLO model loaded with memory optimizations: {model_path}")
+            else:
+                model = YOLO(model_path)
+                print(f"YOLO model loaded from: {model_path}")
+                
             model.conf = 0.25  # Lower default confidence threshold for more detections
             model.iou = 0.5    # IoU threshold for Non-Maximum Suppression
-            print(f"YOLO model loaded from: {model_path}")
             return model
         except Exception as e:
             print(f"Error loading YOLO model: {e}")

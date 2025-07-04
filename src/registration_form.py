@@ -25,21 +25,24 @@ from custom_face_analysis import CustomFaceAnalysis as FaceAnalysis
 # Constants
 DATABASE_PATH = 'attendance_system.db'
 MODEL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # Project root directory
-MODEL_NAME = 'buffalo_sc'
+MODEL_NAME = 'antelopev2'  # Changed to antelopev2 for better embeddings
 
 DETECTION_SIZE = (640, 640)
 
 # Initialize face analysis model
 try:
-    yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11n-face.pt")
+    # Use smaller YOLO model for low memory situations
+    yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11n-face.pt")  # Using smaller model
     app = FaceAnalysis(
         name=MODEL_NAME, 
         root=MODEL_ROOT, 
         yolo_model_path=yolo_path,
         providers=['CUDAExecutionProvider', 'CPUExecutionProvider'],
-        gpu_mode='HYBRID'
+        gpu_mode='LOW_MEMORY',  # Enable low memory mode
+        low_memory=True,
+        allowed_modules=['recognition']  # Only load essential models
     )
-    app.prepare(ctx_id=0, det_size=DETECTION_SIZE, det_thresh=0.25)
+    app.prepare(ctx_id=0, det_size=(480, 480), det_thresh=0.25)  # Smaller detection size for memory
 except Exception as e:
     st.error(f"Failed to initialize face analysis model: {str(e)}")
     st.stop()

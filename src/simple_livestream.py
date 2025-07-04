@@ -19,15 +19,15 @@ sys.path.insert(0, str(insightface_path))
 from custom_face_analysis import CustomFaceAnalysis as FaceAnalysis
 
 MODEL_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MODEL_NAME = 'buffalo_sc'
-DETECTION_SIZE = (480, 480)
+MODEL_NAME = 'antelopev2'  # Changed to antelopev2 for better embeddings
+DETECTION_SIZE = (640, 640)  # Updated for yolov11l
 CONFIDENCE_THRESHOLD = 0.25
 
 # Initialize face analysis model
 @st.cache_resource
 def load_face_model():
     try:
-        yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11n-face.pt")
+        yolo_path = os.path.join(os.path.dirname(__file__), "..", "models", "yolov11l-face.pt")  # Changed to yolov11l
         
         app = FaceAnalysis(
             name=MODEL_NAME, 

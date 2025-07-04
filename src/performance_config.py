@@ -1,14 +1,15 @@
 # Performance Configuration for Face Recognition System
 # Adjust these settings to optimize performance vs accuracy
+# Updated to use antelopev2 + yolov11n models with low-memory optimization
 
 # PROCESSING SETTINGS
-DETECTION_SIZE = (480, 480)    # Detection resolution - lower = faster, higher = more accurate
+DETECTION_SIZE = (480, 480)    # Detection resolution - optimized for low memory
                                # Options: (320, 320), (480, 480), (640, 640)
 
 CONFIDENCE_THRESHOLD = 0.25    # YOLO detection confidence threshold
                                # Lower = more detections, higher = fewer false positives
 
-MAX_FACES_PER_FRAME = 3        # Maximum faces to process per frame
+MAX_FACES_PER_FRAME = 2        # Maximum faces to process per frame (reduced for memory)
                                # Lower = faster processing
 
 # PERFORMANCE OPTIMIZATION
@@ -17,7 +18,7 @@ SKIP_FRAME_INTERVAL = 1        # Process every Nth frame (higher = faster, lower
 CACHE_DURATION = 30            # Recognition cache duration in seconds
 
 # QUALITY SETTINGS
-RECOGNITION_THRESHOLD = 0.6    # Face recognition threshold
+RECOGNITION_THRESHOLD = 0.6    # Face recognition threshold for antelopev2
                                # Higher = stricter matching, fewer false positives
 
 # AUTO-ADJUSTMENT SETTINGS
@@ -32,8 +33,8 @@ DETECTION_LOG_INTERVAL = 10    # Log detections every N detection calls
 PERFORMANCE_LOG_INTERVAL = 3   # Log performance adjustments every N checks
 
 # GPU SETTINGS
-GPU_MODE = "HYBRID"            # GPU mode: STRICT_GPU_ONLY, PREFER_GPU, HYBRID
-                               # HYBRID recommended for best compatibility
+GPU_MODE = "LOW_MEMORY"        # GPU mode: LOW_MEMORY, HYBRID, PREFER_GPU, STRICT_GPU_ONLY
+                               # LOW_MEMORY recommended for GPUs with < 2GB memory
 
 # CAMERA SETTINGS
 CAMERA_BUFFER_SIZE = 1         # Camera buffer size (lower = less latency)
@@ -42,6 +43,12 @@ RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/102"
 
 # PERFORMANCE PRESETS
 # Uncomment one of these presets or customize individual settings above
+
+# # LOW MEMORY GPU (Recommended for <2GB GPU)
+# DETECTION_SIZE = (320, 320)
+# MAX_FACES_PER_FRAME = 1
+# UI_UPDATE_INTERVAL = 5
+# GPU_MODE = "LOW_MEMORY"
 
 # # HIGH PERFORMANCE (Fastest, lower accuracy)
 # DETECTION_SIZE = (320, 320)
