@@ -18,8 +18,26 @@ def detect_face_positions(image_path: str, confidence_threshold: float = 0.5) ->
     Returns:
         List[Tuple[int, int, int, int, float]]: List of tuples containing (x1, y1, x2, y2, confidence)
     """
+    # Check for GPU availability and set device
+    import torch
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"🔧 YOLO using device: {device}")
+    
+    if torch.cuda.is_available():
+        print(f"🚀 GPU detected: {torch.cuda.get_device_name(0)}")
+        print(f"🚀 GPU memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    
     # Load the YOLO model
     model = YOLO("/home/invisa/Desktop/my_grad_streamlit_last /yolov11l-face.pt")
+    
+    # Explicitly move model to GPU if available
+    if device == "cuda":
+        model.model.to('cuda')
+        print(f"🚀 YOLO model moved to GPU")
+        # Verify the model is on GPU
+        print(f"✅ Model device: {next(model.model.parameters()).device}")
+    else:
+        print(f"⚠️ YOLO using CPU - GPU not available")
     
     # Read the image
     img = cv2.imread(image_path)

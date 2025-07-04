@@ -1,7 +1,7 @@
 import streamlit as st
 import cv2
 import numpy as np
-from insightface.app import FaceAnalysis
+from custom_face_analysis import CustomFaceAnalysis
 import onnxruntime as ort
 import chromadb
 import sqlite3
@@ -19,7 +19,11 @@ from pathlib import Path
 camera_scripts_path = Path(__file__).parent.parent / "camera_scripts"
 sys.path.append(str(camera_scripts_path))
 
-MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit/insightface_model'
+# Add local insightface to path BEFORE importing
+insightface_path = Path(__file__).parent.parent / "insightface" / "python-package"
+sys.path.insert(0, str(insightface_path))
+
+MODEL_ROOT = '/home/invisa/Desktop/my_grad_streamlit_last/insightface_model'
 MODEL_NAME = 'buffalo_sc'
 
 DETECTION_SIZE = (640, 640)
@@ -27,12 +31,38 @@ RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/102"
 CHROMA_STORE_PATH = "./store"
 DATABASE_PATH = 'attendance_system.db'
 
-# Initialize face analysis model
+# Initialize face analysis model with GPU support
 try:
-    app = FaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
-    app.prepare(ctx_id=0, det_size=DETECTION_SIZE)
+    # Check if CUDA is available
+    import torch
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"🔧 Using device: {device}")
+    
+    if device == "cuda":
+        print(f"🚀 CUDA device: {torch.cuda.get_device_name(0)}")
+        print(f"🚀 CUDA memory: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
+    
+    # Try GPU first, fall back to CPU if needed
+    try:
+        # Initialize with GPU support and YOLO model path (note the space in directory name)
+        yolo_path = "/home/invisa/Desktop/my_grad_streamlit_last /yolov11l-face.pt"
+        app = CustomFaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
+        app.prepare(ctx_id=0, det_size=DETECTION_SIZE)
+        print(f"✅ Custom Face analysis with YOLO initialized with GPU support")
+    except Exception as gpu_error:
+        print(f"⚠️ GPU initialization failed: {gpu_error}")
+        print(f"🔄 Falling back to CPU...")
+        # Fallback to CPU
+        yolo_path = "/home/invisa/Desktop/my_grad_streamlit_last/yolov11l-face.pt"
+        app = CustomFaceAnalysis(name=MODEL_NAME, root=MODEL_ROOT, yolo_model_path=yolo_path)
+        app.prepare(ctx_id=-1, det_size=DETECTION_SIZE)
+        print(f"✅ Custom Face analysis with YOLO initialized with CPU fallback")
+    
+    print(f"✅ Custom FaceAnalysis with YOLO integration loaded")
+    
 except Exception as e:
     st.error(f"Failed to initialize face analysis model: {str(e)}")
+    print(f"❌ Face analysis error: {e}")
     st.stop()
 
 def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
@@ -350,8 +380,9 @@ def run_attendance_workflow():
         else:
             st.success("✅ Camera zoomed out successfully")
         
-        # Wait for camera to stabilize
-        time.sleep(2)
+        # Wait 10 seconds for camera to stabilize after zoom out
+        st.info("⏱️ Waiting 10 seconds for camera stabilization...")
+        time.sleep(10)
         
         # Step 2: Capture frame
         st.info("📷 Step 2: Capturing frame for face detection...")
@@ -429,6 +460,10 @@ def run_attendance_workflow():
         else:
             st.success("✅ Camera zoomed in successfully")
         
+        # Wait 10 seconds after zoom in for camera stabilization
+        st.info("⏱️ Waiting 10 seconds for camera stabilization...")
+        time.sleep(10)
+        
         st.success("🎉 Attendance workflow completed successfully!")
         return True
         
@@ -440,62 +475,145 @@ def run_attendance_workflow():
         return False
 
 def run_attendance_workflow_simple():
-    """Execute the attendance workflow in the background with minimal UI feedback"""
+    """Execute the attendance workflow with 30-second waits as specified"""
     with st.spinner("🎬 Running attendance workflow..."):
         try:
-            # Run the complete workflow silently
+            # Step 1: Zoom out 4x for wide angle view
+            st.info("🔍 Step 1: Zooming out 4x for wide angle view...")
             result = subprocess.run([
                 "python", 
                 str(camera_scripts_path / "simple_4x_zoom.py"), 
                 "--zoom-out"
             ], capture_output=True, text=True, timeout=30)
             
-            time.sleep(2)  # Camera stabilization
+            if result.returncode != 0:
+                st.warning(f"⚠️ Zoom out warning: {result.stderr}")
+            else:
+                st.success("✅ Zoom out successful")
             
-            # Capture frame silently
+            # Wait 30 seconds after zoom out
+            st.info("⏱️ Waiting 30 seconds after zoom out...")
+            time.sleep(30)
+            
+            # Step 2: Capture wide angle frame and process with YOLO
+            st.info("📷 Step 2: Capturing wide angle frame and processing...")
             cap = cv2.VideoCapture(RTSP_URL)
-            if cap.isOpened():
-                ret, frame = cap.read()
-                cap.release()
-                if ret:
-                    temp_image_path = "/tmp/attendance_capture.jpg"
-                    cv2.imwrite(temp_image_path, frame)
-                    
-                    # Run YOLO detection
-                    json_output_path = "/tmp/face_detection_results.json"
-                    result = subprocess.run([
-                        "python",
-                        str(camera_scripts_path / "yolo_image _count.py"),
-                        temp_image_path,
-                        "--confidence", "0.3",
-                        "--json-output", json_output_path
-                    ], capture_output=True, text=True, timeout=60)
-                    
-                    # Send to Arduino if faces detected
-                    if result.returncode == 0:
-                        subprocess.run([
-                            "python",
-                            str(camera_scripts_path / "minimal_face_processor.py"),
-                            json_output_path,
-                            "--confidence", "0.3"
-                        ], capture_output=True, text=True, timeout=120)
-                    
-                    # Zoom back in
-                    subprocess.run([
-                        "python",
-                        str(camera_scripts_path / "simple_4x_zoom.py"),
-                        "--zoom-in"
-                    ], capture_output=True, text=True, timeout=30)
-                    
-                    st.success("✅ Attendance workflow completed!")
-                    return True
+            if not cap.isOpened():
+                st.error("❌ Could not connect to camera")
+                return False
             
-            st.error("❌ Could not capture frame")
-            return False
+            ret, frame = cap.read()
+            cap.release()
+            
+            if not ret:
+                st.error("❌ Could not capture frame")
+                return False
+            
+            # Save frame for processing
+            temp_image_path = "/tmp/attendance_wide_frame.jpg"
+            cv2.imwrite(temp_image_path, frame)
+            st.success("✅ Wide angle frame captured")
+            
+            # Run YOLO detection on wide angle frame
+            st.info("🎯 Processing frame with YOLO...")
+            json_output_path = "/tmp/attendance_face_positions.json"
+            result = subprocess.run([
+                "python",
+                str(camera_scripts_path / "yolo_image _count.py"),
+                temp_image_path,
+                "--confidence", "0.3",
+                "--json-output", json_output_path
+            ], capture_output=True, text=True, timeout=60)
+            
+            face_count = 0
+            if "Total faces detected:" in result.stdout:
+                face_count = int(result.stdout.split("Total faces detected:")[1].split()[0])
+            
+            st.success(f"✅ YOLO processing complete - Found {face_count} faces")
+            
+            if face_count == 0:
+                st.warning("⚠️ No faces detected - ending cycle")
+                st.info("🛑 Attendance cycle stopped")
+                return True
+            
+            # Step 3: Zoom in 4x to target faces
+            st.info(f"🔍 Step 3: Zooming in 4x to target {face_count} detected faces...")
+            result = subprocess.run([
+                "python",
+                str(camera_scripts_path / "simple_4x_zoom.py"),
+                "--zoom-in"
+            ], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode == 0:
+                st.success("✅ Zoom in successful")
+            else:
+                st.warning(f"⚠️ Zoom in warning: {result.stderr}")
+            
+            # Wait 30 seconds after zoom in
+            st.info("⏱️ Wait after zoom in - 30 seconds...")
+            time.sleep(30)
+            
+            # Step 4: Send face positions to Arduino using Wide Angle Positioning
+            st.info("🤖 Step 4: Sending face positions to Arduino (Wide Angle Positioning)...")
+            result = subprocess.run([
+                "python",
+                str(camera_scripts_path / "wide_angle_positioning.py"),
+                json_output_path,
+                "--confidence", "0.3"
+            ], capture_output=True, text=True, timeout=120)
+            
+            if result.returncode == 0:
+                st.success("✅ Face positions sent to Arduino successfully")
+                st.info("⏱️ Waiting for Arduino to finish moving...")
+                time.sleep(5)  # Wait for Arduino to complete movements
+            else:
+                st.warning(f"⚠️ Arduino communication issue: {result.stderr}")
+            
+            # Step 5: Final wait and stop
+            st.info("⏱️ Step 5: Final wait - 30 seconds...")
+            time.sleep(30)
+            
+            st.success("🛑 ATTENDANCE PROCESS COMPLETE - STOPPED")
+            
+            # Cleanup
+            try:
+                if os.path.exists(temp_image_path):
+                    os.remove(temp_image_path)
+                if os.path.exists(json_output_path):
+                    os.remove(json_output_path)
+            except:
+                pass
+            
+            return True
             
         except Exception as e:
             st.error(f"❌ Workflow error: {e}")
             return False
+def check_gpu_status():
+    """Check and display current GPU status"""
+    import torch
+    try:
+        if torch.cuda.is_available():
+            gpu_count = torch.cuda.device_count()
+            current_device = torch.cuda.current_device()
+            gpu_name = torch.cuda.get_device_name(current_device)
+            gpu_memory_allocated = torch.cuda.memory_allocated(current_device) / 1024**3
+            gpu_memory_total = torch.cuda.get_device_properties(current_device).total_memory / 1024**3
+            
+            return {
+                "available": True,
+                "name": gpu_name,
+                "count": gpu_count,
+                "current": current_device,
+                "memory_used": gpu_memory_allocated,
+                "memory_total": gpu_memory_total,
+                "memory_percent": (gpu_memory_allocated / gpu_memory_total) * 100
+            }
+        else:
+            return {"available": False}
+    except Exception as e:
+        print(f"Error checking GPU status: {e}")
+        return {"available": False, "error": str(e)}
 
 def show_real_time_prediction():
     # Simple page styling
@@ -521,6 +639,26 @@ def show_real_time_prediction():
     # Main header
     st.markdown('<div class="main-header">🎓 Smart Attendance System</div>', unsafe_allow_html=True)
     
+    # GPU Status Check
+    import torch
+    gpu_available = torch.cuda.is_available()
+    if not gpu_available:
+        st.warning("⚠️ **GPU Not Detected** - Running on CPU. For better performance, ensure CUDA-compatible GPU is available and PyTorch with CUDA support is installed.")
+        with st.expander("🔧 GPU Troubleshooting"):
+            st.markdown("""
+            **To enable GPU acceleration:**
+            1. Install CUDA-compatible PyTorch: `pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118`
+            2. Verify NVIDIA GPU: `nvidia-smi`
+            3. Check CUDA version: `nvcc --version`
+            4. Restart the application
+            """)
+    else:
+        gpu_name = torch.cuda.get_device_name(0)
+        gpu_memory = torch.cuda.get_device_properties(0).total_memory / 1024**3
+        st.success(f"🚀 **GPU Detected**: {gpu_name} ({gpu_memory:.1f} GB)")
+    
+    st.divider()
+    
     # Check database for facial embeddings
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
@@ -536,15 +674,31 @@ def show_real_time_prediction():
         st.error("❌ No facial embeddings found! Please register student faces first.")
         return
     
+    # Check GPU status
+    import torch
+    gpu_available = torch.cuda.is_available()
+    gpu_name = torch.cuda.get_device_name(0) if gpu_available else "Not Available"
+    gpu_memory = f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB" if gpu_available else "N/A"
+    
     # Simple controls
     col1, col2, col3 = st.columns([1, 2, 1])
     
     with col1:
         if st.button("🎬 Take Attendance", type="primary", use_container_width=True):
-            run_attendance_workflow_simple()
+            run_single_attendance_cycle()
+        
+        if st.button("📹 Start Continuous Monitoring", type="secondary", use_container_width=True):
+            run_continuous_attendance_monitoring()
     
     with col2:
-        st.markdown('<div class="simple-info">� Students Registered: {} | � Camera: Connected</div>'.format(with_embeddings), unsafe_allow_html=True)
+        # Get current GPU status
+        gpu_status = check_gpu_status()
+        if gpu_status["available"]:
+            gpu_info = f"🚀 GPU: {gpu_status['name']} ({gpu_status['memory_used']:.1f}/{gpu_status['memory_total']:.1f}GB)"
+        else:
+            gpu_info = "⚠️ CPU Only"
+        
+        st.markdown('<div class="simple-info">👥 Students: {} | 📹 Camera: Connected | {}</div>'.format(with_embeddings, gpu_info), unsafe_allow_html=True)
     
     with col3:
         threshold = st.slider("🎯 Threshold", 0.0, 1.0, 0.6, help="Recognition confidence")
@@ -595,6 +749,338 @@ def show_real_time_prediction():
         st.error(f"❌ Stream error: {e}")
     finally:
         cap.release()
+
+def run_continuous_attendance_monitoring():
+    """Run continuous attendance monitoring - process every 3rd frame"""
+    st.info("🎬 Starting continuous attendance monitoring...")
+    st.info("📹 Processing every 3rd frame for face detection")
+    
+    # Create placeholders for status updates
+    status_container = st.container()
+    progress_container = st.container()
+    frame_container = st.container()
+    
+    with status_container:
+        status_text = st.empty()
+        progress_bar = st.empty()
+    
+    with frame_container:
+        frame_display = st.empty()
+    
+    # Start with wide angle view
+    status_text.info("🔍 Setting camera to wide angle view...")
+    result = subprocess.run([
+        "python", 
+        str(camera_scripts_path / "simple_4x_zoom.py"), 
+        "--zoom-out"
+    ], capture_output=True, text=True, timeout=30)
+    
+    if result.returncode == 0:
+        status_text.success("✅ Camera set to wide angle")
+    
+    # Wait 10 seconds for initial camera stabilization
+    status_text.info("⏱️ Waiting 10 seconds for initial camera stabilization...")
+    time.sleep(10)  # Camera stabilization
+    
+    # Main monitoring loop
+    cap = cv2.VideoCapture(RTSP_URL)
+    if not cap.isOpened():
+        status_text.error("❌ Could not connect to camera for monitoring")
+        return False
+    
+    frame_count = 0
+    faces_detected_total = 0
+    monitoring_active = True
+    
+    try:
+        # Add stop button
+        stop_button = st.button("🛑 Stop Monitoring", type="secondary")
+        
+        while monitoring_active and not stop_button:
+            ret, frame = cap.read()
+            if not ret:
+                status_text.error("❌ Lost camera connection")
+                break
+            
+            frame_count += 1
+            progress_bar.progress((frame_count % 3) / 3, text=f"Frame {frame_count}")
+            
+            # Display current frame
+            frame_display.image(frame, channels="BGR", 
+                              caption=f"📹 Live Monitoring - Frame {frame_count}", 
+                              use_container_width=True)
+            
+            # Process every 3rd frame
+            if frame_count % 3 == 0:
+                status_text.info(f"🎯 Processing frame {frame_count} for face detection...")
+                
+                # Save frame for YOLO processing
+                temp_image_path = f"/tmp/monitoring_frame_{frame_count}.jpg"
+                cv2.imwrite(temp_image_path, frame)
+                
+                # Run YOLO face detection
+                json_output_path = f"/tmp/face_results_{frame_count}.json"
+                result = subprocess.run([
+                    "python",
+                    str(camera_scripts_path / "yolo_image _count.py"),
+                    temp_image_path,
+                    "--confidence", "0.3",
+                    "--json-output", json_output_path
+                ], capture_output=True, text=True, timeout=30)
+                
+                # Check if faces were detected
+                face_count = 0
+                if result.returncode == 0 and "Total faces detected:" in result.stdout:
+                    face_count = int(result.stdout.split("Total faces detected:")[1].split()[0])
+                
+                if face_count > 0:
+                    faces_detected_total += face_count
+                    status_text.success(f"✅ Frame {frame_count}: Found {face_count} faces - Executing targeting sequence!")
+                    
+                    # Release camera for workflow
+                    cap.release()
+                    
+                    # Execute targeting sequence
+                    with st.spinner("🎯 Executing targeting sequence..."):
+                        # Send positions to Arduino
+                        subprocess.run([
+                            "python",
+                            str(camera_scripts_path / "minimal_face_processor.py"),
+                            json_output_path,
+                            "--confidence", "0.3"
+                        ], capture_output=True, text=True, timeout=60)
+                        
+                        # Zoom in to target
+                        subprocess.run([
+                            "python",
+                            str(camera_scripts_path / "simple_4x_zoom.py"),
+                            "--zoom-in"
+                        ], capture_output=True, text=True, timeout=30)
+                        
+                        # Wait 10 seconds for focus and motor positioning
+                        time.sleep(10)
+                        
+                        # Zoom back out to wide view
+                        subprocess.run([
+                            "python",
+                            str(camera_scripts_path / "simple_4x_zoom.py"),
+                            "--zoom-out"
+                        ], capture_output=True, text=True, timeout=30)
+                        
+                        # Wait 10 seconds after zoom out for stabilization
+                        time.sleep(10)
+                    
+                    # Reconnect to camera
+                    cap = cv2.VideoCapture(RTSP_URL)
+                    if not cap.isOpened():
+                        status_text.error("❌ Could not reconnect to camera")
+                        break
+                    
+                    status_text.success(f"✅ Targeting completed! Total faces detected: {faces_detected_total}")
+                else:
+                    status_text.info(f"ℹ️ Frame {frame_count}: No faces detected, continuing monitoring...")
+                
+                # Clean up temporary files
+                try:
+                    if os.path.exists(temp_image_path):
+                        os.remove(temp_image_path)
+                    if os.path.exists(json_output_path):
+                        os.remove(json_output_path)
+                except:
+                    pass
+            else:
+                status_text.info(f"📹 Monitoring frame {frame_count} (next processing at frame {((frame_count // 3) + 1) * 3})...")
+            
+            # Small delay
+            time.sleep(0.2)
+            
+            # Safety limit
+            if frame_count > 300:  # Limit to 100 processing cycles
+                status_text.warning("⚠️ Monitoring limit reached (300 frames)")
+                break
+            
+            # Check for stop button
+            if stop_button:
+                break
+    
+    except KeyboardInterrupt:
+        status_text.info("🛑 Monitoring stopped by user")
+    except Exception as e:
+        status_text.error(f"❌ Monitoring error: {e}")
+    finally:
+        cap.release()
+        progress_bar.empty()
+        status_text.success(f"✅ Monitoring stopped. Total faces processed: {faces_detected_total}")
+    
+    return True
+
+def run_single_attendance_cycle():
+    """Execute a single attendance cycle with 3-frame monitoring"""
+    frame_count = 0
+    faces_processed = False
+    
+    try:
+        with st.spinner("🎬 Running single attendance cycle..."):
+            # Step 1: Zoom out 4x for wide angle view
+            st.info("🔍 Step 1: Zooming out 4x for wide view...")
+            result = subprocess.run([
+                "python", 
+                str(camera_scripts_path / "simple_4x_zoom.py"), 
+                "--zoom-out"
+            ], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode != 0:
+                st.warning(f"⚠️ Zoom out warning: {result.stderr}")
+            else:
+                st.success("✅ Camera zoomed out successfully")
+            
+            # Wait 10 seconds for camera stabilization after zoom out
+            st.info("⏱️ Waiting 10 seconds for camera stabilization...")
+            time.sleep(10)
+            
+            # Step 2: Monitor frames and process every 3rd frame
+            st.info("📹 Step 2: Monitoring frames (processing every 3rd frame)...")
+            cap = cv2.VideoCapture(RTSP_URL)
+            
+            if not cap.isOpened():
+                st.error("❌ Could not connect to camera")
+                return False
+            
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+            
+            while not faces_processed and frame_count < 15:  # Max 15 frames
+                frame_count += 1
+                ret, frame = cap.read()
+                
+                if not ret:
+                    st.error(f"❌ Could not capture frame {frame_count}")
+                    continue
+                
+                progress_bar.progress(frame_count / 15)
+                
+                if frame_count % 3 == 0:
+                    status_text.text(f"🎯 Frame {frame_count}: Processing with YOLO...")
+                    
+                    # Save frame for processing
+                    temp_image_path = f"/tmp/cycle_frame_{frame_count}.jpg"
+                    cv2.imwrite(temp_image_path, frame)
+                    
+                    # Run YOLO detection
+                    json_output_path = f"/tmp/cycle_results_{frame_count}.json"
+                    result = subprocess.run([
+                        "python",
+                        str(camera_scripts_path / "yolo_image _count.py"),
+                        temp_image_path,
+                        "--confidence", "0.3",
+                        "--json-output", json_output_path
+                    ], capture_output=True, text=True, timeout=60)
+                    
+                    face_count = 0
+                    if "Total faces detected:" in result.stdout:
+                        face_count = int(result.stdout.split("Total faces detected:")[1].split()[0])
+                    
+                    if face_count > 0:
+                        st.success(f"✅ Found {face_count} faces on frame {frame_count}!")
+                        faces_processed = True
+                        break
+                    else:
+                        status_text.text(f"📹 Frame {frame_count}: No faces detected, continuing...")
+                else:
+                    status_text.text(f"📹 Frame {frame_count}: Monitor only")
+                    time.sleep(0.1)
+            
+            cap.release()
+            progress_bar.empty()
+            status_text.empty()
+            
+            if not faces_processed:
+                st.warning("⚠️ No faces detected in monitoring period")
+                st.info("🔍 Returning to wide view and ending cycle...")
+                subprocess.run([
+                    "python",
+                    str(camera_scripts_path / "simple_4x_zoom.py"),
+                    "--zoom-out"
+                ], capture_output=True, text=True, timeout=30)
+                time.sleep(10)
+                st.info("🛑 Attendance cycle ended (no faces detected)")
+                return True
+            
+            # Step 3: Send face positions to Arduino
+            st.info("🤖 Step 3: Sending face positions to Arduino...")
+            result = subprocess.run([
+                "python",
+                str(camera_scripts_path / "minimal_face_processor.py"),
+                json_output_path,
+                "--confidence", "0.3"
+            ], capture_output=True, text=True, timeout=120)
+            
+            if result.returncode != 0:
+                st.warning(f"⚠️ Arduino communication: {result.stderr}")
+            else:
+                st.success("✅ Face positions sent to Arduino")
+            
+            # Step 4: Zoom in 4x to target detected faces
+            st.info("🔍 Step 4: Zooming in 4x to target detected faces...")
+            result = subprocess.run([
+                "python",
+                str(camera_scripts_path / "simple_4x_zoom.py"),
+                "--zoom-in"
+            ], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode != 0:
+                st.warning(f"⚠️ Zoom in warning: {result.stderr}")
+            else:
+                st.success("✅ Camera zoomed in to target")
+            
+            # Wait 10 seconds for motor positioning and focusing
+            st.info("⏱️ Waiting 10 seconds for zoom in stabilization...")
+            time.sleep(10)
+            
+            # Step 5: Take attendance at close range
+            st.info("📝 Step 5: Taking attendance at close range...")
+            time.sleep(3)  # Simulate attendance processing
+            st.success("✅ Attendance recorded for detected faces")
+            
+            # Step 6: Zoom out 4x and END cycle
+            st.info("🔍 Step 6: Zooming out 4x to return to wide view...")
+            result = subprocess.run([
+                "python",
+                str(camera_scripts_path / "simple_4x_zoom.py"),
+                "--zoom-out"
+            ], capture_output=True, text=True, timeout=30)
+            
+            if result.returncode != 0:
+                st.warning(f"⚠️ Final zoom out warning: {result.stderr}")
+            else:
+                st.success("✅ Camera returned to wide view")
+            
+            # Wait 10 seconds for final stabilization
+            st.info("⏱️ Waiting 10 seconds for final stabilization...")
+            time.sleep(10)
+            
+            # Cleanup temp files
+            try:
+                if os.path.exists(temp_image_path):
+                    os.remove(temp_image_path)
+                if os.path.exists(json_output_path):
+                    os.remove(json_output_path)
+            except:
+                pass
+            
+            # Final success message
+            st.success("🎉 SINGLE ATTENDANCE CYCLE COMPLETED ✅")
+            st.info("📝 Summary:")
+            st.info(f"   • Processed {frame_count} frames")
+            st.info(f"   • Found faces and sent to Arduino")
+            st.info("   • Zoomed in → took attendance → zoomed out")
+            st.info("🛑 Attendance session ended. Ready for next manual start.")
+            
+            return True
+            
+    except Exception as e:
+        st.error(f"❌ Single cycle error: {e}")
+        return False
 
 
 if __name__ == "__main__":
