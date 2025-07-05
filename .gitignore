@@ -12,6 +12,17 @@ __pycache__/
 src/__pycache__/
 **/__pycache__/
 
-yolo11x.pt
-yolo11n.pt
-models/
+# Large model files (>100MB)
+models/antelopev2/1k3d68.onnx
+models/antelopev2/glintr100.onnx
+models/buffalo_l/w600k_r50.onnx
+models/buffalo_sc/
+models/yolov11*.pt
+
+# All ONNX model files
+*.onnx
+
+# Model directories
+antelopev2/
+buffalo_l/
+buffalo_sc/
