@@ -43,9 +43,9 @@ GPU_MODE = "LOW_MEMORY"        # GPU mode: LOW_MEMORY, HYBRID, PREFER_GPU, STRIC
 
 # CAMERA SETTINGS
 CAMERA_BUFFER_SIZE = 1         # Camera buffer size (lower = less latency)
-USE_RTSP = False               # Use RTSP camera vs local camera
-# RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/101"
-RTSP_URL = 0 # Use local camera (0 for default webcam)
+USE_RTSP = True                # Use RTSP camera vs local camera
+RTSP_URL = "rtsp://admin:Admin%40123@192.168.1.64:554/Streaming/Channels/101"
+# RTSP_URL = 0 # Use local camera (0 for default webcam)
 
 
 # PERFORMANCE PRESETS

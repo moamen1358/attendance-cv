@@ -9,6 +9,24 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - .:/app
+      - ./store:/app/store
+      - ./attendance_system.db:/app/attendance_system.db
+      - ./data_frames:/app/data_frames
     environment:
       - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
