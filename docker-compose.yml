@@ -1,32 +1,20 @@
-version: '3.8'
-
 services:
   face_recognition_app:
-    image: moamen1358/my_face_recognition_app
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: moamen1358/my_face_recognition_app:latest
+    container_name: face_recognition_app
     ports:
       - "8501:8501"
     volumes:
-      - ./store:/app/store
-      - ./attendance_system.db:/app/attendance_system.db
-      - ./data_frames:/app/data_frames
-    environment:
-      - PYTHONUNBUFFERED=1
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - .:/app
+    command: /app/start_gpu.sh
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: all
+              count: 1
               capabilities: [gpu]
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8501"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+    environment:
+      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
