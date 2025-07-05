@@ -15,3 +15,30 @@ src/__pycache__/
 yolo11x.pt
 yolo11n.pt
 models/
+
+# Temporary and test files (prevent recreation)
+*_test*.sh
+*_temp*.sh
+*_cpu*.sh
+*_demo*.sh
+*_fix*.sh
+*_patch*.sh
+*_safe*.sh
+start_both_containers.sh
+stop_all_containers.sh
+check_status.sh
+docker_simple.sh
+docker_deploy.sh
+
+# Documentation cleanup
+DEPLOYMENT_GUIDE.md
+DOCKER_FIXES_APPLIED.md
+DOCKER_READY.md
+MEMORY_OPTIMIZATION_SUMMARY.md
+PERFORMANCE_CONFIG_GUIDE.md
+PERFORMANCE_OPTIMIZATION_SUMMARY.md
+PROJECT_STATUS.md
+docker_run_guide.md
+
+# Lite versions
+Dockerfile.lite
