@@ -26,3 +26,16 @@ models/yolov11*.pt
 antelopev2/
 buffalo_l/
 buffalo_sc/
+
+# Video files
+*.mp4
+*.avi
+*.mov
+*.mkv
+
+# Large data files
+*.db-wal
+*.db-shm
+
+# Chrome database files
+chroma.sqlite3
