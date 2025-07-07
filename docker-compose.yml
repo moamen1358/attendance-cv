@@ -18,3 +18,10 @@ services:
       - PYTHONUNBUFFERED=1
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # GPU Environment variables to fix dtype mismatch
+      - CUDA_VISIBLE_DEVICES=0
+      - GPU_MEMORY_FRACTION=0.8
+      - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+      - CUDA_LAUNCH_BLOCKING=1
+      - PYTORCH_NO_CUDA_MEMORY_CACHING=1
+      - TORCH_CUDNN_V8_API_DISABLED=1
