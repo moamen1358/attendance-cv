@@ -58,40 +58,26 @@ except Exception as e:
 def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
     """
     Create a new collection or add data to an existing one in ChromaDB.
-
-    Args:
-        collection_name (str): The name of the collection.
-        path_to_chroma (str): Path to the ChromaDB store.
-
-    Returns:
-        collection: The ChromaDB collection object.
+    Only adds new students if they do not already exist in the collection.
     """
     try:
         # Initialize the ChromaDB client with the persist directory
         client = chromadb.PersistentClient(path_to_chroma)
 
-        # Check if the collection already exists
+        # Try to get existing collection, or create if it doesn't exist
         try:
-            # Try to get existing collection
             collection = client.get_collection(name=collection_name)
-            # Delete existing collection to ensure fresh data
-            client.delete_collection(name=collection_name)
-            print(f"Deleted existing collection: {collection_name}")
+            print(f"Loaded existing collection: {collection_name}")
         except Exception:
-            # Collection doesn't exist, which is fine
             print(f"Collection {collection_name} doesn't exist yet - will create new one")
-        
-        # Create a new collection
-        collection = client.create_collection(
-            name=collection_name,
-            metadata={"hnsw:space": "cosine"}
-        )
+            collection = client.create_collection(
+                name=collection_name,
+                metadata={"hnsw:space": "cosine"}
+            )
 
         # Retrieve data from the SQLite database
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        
-        # Try the enhanced schema first (new format)
         try:
             cursor.execute("""
                 SELECT sp.profile_name, sp.encoding_data 
@@ -102,50 +88,50 @@ def create_or_add_to_collection(collection_name, path_to_chroma="./store"):
             print(f"Found {len(rows)} profiles in student_profiles_enhanced")
         except sqlite3.OperationalError as e:
             print(f"Error reading from student_profiles_enhanced: {e}")
-            # Fall back to legacy tables
-            try:
-                cursor.execute("SELECT name, facial_features FROM facial_recognition_data")
-                rows = cursor.fetchall()
-                print(f"Found {len(rows)} profiles in facial_recognition_data")
-            except sqlite3.OperationalError:
-                try:
-                    cursor.execute("SELECT name, facial_features FROM presidents_embeds")
-                    rows = cursor.fetchall()
-                    print(f"Found {len(rows)} profiles in presidents_embeds")
-                except sqlite3.OperationalError:
-                    print("No facial recognition tables found!")
-                    rows = []
-            
+            rows = []
         conn.close()
 
-        # Add data to the collection
+        # Get all existing names in the collection (for deduplication)
+        try:
+            existing = set()
+            count = collection.count()
+            if count > 0:
+                all_data = collection.get(limit=count)
+                for meta in all_data['metadatas']:
+                    if meta and 'name' in meta:
+                        existing.add(meta['name'])
+            print(f"Existing names in collection: {existing}")
+        except Exception as e:
+            print(f"Error fetching existing collection data: {e}")
+            existing = set()
+
+        # Add only new students
+        added = 0
         for index, row in enumerate(rows):
             name, embedding_str = row
+            if name in existing:
+                continue  # Skip if already present
             embedding = json.loads(embedding_str)
             print(f"Adding to ChromaDB: {name} (embedding length: {len(embedding)})")
             collection.add(
-                ids=[str(uuid.uuid4())],  # Generate a unique ID for each entry
+                ids=[str(uuid.uuid4())],
                 documents=[name],
                 embeddings=[embedding],
                 metadatas=[{"name": name}],
             )
+            added += 1
+        print(f"Data successfully stored in ChromaDB! Added {added} new profiles (total now: {collection.count()})")
 
-        print(f"Data successfully stored in ChromaDB! Added {len(rows)} profiles")
-        
         # Debug: Check what's actually in the collection
         try:
             collection_count = collection.count()
             print(f"ChromaDB collection now contains {collection_count} items")
-            
-            # Sample query to see what names are stored
             if collection_count > 0:
                 sample_results = collection.get(limit=5)
                 print("Sample stored names:", [meta.get('name', 'Unknown') for meta in sample_results['metadatas']])
         except Exception as debug_e:
             print(f"Debug error: {debug_e}")
-        
         return collection
-
     except Exception as e:
         st.error(f"Error creating or adding to the collection: {str(e)}")
         return None
