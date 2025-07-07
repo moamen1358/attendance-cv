@@ -306,12 +306,19 @@ class CustomFaceAnalysis:
         if ctx_id < 0:
             raise ValueError("🚨 GPU-only mode: ctx_id must be >= 0 (CPU mode disabled)")
         
-        # Force YOLO to GPU
+        # Force YOLO to GPU with consistent dtype
         self.yolo_model.conf = det_thresh  # Set confidence threshold
         gpu_device = f'cuda:{ctx_id}'
         self.yolo_model.to(gpu_device)
+        
+        # Force float32 precision to avoid dtype mismatches
+        for param in self.yolo_model.parameters():
+            if param.dtype == torch.float16:
+                param.data = param.data.float()
+        
         print(f"🚀 YOLO model FORCED to GPU: {gpu_device}")
         print(f"🚀 YOLO confidence threshold set to: {self.yolo_model.conf}")
+        print(f"🚀 YOLO forced to float32 precision")
         
         # Force InsightFace models to GPU only
         print("🚀 Preparing InsightFace models in GPU-ONLY mode...")
@@ -324,6 +331,11 @@ class CustomFaceAnalysis:
         print("✅ All models prepared in GPU-ONLY mode")
 
     def get(self, img, max_num=0, det_metric='default'):
+        # Ensure image is in correct dtype and format
+        if isinstance(img, torch.Tensor):
+            if img.dtype == torch.float16:
+                img = img.float()
+        
         # Always use YOLO model for detection (reduced logging for performance)
         
         # Run YOLO inference with explicit confidence threshold
@@ -380,9 +392,17 @@ class CustomFaceAnalysis:
                     if taskname == 'detection' or model == 'yolo' or taskname in ['landmark_2d_106', 'landmark_3d_68']:
                         continue
                     try:
-                        model.get(img, face)
-                        # Check if this model generated an embedding
+                        # Ensure consistent input format for InsightFace models
+                        model_input = img
+                        if hasattr(img, 'dtype') and img.dtype == torch.float16:
+                            model_input = img.float()
+                        
+                        model.get(model_input, face)
+                        
+                        # Ensure output embeddings are float32
                         if hasattr(face, 'embedding') and face.embedding is not None:
+                            if hasattr(face.embedding, 'dtype') and face.embedding.dtype != np.float32:
+                                face.embedding = face.embedding.astype(np.float32)
                             embedding_generated = True
                     except Exception as e:
                         pass  # Silent failure for performance

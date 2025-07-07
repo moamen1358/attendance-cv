@@ -22,6 +22,12 @@ EOF
 # GPU Environment
 export CUDA_VISIBLE_DEVICES=0
 export GPU_MEMORY_FRACTION=0.8
+export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+# Force float32 to avoid dtype mismatch
+export CUDA_LAUNCH_BLOCKING=1
+export PYTORCH_NO_CUDA_MEMORY_CACHING=1
+# Disable automatic mixed precision
+export TORCH_CUDNN_V8_API_DISABLED=1
 
 # Read current performance config to check user modifications
 if [ -f /app/src/performance_config.py ]; then
