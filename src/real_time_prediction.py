@@ -330,36 +330,26 @@ def show_real_time_prediction():
         return  # Exit the function if the camera connection fails
 
     stframe = st.empty()
-    
-    # Add recognition stats
     recognition_stats = st.empty()
-    
     frame_count = 0
     recognition_count = 0
-    
+
     while True:
         ret, frame = cap.read()
         if not ret:
             st.error("Error: Could not read frame from stream. Please check the camera connection.")
             break
-        
         try:
             frame_count += 1
-            # time.sleep(5)
             processed_frame, recognized = process_frame(frame, threshold, collection)
             if recognized:
                 recognition_count += 1
-            
             stframe.image(processed_frame, channels="BGR", use_container_width=True)
-            
-            # Update stats every 30 frames
             if frame_count % 30 == 0:
                 recognition_stats.info(f"📊 Frames processed: {frame_count} | Recognitions: {recognition_count}")
-            
         except Exception as e:
             st.error(f"Error processing frame: {str(e)}")
             break
-
     cap.release()
 
 
