@@ -4,12 +4,18 @@ ENV PYTHON_VERSION=3.12 \
     DEBIAN_FRONTEND=noninteractive
 
 # Install Python 3.12 and system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update --fix-missing && \
+    apt-get install -y --no-install-recommends \
     software-properties-common \
     curl \
     ca-certificates \
     build-essential \
+    git \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    ffmpeg \
     && add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get update --fix-missing \
     && apt-get install -y \
     python${PYTHON_VERSION} \
     python${PYTHON_VERSION}-dev \
@@ -25,11 +31,17 @@ WORKDIR /app
 
 COPY requirements.txt .
 
-# Install dependencies and Streamlit
-RUN python3 -m pip install --no-cache-dir --upgrade pip \
-    && (for i in {1..5}; do python3 -m pip install --no-cache-dir --timeout=300 -r requirements.txt && break || sleep 15; done) \
+# Fix for blinker distutils issue and install dependencies
+RUN python3 -m pip install --no-cache-dir --upgrade pip setuptools wheel \
+    && python3 -m pip install --no-cache-dir --ignore-installed blinker \
+    && (for i in {1..5}; do python3 -m pip install --no-cache-dir --ignore-installed blinker --timeout=300 -r requirements.txt && break || sleep 15; done) \
     && python3 -m pip uninstall -y onnxruntime-gpu \
-    && python3 -m pip install --no-cache-dir onnxruntime-gpu==1.20.1
+    && python3 -m pip install --no-cache-dir onnxruntime-gpu==1.20.1 \
+    && which streamlit \
+    && streamlit --version
+
+# Ensure pip's bin directory is in PATH
+ENV PATH="/usr/local/bin:${PATH}"
 
 COPY . .
 

@@ -1,18 +1,24 @@
+version: "3.9"
 services:
-  face_recognition_app:
-    image: moamen1358/my_face_recognition_app:latest
-    container_name: face_recognition_app
+  test_app:
+    container_name: test_app
+    build: .
+    image: test_app:latest
     ports:
       - "8501:8501"
     volumes:
-      - .:/app
+      - ./store:/app/store
+      - ./models:/app/models
+      - ./data_frames:/app/data_frames
+    devices:
+      - /dev/video0:/dev/video0
     command: /app/start_gpu.sh
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: all
               capabilities: [gpu]
     environment:
       - PYTHONUNBUFFERED=1
@@ -25,3 +31,4 @@ services:
       - CUDA_LAUNCH_BLOCKING=1
       - PYTORCH_NO_CUDA_MEMORY_CACHING=1
       - TORCH_CUDNN_V8_API_DISABLED=1
+    shm_size: '2gb'
