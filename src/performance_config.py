@@ -10,10 +10,10 @@ RECOGNITION_THRESHOLD = 0.65  # Options: 0.3-0.9 (0.4=loose matching, 0.65=balan
 AUTO_PERFORMANCE_ADJUST = False  # Options: True, False (auto-adjust settings based on performance)
 TARGET_FPS = 12  # Options: 1-30 fps (1=slow/accurate, 5=balanced, 15=fast, 30=real-time)
 VERBOSE_LOGGING = False  # Options: True, False (detailed console output for debugging)
-GPU_MODE = "BALANCED"  # Options: "HIGH_PERFORMANCE", "BALANCED", "LOW_MEMORY", "ULTRA_LOW_MEMORY"
+GPU_MODE = "HIGH_PERFORMANCE"  # Options: "HIGH_PERFORMANCE", "BALANCED", "LOW_MEMORY", "ULTRA_LOW_MEMORY"
 CAMERA_BUFFER_SIZE = 2  # Options: 1-10 (1=minimal latency, 5=smooth video, 10=very smooth but delayed)
-USE_RTSP = False  # Options: True, False (network camera vs local camera)
-RTSP_URL = 0  # Options: 0 (default camera), 1 (second camera), "rtsp://ip:port/stream" (network camera)
+USE_RTSP = True  # Options: True, False (network camera vs local camera)
+RTSP_URL = "rtsp://admin:Admin123@192.168.1.64:554/Streaming/Channels/101"  # Options: 0 (default camera), 1 (second camera), "rtsp://ip:port/stream" (network camera)
 
 # Force consistent dtype settings to avoid Half/Float mismatch
 FORCE_FLOAT32 = True  # Options: True, False (prevent mixed precision errors)

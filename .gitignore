@@ -42,3 +42,5 @@ docker_run_guide.md
 
 # Lite versions
 Dockerfile.lite
+
+how_to_run_docker/
