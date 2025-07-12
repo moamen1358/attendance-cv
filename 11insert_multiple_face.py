@@ -79,7 +79,7 @@ def add_images_from_folder(dataset_path):
 if __name__ == "__main__":
     # 1. List current data
     list_chromadb_data()
-    # # 2. Add new images (set your dataset path)
+    # 2. Add new images (set your dataset path)
     # dataset_path = "/home/invisa/Desktop/working_grad/images_for_chroma"  # Folder structure: dataset/person_name/image.jpg
     # add_images_from_folder(dataset_path)
     # list_chromadb_data()

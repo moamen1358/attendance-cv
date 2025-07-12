@@ -32,3 +32,49 @@ DISABLE_MIXED_PRECISION = True  # Options: True, False (disable automatic half-p
 # RTX 3050 4GB Total Usage: ~1000MB (antelopev2 + YOLO-L) = Good for 4GB VRAM with 3GB headroom!
 
 
+# # =======================
+# # 🧠 AI Model Selection
+# # =======================
+# INSIGHTFACE_MODEL = "antelopev2"   # Best accuracy (~800MB VRAM)
+# YOLO_MODEL_SIZE = "l"              # Large YOLO (~200MB VRAM)
+
+# # =======================
+# # 🎯 Detection Settings
+# # =======================
+# DETECTION_SIZE = (640, 640)        # High quality detection resolution
+# CONFIDENCE_THRESHOLD = 0.4         # Balanced: detects reliably, avoids false positives
+# MAX_FACES_PER_FRAME = 50           # Crowd-level detection capacity
+
+# # =======================
+# # ⚡ Performance Settings
+# # =======================
+# UI_UPDATE_INTERVAL = 3             # Updates UI every 3 frames (balanced)
+# SKIP_FRAME_INTERVAL = 1            # Process every frame (real-time accuracy)
+# CACHE_DURATION = 30                # Faces remembered for 30 seconds
+# RECOGNITION_THRESHOLD = 0.65       # Balanced face match tolerance
+# TARGET_FPS = 12                    # Stable and smooth for most cameras
+
+# # =======================
+# # 🚀 Optimization Controls
+# # =======================
+# AUTO_PERFORMANCE_ADJUST = False    # Keep manually tuned settings
+# GPU_MODE = "HIGH_PERFORMANCE"      # Max GPU power & accuracy
+# CAMERA_BUFFER_SIZE = 5             # Smooth video, moderate latency
+
+# # =======================
+# # 🖥️ Camera Input
+# # =======================
+# USE_RTSP = True                  # Using default local camera
+# RTSP_URL = "rtsp://admin:Admin123@192.168.1.64:554/Streaming/Channels/101"  # Options: 0 (default camera), 1 (second camera), "rtsp://ip:port/stream" (network camera)
+#                      # Camera index (0 = default webcam)
+
+# # =======================
+# # 🧪 Precision Settings (Enable FP16 / Mixed precision)
+# # =======================
+# FORCE_FLOAT32 = False              # Allow float16 where possible (faster on RTX)
+# DISABLE_MIXED_PRECISION = False    # Enable automatic FP16 for GPU acceleration
+
+# # =======================
+# # 🛠 Debug Settings
+# # =======================
+# VERBOSE_LOGGING = False            # Disable for cleaner logs
