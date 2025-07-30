@@ -1,7 +1,30 @@
 # 🎓 Smart Attendance Management System
 
 A modern, AI-powered attendance management system using face recognition technology, built with Streamlit and featuring comprehensive analytics and reporting capabilities.
-
+```
+docker run --rm -it --name grad_cam_0 \
+  -w /app \
+  -p 8501:8501 \
+  -v "$(pwd)/store:/app/store" \
+  -v "$(pwd)/models:/app/models" \
+  -v "$(pwd)/data_frames:/app/data_frames" \
+  -v /etc/localtime:/etc/localtime:ro \
+  -v /etc/timezone:/etc/timezone:ro \
+  --device /dev/video0:/dev/video0 \
+  --gpus all \
+  -e PYTHONUNBUFFERED=1 \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+  -e CUDA_VISIBLE_DEVICES=0 \
+  -e GPU_MEMORY_FRACTION=0.8 \
+  -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
+  -e CUDA_LAUNCH_BLOCKING=1 \
+  -e PYTORCH_NO_CUDA_MEMORY_CACHING=1 \
+  -e TORCH_CUDNN_V8_API_DISABLED=1 \
+  -e PYTHONPATH=/app \
+  --shm-size=4gb \
+  moamen1358/grad_cam_0 /app/start_gpu.sh
+```
 ## 🌟 Key Features
 
 ### 🔍 Face Recognition & AI
