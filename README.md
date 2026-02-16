@@ -264,7 +264,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🆘 Support
 
-For support, email [your-email@example.com] or create an issue in the repository.
+For support, email [moamen.ghareeb.11@gmail.com] or create an issue in the repository.
 
 ## 🙏 Acknowledgments
 
