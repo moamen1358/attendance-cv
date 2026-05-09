@@ -48,7 +48,11 @@ accounts below.
 
 ## Docker (GPU)
 
+Build the image first, then run:
+
 ```bash
+docker build -t attendance-cv:gpu .
+
 docker run --rm -it --name attendance_cv \
   -p 8501:8501 \
   -v "$(pwd)/store:/app/store" \
@@ -62,7 +66,7 @@ docker run --rm -it --name attendance_cv \
   -e CUDA_VISIBLE_DEVICES=0 \
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
   --shm-size=4gb \
-  moamen1358/grad_cam_0 /app/start_gpu.sh
+  attendance-cv:gpu /app/start_gpu.sh
 ```
 
 ## Default credentials
@@ -137,8 +141,8 @@ attendance-cv/
 │   ├── security.py                     # Password hashing, session helpers
 │   └── report.py
 ├── data_frames/                        # Pickled DataFrames used at runtime
-├── insightface_model/                  # InsightFace weights
-├── store/                              # ChromaDB storage
+├── insightface_model/                  # InsightFace weights (created on first run)
+├── store/                              # ChromaDB storage (created on first run)
 ├── migrations/                         # SQL migration scripts
 ├── server_api/                         # Optional REST endpoints
 ├── camera_scripts/                     # Camera utilities
