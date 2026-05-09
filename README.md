@@ -1,5 +1,7 @@
 # attendance-cv
 
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/) [![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://streamlit.io/) [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 attendance-cv is a face-recognition attendance system. A webcam feed
 runs through InsightFace + YOLO, faces are matched against a ChromaDB
 of enrolled students, and attendance is marked automatically. The
