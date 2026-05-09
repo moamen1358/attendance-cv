@@ -1,274 +1,182 @@
-# 🎓 Smart Attendance Management System
+# attendance-cv
 
-A modern, AI-powered attendance management system using face recognition technology, built with Streamlit and featuring comprehensive analytics and reporting capabilities.
+attendance-cv is a face-recognition attendance management system. It runs
+real-time face detection on a webcam feed, matches faces against an
+enrolled student database stored in ChromaDB, marks attendance
+automatically, and exposes role-based dashboards for administrators,
+teachers, and students. Originally built as my graduation project.
+
+The system pairs InsightFace and YOLO for detection and recognition
+with a Streamlit web interface, a SQLite operational database, and
+Plotly-driven analytics. It can be deployed as a single Streamlit
+process or as a GPU-enabled Docker container.
+
+## Stack
+
+- **Python 3.10+** for application logic
+- **InsightFace** for face detection and embeddings
+- **YOLO** for crowd-aware face counting
+- **OpenCV** for camera capture and frame processing
+- **ChromaDB** for vector storage and similarity search over face embeddings
+- **SQLite** for operational data (users, schedules, attendance records)
+- **Streamlit** for the web UI
+- **Plotly** and **Pandas** for analytics and reporting
+
+## Requirements
+
+- Python 3.10 or newer
+- A webcam (or `/dev/video0` device for Docker)
+- Optional: NVIDIA GPU with CUDA 12.x for the GPU container
+
+## Installation
+
+```bash
+git clone https://github.com/moamen1358/attendance-cv.git
+cd attendance-cv
+
+pip install -r requirements.txt
+python src/db_init.py
+streamlit run src/app.py
 ```
-docker run --rm -it --name grad_cam_0 \
-  -w /app \
+
+`db_init.py` populates the database with sample students, teachers,
+subjects, schedules, enrollments, and default user accounts so the
+application is usable immediately.
+
+Open `http://localhost:8501` and sign in with one of the default
+accounts below.
+
+## Docker (GPU)
+
+```bash
+docker run --rm -it --name attendance_cv \
   -p 8501:8501 \
   -v "$(pwd)/store:/app/store" \
   -v "$(pwd)/models:/app/models" \
   -v "$(pwd)/data_frames:/app/data_frames" \
-  -v /etc/localtime:/etc/localtime:ro \
-  -v /etc/timezone:/etc/timezone:ro \
   --device /dev/video0:/dev/video0 \
   --gpus all \
   -e PYTHONUNBUFFERED=1 \
   -e NVIDIA_VISIBLE_DEVICES=all \
   -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
   -e CUDA_VISIBLE_DEVICES=0 \
-  -e GPU_MEMORY_FRACTION=0.8 \
   -e PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-  -e CUDA_LAUNCH_BLOCKING=1 \
-  -e PYTORCH_NO_CUDA_MEMORY_CACHING=1 \
-  -e TORCH_CUDNN_V8_API_DISABLED=1 \
-  -e PYTHONPATH=/app \
   --shm-size=4gb \
   moamen1358/grad_cam_0 /app/start_gpu.sh
 ```
-## 🌟 Key Features
 
-### 🔍 Face Recognition & AI
-- **Real-time face detection** using InsightFace and YOLO models
-- **ChromaDB vector database** for efficient face embedding storage and retrieval
-- **High-accuracy face recognition** with confidence scoring
-- **Multi-face detection** in group settings
-- **Automatic attendance marking** based on face recognition
-
-### 👨‍🏫 User Management & Roles
-- **Role-based access control** (Admin, Teacher, Student)
-- **Secure authentication** with password hashing
-- **Session persistence** and management
-- **User profile management** with face enrollment
-
-### 📊 Comprehensive Analytics
-- **Real-time attendance tracking** with live camera feed
-- **Interactive dashboards** for all user roles
-- **Advanced reporting** with customizable date ranges
-- **Visual analytics** with charts and graphs
-- **Attendance statistics** and trends analysis
-
-### 🏫 Academic Management
-- **Department management**
-- **Subject and course management**
-- **Class scheduling** with time slots
-- **Teacher-subject assignments**
-- **Student enrollment** management
-- **Academic year and semester tracking**
-
-## 🛠️ Technology Stack
-
-### Backend
-- **Python 3.10+** - Core programming language
-- **SQLite** - Primary database for structured data
-- **ChromaDB** - Vector database for face embeddings
-- **Streamlit** - Web application framework
-
-### AI & Computer Vision
-- **InsightFace** - Face recognition and analysis
-- **YOLO** - Object detection for face counting
-- **OpenCV** - Computer vision operations
-- **NumPy** - Numerical computing
-
-### Frontend
-- **Streamlit** - Interactive web interface
-- **Plotly** - Data visualization
-- **Pandas** - Data manipulation and analysis
-
-## 🚀 Quick Start
-
-### Prerequisites
-- Python 3.10 or higher
-- Webcam/Camera access
-- Git
-
-### Installation
-
-1. **Clone the repository**
-   ```bash
-   git clone <repository-url>
-   cd my_grad_streamlit_last
-   ```
-
-2. **Install dependencies**
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-3. **Initialize the database**
-   ```bash
-   python src/db_init.py
-   ```
-   
-   This will create:
-   - All required database tables
-   - Sample student, teacher, and subject data
-   - Class schedule assignments (2-3 subjects per student per day)
-   - Student enrollments with section assignments
-   - Default user accounts with proper roles
-
-4. **Run the application**
-   ```bash
-   streamlit run src/app.py
-   ```
-
-5. **Access the application**
-   - Open your browser to `http://localhost:8501`
-   - Use the default credentials below to get started
-
-### 🔐 Default Credentials
+## Default credentials
 
 | Role | Username | Password | Notes |
-|------|----------|----------|-------|
+|---|---|---|---|
 | Admin | `admin` | `admin` | Full system access |
 | Teacher | `emp2024001` | `emp2024001` | Sample teacher account |
 | Teacher | `emp2024002` | `emp2024002` | Sample teacher account |
 | Teacher | `emp2024003` | `emp2024003` | Sample teacher account |
-| Student | `2024001` | `2024001` | Fatma Khaled Ibrahim - Section B |
-| Student | `2024002` | `2024002` | Ahmed Mohamed Ali - Section A |
-| Student | `2024003` | `2024003` | Sara Hassan Ahmed - Section A |
+| Student | `2024001` | `2024001` | Fatma Khaled Ibrahim — Section B |
+| Student | `2024002` | `2024002` | Ahmed Mohamed Ali — Section A |
+| Student | `2024003` | `2024003` | Sara Hassan Ahmed — Section A |
 
-**Note**: All sample accounts come with pre-configured schedules and enrollments.
+All sample accounts come with pre-configured schedules and
+enrollments so the dashboards are populated on first login.
 
-## 📋 System Architecture
+## Usage by role
 
-### Database Schema
-The system uses a normalized SQLite database with the following core tables:
+**Administrators** manage users, departments, subjects, and
+teacher-to-subject assignments; monitor system-wide attendance
+metrics; and review session logs.
 
-#### Core Tables
-- **`students_enhanced`** - Student information and profiles
-- **`teachers_enhanced`** - Teacher information and credentials
-- **`subjects_enhanced`** - Course and subject definitions
-- **`departments`** - Academic department management
-- **`users_enhanced`** - Authentication and user management
+**Teachers** view their assigned subjects, start attendance sessions
+that activate the camera and run live recognition, and generate
+per-class or per-student reports.
 
-#### Relationship Tables
-- **`teacher_subjects_enhanced`** - Teacher-subject assignments
-- **`student_enrollments_enhanced`** - Student course enrollments with sections
-- **`class_schedules_enhanced`** - Comprehensive class timing and scheduling
-- **`sections`** - Student section/group management
+**Students** enroll their face profile (a one-time capture step), view
+their personal attendance history, and check upcoming class schedules.
 
-#### Attendance & Recognition
-- **`attendance_records_enhanced`** - Attendance tracking records
-- **`attendance_sessions_enhanced`** - Class session management
-- **`student_profiles_enhanced`** - Face recognition profiles and embeddings
+## Architecture
 
-#### Scheduling System
-The system now includes a comprehensive class scheduling module:
-- **Daily Schedules**: Each student assigned to 2-3 subjects per day
-- **Time Slots**: 8:00 AM - 4:00 PM with proper intervals
-- **Section Management**: Students grouped by sections (A, B, C, etc.)
-- **Subject Rotation**: Balanced distribution across departments
-- **Teacher Assignments**: Automatic teacher-subject-section mapping
+The application is split into a Streamlit front-end (`src/app.py`),
+domain modules under `src/`, and the recognition pipeline that wraps
+InsightFace embeddings into ChromaDB queries.
 
-### File Structure
+### Database schema (SQLite)
+
+Core entities:
+
+- `students_enhanced` — student profiles
+- `teachers_enhanced` — teacher accounts
+- `subjects_enhanced` — course definitions
+- `departments` — academic department records
+- `users_enhanced` — authentication
+
+Relationships:
+
+- `teacher_subjects_enhanced` — teacher-to-subject assignments
+- `student_enrollments_enhanced` — student-to-section enrollments
+- `class_schedules_enhanced` — daily timetables
+- `sections` — section/group management
+
+Attendance and recognition:
+
+- `attendance_records_enhanced` — per-event attendance entries
+- `attendance_sessions_enhanced` — class session tracking
+- `student_profiles_enhanced` — face embedding references into ChromaDB
+
+### File layout
+
 ```
-my_grad_streamlit_last/
+attendance-cv/
 ├── src/
-│   ├── app.py                          # Main application entry point
-│   ├── db_init.py                      # Database initialization
-│   ├── admin_dashboard.py              # Admin interface
-│   ├── student_dashboard.py            # Student interface
-│   ├── real_time_prediction.py         # Face recognition engine
-│   ├── registration_form.py            # User registration
-│   ├── login.py                        # Authentication
-│   ├── security.py                     # Security utilities
-│   └── report.py                       # Reporting system
-├── data_frames/                        # Data storage
-├── insightface_model/                  # AI models
+│   ├── app.py                          # Streamlit entry point
+│   ├── db_init.py                      # Database bootstrap with sample data
+│   ├── admin_dashboard.py
+│   ├── student_dashboard.py
+│   ├── real_time_prediction.py         # Face recognition pipeline
+│   ├── registration_form.py
+│   ├── login.py
+│   ├── security.py                     # Password hashing, session helpers
+│   └── report.py
+├── data_frames/                        # Pickled DataFrames used at runtime
+├── insightface_model/                  # InsightFace weights
 ├── store/                              # ChromaDB storage
-├── migrations/                         # Database migrations
-├── requirements.txt                    # Python dependencies
-└── README.md                           # This file
+├── migrations/                         # SQL migration scripts
+├── server_api/                         # Optional REST endpoints
+├── camera_scripts/                     # Camera utilities
+├── requirements.txt
+├── Dockerfile
+├── docker-compose.yml
+├── run_app.sh
+├── run_gpu.sh
+└── METHODOLOGY.md                      # Project methodology and rationale
 ```
 
-## 🎯 Usage Guide
+### Scheduling
 
-### For Administrators
-1. **Login** with admin credentials
-2. **Manage users** - Add/edit teachers and students
-3. **Setup departments** and subjects
-4. **Assign teachers** to subjects
-5. **Monitor system** performance and attendance
+Each student is assigned 2-3 subjects per day across 8:00-16:00 time
+slots. Sections (A, B, C, …) are balanced across departments and
+teachers; conflicts in timetables are resolved at insertion time. The
+`db_init.py` script generates a representative dataset for sample
+operation.
 
-### For Teachers
-1. **Login** with teacher credentials
-2. **View assigned subjects** and classes
-3. **Start attendance sessions** with live camera
-4. **Generate reports** for classes and students
-5. **Manage class schedules**
+## Configuration
 
-### For Students
-1. **Login** with student credentials
-2. **Enroll face profile** for recognition
-3. **View attendance** records and statistics
-4. **Check class schedules**
-5. **Monitor academic progress**
+Create a `.env` file in the project root:
 
-## 📈 Features in Detail
-
-### Class Scheduling System
-- **Automated Schedule Generation** for all students
-- **Multi-subject Daily Assignment** (2-3 subjects per day)
-- **Section-based Organization** with balanced class sizes
-- **Time Slot Management** (8:00 AM - 4:00 PM)
-- **Teacher-Subject-Section Mapping** for optimal resource allocation
-- **Real-time Schedule Updates** and conflict resolution
-
-### Face Recognition System
-- **High-accuracy detection** using InsightFace models
-- **Real-time processing** with live camera feed
-- **Multiple face detection** in classroom settings
-- **Confidence scoring** for recognition accuracy
-- **Automatic attendance marking** based on recognition
-
-### Reporting & Analytics
-- **Comprehensive reports** with filtering options
-- **Attendance statistics** and trend analysis
-- **Export capabilities** for data sharing
-- **Visual dashboards** with interactive charts
-- **Academic performance tracking**
-
-### Security Features
-- **Password hashing** with secure algorithms
-- **Session management** with timeout protection
-- **Role-based access control**
-- **Data encryption** for sensitive information
-- **Audit logging** for system activities
-
-## 🔧 Configuration
-
-### Environment Variables
-Create a `.env` file in the root directory:
 ```env
 DATABASE_PATH=attendance_system.db
 CHROMADB_PATH=./store
 MODEL_PATH=./insightface_model
 ```
 
-### Camera Configuration
-- Ensure camera access permissions are granted
-- Test camera functionality before first use
-- Adjust lighting conditions for optimal face recognition
+For camera setup, ensure read access to `/dev/video0` (or the
+appropriate device) and that lighting is sufficient for the
+InsightFace detector.
 
-## 🤝 Contributing
+## Methodology
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+A longer write-up of the recognition approach, model selection, and
+evaluation metrics lives in [METHODOLOGY.md](METHODOLOGY.md).
 
-## 📝 License
+## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-For support, email [moamen.ghareeb.11@gmail.com] or create an issue in the repository.
-
-## 🙏 Acknowledgments
-
-- **InsightFace** team for face recognition models
-- **Streamlit** community for the amazing framework
-- **ChromaDB** for vector database capabilities
-- **OpenCV** for computer vision tools
+MIT.
