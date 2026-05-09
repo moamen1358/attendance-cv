@@ -21,8 +21,14 @@ streamlit run src/app.py
 ```
 
 `db_init.py` seeds the database with sample students, teachers,
-subjects, and schedules so the dashboards work on first login. Open
-`http://localhost:8501`.
+subjects, and schedules so the dashboards work on first login.
+
+After Streamlit starts, open `http://localhost:8501`. You'll land on a
+login page — sign in with one of the [default credentials](#default-credentials)
+below to see the role-specific dashboard. Admins land on a system-wide
+view, teachers see their assigned classes with a "Start Session" button
+that opens the camera, and students see their attendance history plus
+a one-time face-enrollment screen.
 
 For the GPU Docker setup, see
 [docs/architecture.md](docs/architecture.md#docker-gpu).
